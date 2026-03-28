@@ -149,13 +149,15 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/multiplayer/UdpTransport.hpp
     include/vibecraft/game/Camera.hpp
     include/vibecraft/game/CollisionHelpers.hpp
-    include/vibecraft/game/EnemyTypes.hpp
+    include/vibecraft/game/MobTypes.hpp
     include/vibecraft/game/MobSpawnSystem.hpp
     include/vibecraft/game/PlayerVitals.hpp
     include/vibecraft/meshing/ChunkMesher.hpp
     include/vibecraft/platform/InputState.hpp
     include/vibecraft/platform/Window.hpp
     include/vibecraft/render/Renderer.hpp
+    include/vibecraft/render/RendererDetail.hpp
+    include/vibecraft/render/RendererInternal.hpp
     include/vibecraft/world/Block.hpp
     include/vibecraft/world/Chunk.hpp
     include/vibecraft/world/TerrainNoise.hpp
@@ -188,6 +190,13 @@ set(VIBECRAFT_SOURCES
     src/meshing/ChunkMesher.cpp
     src/platform/Window.cpp
     src/render/Renderer.cpp
+    src/render/RendererCulling.cpp
+    src/render/RendererDbgText.cpp
+    src/render/RendererFrame.cpp
+    src/render/RendererHitTests.cpp
+    src/render/RendererShaderTexture.cpp
+    src/render/RendererUiGpu.cpp
+    src/render/RendererWeather.cpp
     src/world/Chunk.cpp
     src/world/TerrainGenerator.cpp
     src/world/underground/CaveRules.cpp
