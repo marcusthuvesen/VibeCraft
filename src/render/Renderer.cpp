@@ -9,6 +9,7 @@
 #include <bx/math.h>
 #include <fmt/format.h>
 
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -41,20 +42,13 @@ constexpr std::uint64_t kChunkRenderState =
 constexpr std::uint16_t kChunkAtlasWidth = vibecraft::kChunkAtlasWidthPx;
 constexpr std::uint16_t kChunkAtlasHeight = vibecraft::kChunkAtlasHeightPx;
 
-/// Main menu debug-text layout (rows/cols). Must stay in sync with `hitTestMainMenu`.
+/// Main menu: geometry is computed per frame in `computeMainMenuLayout` (must match `hitTestMainMenu`).
 namespace MainMenuLayout
 {
-constexpr int kStackOuterWidth = 38;
-/// Primary menu buttons (3 rows each; leave a blank row between stacks).
-constexpr int kRowSubtitle = 13;
-constexpr int kRowRule = 15;
-constexpr int kRowStack0 = 17;
-constexpr int kRowStack1 = 21;
-constexpr int kRowStack2 = 25;
-constexpr int kRowBottomPair = 29;
-/// Middle row of the bottom pair (for language / Realms icons).
-constexpr int kRowIconHints = 30;
-constexpr int kBottomBlockHalfWidth = 15;
+constexpr int kButtonLineCount = 5;
+constexpr int kMinOuterWidth = 46;
+constexpr int kMaxOuterWidth = 62;
+constexpr int kSubtitleRuleAndGapRows = 3;
 }  // namespace MainMenuLayout
 
 struct ChunkVertex
@@ -212,13 +206,11 @@ void setVec4Uniform(
     return bilerp(v00, v10, v01, v11, tx, tz);
 }
 
-[[nodiscard]] float cloudPatchDensity(const float sampleX, const float sampleZ)
+/// Two octaves (broad + medium): cheaper than three; `broad` may be reused from a cheap-reject pass.
+[[nodiscard]] float cloudPatchDensityFromBroadMedium(const float broad, const float sampleX, const float sampleZ)
 {
-    // Blend multiple low-frequency bands to get larger "patches" instead of isolated blobs.
-    const float broad = smoothValueNoise2d(sampleX * 0.24f, sampleZ * 0.24f, 901);
     const float medium = smoothValueNoise2d(sampleX * 0.53f, sampleZ * 0.53f, 902);
-    const float detail = smoothValueNoise2d(sampleX * 1.05f, sampleZ * 1.05f, 903);
-    return broad * 0.56f + medium * 0.31f + detail * 0.13f;
+    return glm::clamp(broad * 0.62f + medium * 0.38f, 0.0f, 1.0f);
 }
 
 [[nodiscard]] glm::vec2 normalizeOrFallback(const glm::vec2& vector, const glm::vec2& fallback)
@@ -238,24 +230,33 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
         normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
     const glm::vec2 windOffset = windDirection * cameraFrameData.weatherTimeSeconds * cameraFrameData.weatherWindSpeed;
     constexpr float kCloudCellSize = 30.0f;
-    constexpr int kCloudRadiusInCells = 5;
+    const int cloudRadiusInCells =
+        std::clamp(static_cast<int>(2.0f + cameraFrameData.cloudCoverage * 2.75f), 2, 4);
     const float cloudHeight = glm::max(78.0f, cameraFrameData.position.y + 38.0f);
     const int baseCellX = static_cast<int>(std::floor((cameraFrameData.position.x + windOffset.x) / kCloudCellSize));
     const int baseCellZ = static_cast<int>(std::floor((cameraFrameData.position.z + windOffset.y) / kCloudCellSize));
     const float densityThreshold = std::clamp(0.86f - cameraFrameData.cloudCoverage * 0.62f, 0.24f, 0.82f);
+    const bool drawSecondaryCloudLayer = cameraFrameData.cloudCoverage > 0.42f;
 
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(true);
 
-    for (int cellZ = -kCloudRadiusInCells; cellZ <= kCloudRadiusInCells; ++cellZ)
+    for (int cellZ = -cloudRadiusInCells; cellZ <= cloudRadiusInCells; ++cellZ)
     {
-        for (int cellX = -kCloudRadiusInCells; cellX <= kCloudRadiusInCells; ++cellX)
+        for (int cellX = -cloudRadiusInCells; cellX <= cloudRadiusInCells; ++cellX)
         {
             const int gridX = baseCellX + cellX;
             const int gridZ = baseCellZ + cellZ;
             const float sampleX = static_cast<float>(gridX) + windOffset.x * 0.018f;
             const float sampleZ = static_cast<float>(gridZ) + windOffset.y * 0.018f;
-            const float density = cloudPatchDensity(sampleX, sampleZ);
+            const float broad = smoothValueNoise2d(sampleX * 0.24f, sampleZ * 0.24f, 901);
+            // Upper bound on two-octave mix: 0.62 * broad + 0.38 * 1.0
+            if (0.62f * broad + 0.38f < densityThreshold)
+            {
+                continue;
+            }
+
+            const float density = cloudPatchDensityFromBroadMedium(broad, sampleX, sampleZ);
             if (density < densityThreshold)
             {
                 continue;
@@ -290,11 +291,14 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
                 bx::Vec3(centerX, y, centerZ),
                 baseSize * stretch);
 
-            debugDrawEncoder.setColor(packAbgr8(secondaryTint, 1.0f));
-            debugDrawEncoder.drawQuad(
-                bx::Vec3(0.0f, 1.0f, 0.0f),
-                bx::Vec3(centerX + secondaryOffset, y - 1.0f, centerZ - secondaryOffset * 0.5f),
-                baseSize * 0.75f);
+            if (drawSecondaryCloudLayer)
+            {
+                debugDrawEncoder.setColor(packAbgr8(secondaryTint, 1.0f));
+                debugDrawEncoder.drawQuad(
+                    bx::Vec3(0.0f, 1.0f, 0.0f),
+                    bx::Vec3(centerX + secondaryOffset, y - 1.0f, centerZ - secondaryOffset * 0.5f),
+                    baseSize * 0.75f);
+            }
         }
     }
 
@@ -310,8 +314,8 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
 
     const glm::vec2 windDirection =
         normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
-    constexpr float kRainGridSpacing = 3.5f;
-    constexpr int kRainRadiusInCells = 6;
+    const float rainGridSpacing = 4.0f + (1.0f - cameraFrameData.rainIntensity) * 2.25f;
+    const int rainRadiusInCells = std::clamp(static_cast<int>(3.0f + cameraFrameData.rainIntensity * 2.0f), 3, 5);
     const float rainFallDistance = 5.5f + cameraFrameData.rainIntensity * 3.5f;
     const float rainSpeed = 14.0f + cameraFrameData.rainIntensity * 10.0f;
     const glm::vec3 rainVector(
@@ -319,17 +323,18 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
         -1.0f,
         windDirection.y * 0.35f);
     const glm::vec3 normalizedRainVector = glm::normalize(rainVector);
-    const int baseCellX = static_cast<int>(std::floor(cameraFrameData.position.x / kRainGridSpacing));
-    const int baseCellZ = static_cast<int>(std::floor(cameraFrameData.position.z / kRainGridSpacing));
+    const int baseCellX = static_cast<int>(std::floor(cameraFrameData.position.x / rainGridSpacing));
+    const int baseCellZ = static_cast<int>(std::floor(cameraFrameData.position.z / rainGridSpacing));
     const glm::vec3 rainTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.70f, 0.82f, 1.0f), 0.65f);
+    const int rainStride = cameraFrameData.rainIntensity < 0.38f ? 2 : 1;
 
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(true);
     debugDrawEncoder.setColor(packAbgr8(rainTint, 1.0f));
 
-    for (int cellZ = -kRainRadiusInCells; cellZ <= kRainRadiusInCells; ++cellZ)
+    for (int cellZ = -rainRadiusInCells; cellZ <= rainRadiusInCells; cellZ += rainStride)
     {
-        for (int cellX = -kRainRadiusInCells; cellX <= kRainRadiusInCells; ++cellX)
+        for (int cellX = -rainRadiusInCells; cellX <= rainRadiusInCells; cellX += rainStride)
         {
             const int gridX = baseCellX + cellX;
             const int gridZ = baseCellZ + cellZ;
@@ -345,9 +350,9 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
                 std::fmod(cameraFrameData.weatherTimeSeconds * rainSpeed + phase * rainFallDistance, rainFallDistance);
             const float startY = cameraFrameData.position.y + 14.0f - dropCycle;
             const glm::vec3 start(
-                static_cast<float>(gridX) * kRainGridSpacing + offsetX,
+                static_cast<float>(gridX) * rainGridSpacing + offsetX,
                 startY,
-                static_cast<float>(gridZ) * kRainGridSpacing + offsetZ);
+                static_cast<float>(gridZ) * rainGridSpacing + offsetZ);
             const glm::vec3 end = start + normalizedRainVector * rainFallDistance;
 
             debugDrawEncoder.moveTo(start.x, start.y, start.z);
@@ -382,6 +387,19 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
     }
 
     return true;
+}
+
+[[nodiscard]] float distanceSqCameraToAabb(
+    const glm::vec3& cameraPosition,
+    const glm::vec3& aabbMin,
+    const glm::vec3& aabbMax)
+{
+    const glm::vec3 closest{
+        std::clamp(cameraPosition.x, aabbMin.x, aabbMax.x),
+        std::clamp(cameraPosition.y, aabbMin.y, aabbMax.y),
+        std::clamp(cameraPosition.z, aabbMin.z, aabbMax.z)};
+    const glm::vec3 offset = cameraPosition - closest;
+    return glm::dot(offset, offset);
 }
 
 [[nodiscard]] std::string formatHotbarCell(const FrameDebugData::HotbarSlotHud& slot)
@@ -428,6 +446,55 @@ void dbgTextPrintfCenteredRow(
     return std::max(0, startCol);
 }
 
+struct HotbarLayoutPx
+{
+    float originX = 0.0f;
+    float slotTopY = 0.0f;
+    float slotSize = 0.0f;
+    float gap = 0.0f;
+    float totalWidth = 0.0f;
+};
+
+[[nodiscard]] HotbarLayoutPx computeHotbarLayoutPx(
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textHeight,
+    const std::uint16_t hotbarRow)
+{
+    HotbarLayoutPx layout{};
+    if (windowWidth == 0 || windowHeight == 0 || textHeight == 0)
+    {
+        return layout;
+    }
+
+    const float charH = static_cast<float>(windowHeight) / static_cast<float>(textHeight);
+    float slot = std::floor(charH * 0.86f);
+    slot = std::clamp(slot, 18.0f, 46.0f);
+    float gap = std::max(2.0f, std::round(slot * 0.11f));
+    constexpr int kSlotCount = 9;
+    float totalW = static_cast<float>(kSlotCount) * slot + static_cast<float>(kSlotCount - 1) * gap;
+    const float maxW = static_cast<float>(windowWidth) * 0.94f;
+    if (totalW > maxW && totalW > 1.0f)
+    {
+        const float scale = maxW / totalW;
+        slot = std::max(16.0f, std::floor(slot * scale));
+        gap = std::max(2.0f, std::round(gap * scale));
+        totalW = static_cast<float>(kSlotCount) * slot + static_cast<float>(kSlotCount - 1) * gap;
+    }
+
+    const float originX = std::floor((static_cast<float>(windowWidth) - totalW) * 0.5f);
+    const float rowTopY = static_cast<float>(hotbarRow) * charH;
+    const float slotBottomY = rowTopY + charH * 0.9f;
+    const float slotTopY = slotBottomY - slot;
+
+    layout.originX = originX;
+    layout.slotTopY = slotTopY;
+    layout.slotSize = slot;
+    layout.gap = gap;
+    layout.totalWidth = totalW;
+    return layout;
+}
+
 [[nodiscard]] int computeHotbarGridWidthChars()
 {
     constexpr int kCellChars = 5;
@@ -472,12 +539,12 @@ void drawHealthHud(const std::uint16_t row, const FrameDebugData& frameDebugData
         std::uint16_t attr = 0x08;
         if (heartHealth >= 2.0f)
         {
-            glyph = "<3";
+            glyph = "++";
             attr = 0x0c;
         }
         else if (heartHealth >= 1.0f)
         {
-            glyph = "</";
+            glyph = "+-";
             attr = 0x0e;
         }
 
@@ -502,15 +569,73 @@ void drawHotbarHud(const std::uint16_t row, const FrameDebugData& frameDebugData
     }
 }
 
-void drawHotbarKeyHintsRow(const std::uint16_t row)
+void drawHotbarKeyHintsRow(
+    const std::uint16_t row,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight,
+    const std::uint16_t hotbarRow)
 {
-    constexpr int kCellChars = 5;
-    constexpr int kGap = 1;
-    int col = computeCenteredHotbarStartColumn();
+    if (textWidth == 0 || textHeight == 0 || windowWidth == 0 || windowHeight == 0)
+    {
+        return;
+    }
+
+    const float charW = static_cast<float>(windowWidth) / static_cast<float>(textWidth);
+    const HotbarLayoutPx layout = computeHotbarLayoutPx(windowWidth, windowHeight, textHeight, hotbarRow);
+    if (layout.slotSize <= 0.0f)
+    {
+        return;
+    }
+
     for (int keyIndex = 1; keyIndex <= 9; ++keyIndex)
     {
-        bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col + 2), row, 0x06, "%d", keyIndex);
-        col += kCellChars + kGap;
+        const int i = keyIndex - 1;
+        const float slotCenterX = layout.originX + static_cast<float>(i) * (layout.slotSize + layout.gap) + layout.slotSize * 0.5f;
+        const int col = static_cast<int>(std::floor((slotCenterX / charW) - 0.5f));
+        const int clampedCol = std::clamp(col, 0, static_cast<int>(textWidth) - 1);
+        bgfx::dbgTextPrintf(static_cast<std::uint16_t>(clampedCol), row, 0x08, "%d", keyIndex);
+    }
+}
+
+void drawHotbarStackCounts(
+    const std::uint16_t row,
+    const FrameDebugData& frameDebugData,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight,
+    const std::uint16_t hotbarRow)
+{
+    if (textWidth == 0 || textHeight == 0 || windowWidth == 0 || windowHeight == 0)
+    {
+        return;
+    }
+
+    const float charW = static_cast<float>(windowWidth) / static_cast<float>(textWidth);
+    const HotbarLayoutPx layout = computeHotbarLayoutPx(windowWidth, windowHeight, textHeight, hotbarRow);
+    if (layout.slotSize <= 0.0f)
+    {
+        return;
+    }
+
+    for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+    {
+        const std::uint32_t count = frameDebugData.hotbarSlots[slotIndex].count;
+        if (count <= 1)
+        {
+            continue;
+        }
+
+        const float slotLeft = layout.originX + static_cast<float>(slotIndex) * (layout.slotSize + layout.gap);
+        const float slotRight = slotLeft + layout.slotSize;
+        const std::uint32_t displayCount = std::min(count, 99u);
+        const std::string digits = fmt::format("{}", displayCount);
+        const float textRightPx = slotRight - charW * 0.35f;
+        int col = static_cast<int>(std::floor(textRightPx / charW)) - static_cast<int>(digits.size()) + 1;
+        col = std::clamp(col, 0, static_cast<int>(textWidth) - static_cast<int>(digits.size()));
+        bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), row, 0x0f, "%s", digits.c_str());
     }
 }
 
@@ -587,15 +712,79 @@ void drawBagHud(
         + std::string(static_cast<std::size_t>(rightPad), ' ');
 }
 
-void drawFramedButton3(
+struct MainMenuComputedLayout
+{
+    int centerCol = 0;
+    int outerWidth = MainMenuLayout::kMinOuterWidth;
+    int firstContentRow = 1;
+    int subtitleRow = 1;
+    int ruleRow = 2;
+    std::array<int, 5> buttonTopRows{};
+    int iconHintsRow = 1;
+};
+
+[[nodiscard]] MainMenuComputedLayout computeMainMenuLayout(const int textWidth, const int textHeight)
+{
+    using namespace MainMenuLayout;
+    MainMenuComputedLayout layout{};
+    layout.outerWidth = std::clamp(textWidth - 8, kMinOuterWidth, std::min(kMaxOuterWidth, std::max(kMinOuterWidth, textWidth - 4)));
+    layout.centerCol = std::max(0, (textWidth - layout.outerWidth) / 2);
+
+    constexpr int kButtonCount = 5;
+    const int contentRows = kSubtitleRuleAndGapRows + kButtonCount * kButtonLineCount + 1;
+    layout.firstContentRow =
+        std::clamp((textHeight - contentRows) / 2, 1, std::max(1, textHeight - contentRows));
+
+    layout.subtitleRow = layout.firstContentRow;
+    layout.ruleRow = layout.firstContentRow + 1;
+    const int firstButtonRow = layout.firstContentRow + kSubtitleRuleAndGapRows;
+    for (int i = 0; i < kButtonCount; ++i)
+    {
+        layout.buttonTopRows[static_cast<std::size_t>(i)] = firstButtonRow + i * kButtonLineCount;
+    }
+    layout.iconHintsRow = firstButtonRow + kButtonCount * kButtonLineCount;
+    return layout;
+}
+
+void drawMainMenuFramedButton5(
     const int row,
     const int col,
     const int outerWidth,
     const std::string& label,
     const bool hovered)
 {
-    const std::uint16_t borderAttr = hovered ? 0x1f : 0x08;
-    const std::uint16_t midAttr = hovered ? 0x1f : 0x0b;
+    constexpr std::uint16_t kBorderGray = 0x08;
+    constexpr std::uint16_t kLabelGray = 0x07;
+    constexpr std::uint16_t kBorderHi = 0x08;
+    constexpr std::uint16_t kLabelHi = 0x0f;
+
+    const std::uint16_t borderAttr = hovered ? kBorderHi : kBorderGray;
+    const std::uint16_t labelAttr = hovered ? kLabelHi : kLabelGray;
+    const int inner = outerWidth - 2;
+    const std::string borderLine = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
+    const std::string midEmpty = "|" + std::string(static_cast<std::size_t>(inner), ' ') + "|";
+    const std::string midLabel = "|" + padLabelToInnerWidth(label, inner) + "|";
+
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), borderAttr, "%s", borderLine.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 1), borderAttr, "%s", midEmpty.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 2), labelAttr, "%s", midLabel.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 3), borderAttr, "%s", midEmpty.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 4), borderAttr, "%s", borderLine.c_str());
+}
+
+void drawFramedButton3(
+    const int row,
+    const int col,
+    const int outerWidth,
+    const std::string& label,
+    const bool hovered,
+    const std::uint16_t borderAttrNormal = 0x08,
+    const std::uint16_t midAttrNormal = 0x0b,
+    const std::uint16_t borderAttrHover = 0x1f,
+    const std::uint16_t midAttrHover = 0x1f)
+{
+    const std::uint16_t borderAttr = hovered ? borderAttrHover : borderAttrNormal;
+    const std::uint16_t midAttr = hovered ? midAttrHover : midAttrNormal;
     const int inner = outerWidth - 2;
     const std::string border = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
     const std::string mid = "|" + padLabelToInnerWidth(label, inner) + "|";
@@ -655,65 +844,113 @@ void drawBottomButtonPair(
 
 void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16_t textWidth, const std::uint16_t textHeight)
 {
-    using namespace MainMenuLayout;
     const int tw = static_cast<int>(textWidth);
     const int th = static_cast<int>(textHeight);
-    const int centerCol = std::max(0, (tw - kStackOuterWidth) / 2);
 
-    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(kRowSubtitle), 0x0e, "DESKTOP EDITION");
+    const std::uint16_t footerRow =
+        textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
 
-    const int ruleWidth = std::clamp(tw - 8, 24, 48);
+    if (frameDebugData.mainMenuSoundSettingsActive)
+    {
+        constexpr int kWide = 42;
+        const int soundCenterCol = std::max(0, (tw - kWide) / 2);
+        dbgTextPrintfCenteredRow(5, 0x07, "SOUND SETTINGS");
+        const int hovered = frameDebugData.mainMenuSoundSettingsHoveredControl;
+        const int musicPercent = static_cast<int>(std::round(std::clamp(frameDebugData.mainMenuSoundMusicVolume, 0.0f, 1.0f) * 100.0f));
+        const int sfxPercent = static_cast<int>(std::round(std::clamp(frameDebugData.mainMenuSoundSfxVolume, 0.0f, 1.0f) * 100.0f));
+        constexpr std::uint16_t kGrayBorder = 0x08;
+        constexpr std::uint16_t kGrayLabel = 0x07;
+        constexpr std::uint16_t kHiBorder = 0x08;
+        constexpr std::uint16_t kHiLabel = 0x0f;
+        drawFramedButton3(
+            9,
+            soundCenterCol,
+            kWide,
+            fmt::format("Music volume: {:3d}%   [-] [+]", musicPercent),
+            hovered == 1 || hovered == 2,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        drawFramedButton3(
+            13,
+            soundCenterCol,
+            kWide,
+            fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent),
+            hovered == 3 || hovered == 4,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        drawFramedButton3(19, soundCenterCol, kWide, "Back", hovered == 0, kGrayBorder, kGrayLabel, kHiBorder, kHiLabel);
+        if (!frameDebugData.mainMenuNotice.empty() && footerRow >= 3)
+        {
+            const std::uint16_t noticeRow =
+                footerRow >= 26 ? static_cast<std::uint16_t>(footerRow - 2) : static_cast<std::uint16_t>(0);
+            dbgTextPrintfCenteredRow(noticeRow, 0x07, frameDebugData.mainMenuNotice);
+        }
+        dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back to title menu   Click: adjust");
+        return;
+    }
+
+    const MainMenuComputedLayout menu = computeMainMenuLayout(tw, th);
+    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.subtitleRow), 0x07, "DESKTOP EDITION");
+
+    const int ruleWidth = std::clamp(menu.outerWidth, 24, tw - 4);
     const std::string ruleLine(static_cast<std::size_t>(ruleWidth), '-');
-    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(kRowRule), 0x08, ruleLine);
+    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.ruleRow), 0x08, ruleLine);
 
     const int hovered = frameDebugData.mainMenuHoveredButton;
-    drawFramedButton3(kRowStack0, centerCol, kStackOuterWidth, "Singleplayer", hovered == 0);
-    drawFramedButton3(kRowStack1, centerCol, kStackOuterWidth, "Multiplayer", hovered == 1);
-    drawFramedButton3(kRowStack2, centerCol, kStackOuterWidth, "VibeCraft Realms  * !", hovered == 2);
-
-    drawBottomButtonPair(
-        kRowBottomPair,
-        centerCol,
+    static constexpr const char* const kMainMenuLabels[5] = {
+        "Singleplayer",
+        "Multiplayer",
+        "VibeCraft Realms  * !",
         "Options...",
         "Quit game",
-        hovered == 3,
-        hovered == 4);
+    };
+    for (int i = 0; i < 5; ++i)
+    {
+        drawMainMenuFramedButton5(
+            menu.buttonTopRows[static_cast<std::size_t>(i)],
+            menu.centerCol,
+            menu.outerWidth,
+            kMainMenuLabels[static_cast<std::size_t>(i)],
+            hovered == i);
+    }
 
-    const std::uint16_t iconAttrG = hovered == 5 ? 0x1f : 0x0b;
-    const std::uint16_t iconAttrA = hovered == 6 ? 0x1f : 0x0b;
-    if (centerCol >= 7)
+    const std::uint16_t iconAttrG = hovered == 5 ? 0x0f : 0x07;
+    const std::uint16_t iconAttrA = hovered == 6 ? 0x0f : 0x07;
+    if (menu.centerCol >= 7)
     {
         bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(centerCol - 6),
-            static_cast<std::uint16_t>(kRowIconHints),
+            static_cast<std::uint16_t>(menu.centerCol - 6),
+            static_cast<std::uint16_t>(menu.iconHintsRow),
             iconAttrG,
             "[G]");
     }
     bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(centerCol + 36),
-        static_cast<std::uint16_t>(kRowIconHints),
+        static_cast<std::uint16_t>(menu.centerCol + menu.outerWidth - 3),
+        static_cast<std::uint16_t>(menu.iconHintsRow),
         iconAttrA,
         "[A]");
 
     const bool splashBright =
         static_cast<int>(frameDebugData.mainMenuTimeSeconds * 3.0f) % 2 == 0;
-    const std::uint16_t splashAttr = splashBright ? 0x0e : 0x06;
+    const std::uint16_t splashAttr = splashBright ? 0x07 : 0x08;
     const std::string splash = "Also try building!";
     const int splashRow =
-        std::clamp(std::max(th - 5, kRowBottomPair + 4), 0, std::max(0, th - 3));
+        std::clamp(std::max(th - 5, menu.iconHintsRow + 2), 0, std::max(0, th - 3));
     const int splashCol = std::max(0, tw - static_cast<int>(splash.size()) - 2);
     bgfx::dbgTextPrintf(static_cast<std::uint16_t>(splashCol), static_cast<std::uint16_t>(splashRow), splashAttr, "%s", splash.c_str());
 
-    const std::uint16_t footerRow =
-        textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
     if (!frameDebugData.mainMenuNotice.empty() && footerRow >= 3)
     {
         const std::uint16_t noticeRow =
             footerRow >= 26 ? static_cast<std::uint16_t>(footerRow - 2) : static_cast<std::uint16_t>(0);
-        dbgTextPrintfCenteredRow(noticeRow, 0x0b, frameDebugData.mainMenuNotice);
+        dbgTextPrintfCenteredRow(noticeRow, 0x07, frameDebugData.mainMenuNotice);
     }
 
-    dbgTextPrintfCenteredRow(footerRow, 0x06, "Tab: capture mouse   Esc: pause menu");
+    dbgTextPrintfCenteredRow(footerRow, 0x07, "Tab: capture mouse   Esc: pause menu");
 }
 
 void drawPauseMenuOverlay(
@@ -721,15 +958,46 @@ void drawPauseMenuOverlay(
     const std::uint16_t textWidth,
     const std::uint16_t textHeight)
 {
-    constexpr int kWide = 32;
-    const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
-    dbgTextPrintfCenteredRow(5, 0x0f, "GAME MENU");
+    if (frameDebugData.pauseSoundSettingsActive)
+    {
+        constexpr int kWide = 42;
+        const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+        dbgTextPrintfCenteredRow(5, 0x0f, "SOUND SETTINGS");
+        const int hovered = frameDebugData.pauseSoundSettingsHoveredControl;
+        const int musicPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundMusicVolume, 0.0f, 1.0f) * 100.0f));
+        const int sfxPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundSfxVolume, 0.0f, 1.0f) * 100.0f));
+        drawFramedButton3(9, centerCol, kWide, fmt::format("Music volume: {:3d}%   [-] [+]", musicPercent), hovered == 1 || hovered == 2);
+        drawFramedButton3(13, centerCol, kWide, fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent), hovered == 3 || hovered == 4);
+        drawFramedButton3(19, centerCol, kWide, "Back", hovered == 0);
+    }
+    else if (frameDebugData.pauseGameSettingsActive)
+    {
+        constexpr int kWide = 42;
+        const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+        dbgTextPrintfCenteredRow(5, 0x0f, "GAME OPTIONS");
+        const int hovered = frameDebugData.pauseGameSettingsHoveredControl;
+        const char* const mobState = frameDebugData.mobSpawningEnabled ? "ON" : "OFF";
+        drawFramedButton3(
+            11,
+            centerCol,
+            kWide,
+            fmt::format("Mob spawning: {}", mobState),
+            hovered == 1);
+        drawFramedButton3(19, centerCol, kWide, "Back", hovered == 0);
+    }
+    else
+    {
+        constexpr int kWide = 32;
+        const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+        dbgTextPrintfCenteredRow(5, 0x0f, "GAME MENU");
 
-    const int hovered = frameDebugData.pauseMenuHoveredButton;
-    drawFramedButton3(9, centerCol, kWide, "Back to game", hovered == 0);
-    drawFramedButton3(13, centerCol, kWide, "Options...", hovered == 1);
-    drawFramedButton3(17, centerCol, kWide, "Quit to title", hovered == 2);
-    drawFramedButton3(21, centerCol, kWide, "Quit game", hovered == 3);
+        const int hovered = frameDebugData.pauseMenuHoveredButton;
+        drawFramedButton3(9, centerCol, kWide, "Back to game", hovered == 0);
+        drawFramedButton3(13, centerCol, kWide, "Sound settings...", hovered == 1);
+        drawFramedButton3(17, centerCol, kWide, "Quit to title", hovered == 2);
+        drawFramedButton3(21, centerCol, kWide, "Quit game", hovered == 3);
+        drawFramedButton3(25, centerCol, kWide, "Game options...", hovered == 4);
+    }
 
     const std::uint16_t footerRow =
         textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
@@ -739,7 +1007,16 @@ void drawPauseMenuOverlay(
             footerRow >= 26 ? static_cast<std::uint16_t>(footerRow - 2) : static_cast<std::uint16_t>(0);
         dbgTextPrintfCenteredRow(noticeRow, 0x0b, frameDebugData.pauseMenuNotice);
     }
-    dbgTextPrintfCenteredRow(footerRow, 0x06, "Esc: back to game   Click: choose");
+    const char* footerHint = "Esc: back to game   Click: choose";
+    if (frameDebugData.pauseSoundSettingsActive)
+    {
+        footerHint = "Esc: back   Click: adjust";
+    }
+    else if (frameDebugData.pauseGameSettingsActive)
+    {
+        footerHint = "Esc: back   Click: toggle";
+    }
+    dbgTextPrintfCenteredRow(footerRow, 0x06, footerHint);
 }
 
 [[nodiscard]] const char* shaderProfileDirectory(const bgfx::RendererType::Enum rendererType)
@@ -1076,43 +1353,31 @@ int Renderer::hitTestMainMenu(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, static_cast<int>(textHeight) - 1);
 
-    using namespace MainMenuLayout;
-    const int centerCol = std::max(0, (tw - kStackOuterWidth) / 2);
+    const int th = static_cast<int>(textHeight);
+    const MainMenuComputedLayout menu = computeMainMenuLayout(tw, th);
 
-    for (int buttonIndex = 0; buttonIndex < 3; ++buttonIndex)
+    for (int buttonIndex = 0; buttonIndex < 5; ++buttonIndex)
     {
-        const int row0 = kRowStack0 + buttonIndex * 4;
-        if (clampedRow >= row0 && clampedRow <= row0 + 2 && clampedCol >= centerCol
-            && clampedCol <= centerCol + kStackOuterWidth - 1)
+        const int row0 = menu.buttonTopRows[static_cast<std::size_t>(buttonIndex)];
+        if (clampedRow >= row0 && clampedRow <= row0 + MainMenuLayout::kButtonLineCount - 1
+            && clampedCol >= menu.centerCol && clampedCol <= menu.centerCol + menu.outerWidth - 1)
         {
             return buttonIndex;
         }
     }
 
-    if (clampedRow >= kRowBottomPair && clampedRow <= kRowBottomPair + 2)
+    if (clampedRow == menu.iconHintsRow && menu.centerCol >= 7)
     {
-        if (clampedCol >= centerCol && clampedCol <= centerCol + kBottomBlockHalfWidth - 1)
-        {
-            return 3;
-        }
-        if (clampedCol >= centerCol + kBottomBlockHalfWidth + 1
-            && clampedCol <= centerCol + kBottomBlockHalfWidth + 1 + kBottomBlockHalfWidth - 1)
-        {
-            return 4;
-        }
-    }
-
-    if (clampedRow == kRowIconHints && centerCol >= 7)
-    {
-        if (clampedCol >= centerCol - 6 && clampedCol <= centerCol - 4)
+        if (clampedCol >= menu.centerCol - 6 && clampedCol <= menu.centerCol - 4)
         {
             return 5;
         }
     }
 
-    if (clampedRow == kRowIconHints)
+    if (clampedRow == menu.iconHintsRow)
     {
-        if (clampedCol >= centerCol + 36 && clampedCol <= centerCol + 38)
+        const int aLeft = menu.centerCol + menu.outerWidth - 3;
+        if (clampedCol >= aLeft && clampedCol <= aLeft + 2)
         {
             return 6;
         }
@@ -1144,12 +1409,102 @@ int Renderer::hitTestPauseMenu(
     constexpr int kWide = 32;
     const int centerCol = std::max(0, (tw - kWide) / 2);
 
-    for (int buttonIndex = 0; buttonIndex < 4; ++buttonIndex)
+    for (int buttonIndex = 0; buttonIndex < 5; ++buttonIndex)
     {
         const int row0 = 9 + buttonIndex * 4;
         if (clampedRow >= row0 && clampedRow <= row0 + 2 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
         {
             return buttonIndex;
+        }
+    }
+
+    return -1;
+}
+
+int Renderer::hitTestPauseGameSettingsMenu(
+    const float mouseX,
+    const float mouseY,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
+    {
+        return -1;
+    }
+
+    const int col = static_cast<int>(mouseX * static_cast<float>(textWidth) / static_cast<float>(windowWidth));
+    const int row = static_cast<int>(mouseY * static_cast<float>(textHeight) / static_cast<float>(windowHeight));
+    const int tw = static_cast<int>(textWidth);
+    const int th = static_cast<int>(textHeight);
+    const int clampedCol = std::clamp(col, 0, tw - 1);
+    const int clampedRow = std::clamp(row, 0, th - 1);
+
+    constexpr int kWide = 42;
+    const int centerCol = std::max(0, (tw - kWide) / 2);
+
+    if (clampedRow >= 19 && clampedRow <= 21 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        return 0;
+    }
+    if (clampedRow >= 11 && clampedRow <= 13 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        return 1;
+    }
+
+    return -1;
+}
+
+int Renderer::hitTestPauseSoundMenu(
+    const float mouseX,
+    const float mouseY,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
+    {
+        return -1;
+    }
+
+    const int col = static_cast<int>(mouseX * static_cast<float>(textWidth) / static_cast<float>(windowWidth));
+    const int row = static_cast<int>(mouseY * static_cast<float>(textHeight) / static_cast<float>(windowHeight));
+    const int tw = static_cast<int>(textWidth);
+    const int th = static_cast<int>(textHeight);
+    const int clampedCol = std::clamp(col, 0, tw - 1);
+    const int clampedRow = std::clamp(row, 0, th - 1);
+
+    constexpr int kWide = 42;
+    const int centerCol = std::max(0, (tw - kWide) / 2);
+
+    if (clampedRow >= 19 && clampedRow <= 21 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        return 0;
+    }
+    if (clampedRow >= 9 && clampedRow <= 11 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        const int relCol = clampedCol - centerCol;
+        if (relCol >= kWide - 9 && relCol <= kWide - 7)
+        {
+            return 1;
+        }
+        if (relCol >= kWide - 5 && relCol <= kWide - 3)
+        {
+            return 2;
+        }
+    }
+    if (clampedRow >= 13 && clampedRow <= 15 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        const int relCol = clampedCol - centerCol;
+        if (relCol >= kWide - 9 && relCol <= kWide - 7)
+        {
+            return 3;
+        }
+        if (relCol >= kWide - 5 && relCol <= kWide - 3)
+        {
+            return 4;
         }
     }
 
@@ -1300,6 +1655,11 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         if (bgfx::isValid(inventoryUiProgram))
         {
             inventoryUiProgramHandle_ = inventoryUiProgram.idx;
+            const bgfx::ProgramHandle inventoryUiSolidProgram = loadProgram("vs_chunk", "fs_ui_solid");
+            if (bgfx::isValid(inventoryUiSolidProgram))
+            {
+                inventoryUiSolidProgramHandle_ = inventoryUiSolidProgram.idx;
+            }
         }
         else
         {
@@ -1381,6 +1741,11 @@ void Renderer::shutdown()
     {
         bgfx::destroy(toUniformHandle(crosshairSamplerHandle_));
         crosshairSamplerHandle_ = UINT16_MAX;
+    }
+    if (inventoryUiSolidProgramHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toProgramHandle(inventoryUiSolidProgramHandle_));
+        inventoryUiSolidProgramHandle_ = UINT16_MAX;
     }
     if (inventoryUiProgramHandle_ != UINT16_MAX)
     {
@@ -1597,6 +1962,9 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         };
         bx::buildFrustumPlanes(frustumPlanes, viewProjection);
 
+        const float chunkMaxDrawDistance = cameraFrameData.farClip * 1.08f;
+        const float chunkMaxDrawDistanceSq = chunkMaxDrawDistance * chunkMaxDrawDistance;
+
         for (const auto& [sceneMeshId, sceneMesh] : sceneMeshes_)
         {
             static_cast<void>(sceneMeshId);
@@ -1606,6 +1974,12 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
             };
 
             if (!isAabbInsideFrustum(frustumPlanes, aabb))
+            {
+                continue;
+            }
+
+            if (distanceSqCameraToAabb(cameraFrameData.position, sceneMesh.boundsMin, sceneMesh.boundsMax)
+                > chunkMaxDrawDistanceSq)
             {
                 continue;
             }
@@ -1703,6 +2077,19 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         debugDrawEncoder.setWireframe(false);
     }
 
+    for (const FrameDebugData::WorldMobHud& mob : frameDebugData.worldMobs)
+    {
+        const float hw = mob.halfWidth;
+        const bx::Aabb mobAabb{
+            bx::Vec3(mob.feetPosition.x - hw, mob.feetPosition.y, mob.feetPosition.z - hw),
+            bx::Vec3(mob.feetPosition.x + hw, mob.feetPosition.y + mob.height, mob.feetPosition.z + hw),
+        };
+        debugDrawEncoder.setWireframe(true);
+        debugDrawEncoder.setColor(0xffe53935);
+        debugDrawEncoder.draw(mobAabb);
+        debugDrawEncoder.setWireframe(false);
+    }
+
     debugDrawEncoder.end();
 
     bgfx::dbgTextClear();
@@ -1793,8 +2180,12 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         bgfx::dbgTextPrintf(0, 9, 0x0f, "Target block: none");
     }
 
-    drawHotbarHud(hotbarRow, frameDebugData);
-    drawHotbarKeyHintsRow(hotbarKeyRow);
+    if (inventoryUiSolidProgramHandle_ == UINT16_MAX)
+    {
+        drawHotbarHud(hotbarRow, frameDebugData);
+    }
+    drawHotbarKeyHintsRow(hotbarKeyRow, width_, height_, textWidthForHud, textHeight, hotbarRow);
+    drawHotbarStackCounts(hotbarRow, frameDebugData, width_, height_, textWidthForHud, textHeight, hotbarRow);
     drawHealthHud(healthRow, frameDebugData);
     if (textHeight >= 10)
     {
@@ -1851,6 +2242,76 @@ void Renderer::destroySceneMesh(const std::uint64_t sceneMeshId)
     sceneMeshes_.erase(sceneMeshIt);
 }
 
+void Renderer::drawUiSolidRect(
+    const float x0,
+    const float y0,
+    const float x1,
+    const float y1,
+    const std::uint32_t abgr)
+{
+    if (inventoryUiSolidProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
+        || chunkAtlasTextureHandle_ == UINT16_MAX)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientVertexBuffer(4, ChunkVertex::layout()) < 4)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
+    {
+        return;
+    }
+
+    const float ax0 = std::floor(std::min(x0, x1));
+    const float ay0 = std::floor(std::min(y0, y1));
+    const float ax1 = std::ceil(std::max(x0, x1));
+    const float ay1 = std::ceil(std::max(y0, y1));
+    if (ax1 - ax0 < 0.5f || ay1 - ay0 < 0.5f)
+    {
+        return;
+    }
+
+    const float identity[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    bgfx::setTransform(identity);
+
+    ChunkVertex vertices[4] = {
+        ChunkVertex{.x = ax0, .y = ay0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 0.0f, .abgr = abgr},
+        ChunkVertex{.x = ax1, .y = ay0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 0.0f, .abgr = abgr},
+        ChunkVertex{.x = ax1, .y = ay1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 1.0f, .abgr = abgr},
+        ChunkVertex{.x = ax0, .y = ay1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 1.0f, .abgr = abgr},
+    };
+
+    bgfx::TransientVertexBuffer tvb{};
+    bgfx::allocTransientVertexBuffer(&tvb, 4, ChunkVertex::layout());
+    std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+    bgfx::TransientIndexBuffer tib{};
+    bgfx::allocTransientIndexBuffer(&tib, 6);
+    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+    indices[3] = 0;
+    indices[4] = 2;
+    indices[5] = 3;
+
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setIndexBuffer(&tib);
+    bgfx::setTexture(
+        0,
+        toUniformHandle(inventoryUiSamplerHandle_),
+        toTextureHandle(chunkAtlasTextureHandle_));
+    bgfx::setState(
+        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
+    bgfx::submit(kUiView, toProgramHandle(inventoryUiSolidProgramHandle_));
+}
+
 void Renderer::drawInventoryItemIcons(
     const FrameDebugData& frameDebugData,
     const std::uint16_t textWidth,
@@ -1866,7 +2327,6 @@ void Renderer::drawInventoryItemIcons(
         return;
     }
 
-    const float charWidthPx = static_cast<float>(width_) / static_cast<float>(textWidth);
     const float charHeightPx = static_cast<float>(height_) / static_cast<float>(textHeight);
 
     float view[16];
@@ -1884,47 +2344,140 @@ void Renderer::drawInventoryItemIcons(
         bgfx::getCaps()->homogeneousDepth);
     bgfx::setViewTransform(kUiView, view, proj);
 
-    constexpr float kHotbarIconSizePx = 13.0f;
-    const int hotbarStartCol = computeCenteredHotbarStartColumn();
-    for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+    const HotbarLayoutPx hotbarLayout = computeHotbarLayoutPx(width_, height_, textHeight, hotbarRow);
+    const std::array<std::uint16_t, 3> bagRows = {bagRow0, bagRow1, bagRow2};
+    const bool canDrawSolid = inventoryUiSolidProgramHandle_ != UINT16_MAX;
+
+    if (canDrawSolid && hotbarLayout.slotSize > 0.0f)
     {
-        const FrameDebugData::HotbarSlotHud& slot = frameDebugData.hotbarSlots[slotIndex];
-        if (slot.count == 0)
+        const std::uint32_t slotFillAbgr = packAbgr8(glm::vec3(0.09f, 0.09f, 0.11f), 0.62f);
+        const std::uint32_t slotFillSelectedAbgr = packAbgr8(glm::vec3(0.07f, 0.07f, 0.1f), 0.72f);
+        const std::uint32_t slotBorderAbgr = packAbgr8(glm::vec3(1.0f, 1.0f, 1.0f), 0.92f);
+        const std::uint32_t xpTrackAbgr = packAbgr8(glm::vec3(0.06f, 0.14f, 0.05f), 0.88f);
+        const std::uint32_t xpFillAbgr = packAbgr8(glm::vec3(0.35f, 0.95f, 0.32f), 0.96f);
+
+        const float xpBarH = std::max(2.0f, std::round(hotbarLayout.slotSize * 0.09f));
+        const float xpGap = std::max(2.0f, std::round(hotbarLayout.slotSize * 0.11f));
+        const float xpY1 = hotbarLayout.slotTopY - xpGap;
+        const float xpY0 = xpY1 - xpBarH;
+        const float xpInset = std::min(2.0f, std::max(0.0f, hotbarLayout.gap * 0.35f));
+        drawUiSolidRect(
+            hotbarLayout.originX - xpInset,
+            xpY0,
+            hotbarLayout.originX + hotbarLayout.totalWidth + xpInset,
+            xpY1,
+            xpTrackAbgr);
+
+        const float xpFill = std::clamp(frameDebugData.experienceFill, 0.0f, 1.0f);
+        if (xpFill > 0.001f)
         {
-            continue;
+            const float trackW = hotbarLayout.totalWidth + 2.0f * xpInset;
+            drawUiSolidRect(
+                hotbarLayout.originX - xpInset,
+                xpY0,
+                hotbarLayout.originX - xpInset + trackW * xpFill,
+                xpY1,
+                xpFillAbgr);
         }
-        const float cellCol = static_cast<float>(hotbarStartCol + static_cast<int>(slotIndex) * 6);
-        const float centerX = (cellCol + 2.0f) * charWidthPx;
-        const float centerY = static_cast<float>(hotbarRow) * charHeightPx + charHeightPx * 0.40f;
-        const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
-            slot.blockType,
-            vibecraft::world::BlockFace::Side);
-        const float iconSize =
-            slotIndex == frameDebugData.hotbarSelectedIndex ? kHotbarIconSizePx + 1.0f : kHotbarIconSizePx;
-        drawAtlasIcon(centerX, centerY, iconSize, tileIndex);
+
+        const float slot = hotbarLayout.slotSize;
+        const float gap = hotbarLayout.gap;
+        const float ox = hotbarLayout.originX;
+        const float sy0 = hotbarLayout.slotTopY;
+
+        for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+        {
+            const float sx = ox + static_cast<float>(slotIndex) * (slot + gap);
+            if (slotIndex == frameDebugData.hotbarSelectedIndex)
+            {
+                drawUiSolidRect(sx - 2.0f, sy0 - 2.0f, sx + slot + 2.0f, sy0 + slot + 2.0f, slotBorderAbgr);
+            }
+        }
+
+        for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+        {
+            const float sx = ox + static_cast<float>(slotIndex) * (slot + gap);
+            const bool selected = slotIndex == frameDebugData.hotbarSelectedIndex;
+            drawUiSolidRect(
+                sx,
+                sy0,
+                sx + slot,
+                sy0 + slot,
+                selected ? slotFillSelectedAbgr : slotFillAbgr);
+        }
     }
 
-    constexpr float kBagIconSizePx = 12.0f;
-    const std::array<std::uint16_t, 3> bagRows = {bagRow0, bagRow1, bagRow2};
+    const float iconBase = hotbarLayout.slotSize > 0.0f
+        ? std::clamp(std::floor(hotbarLayout.slotSize * 0.7f), 14.0f, 36.0f)
+        : 13.0f;
+
+    if (hotbarLayout.slotSize > 0.0f)
+    {
+        const float slot = hotbarLayout.slotSize;
+        const float gap = hotbarLayout.gap;
+        const float ox = hotbarLayout.originX;
+        const float sy0 = hotbarLayout.slotTopY;
+        for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+        {
+            const FrameDebugData::HotbarSlotHud& slotHud = frameDebugData.hotbarSlots[slotIndex];
+            if (slotHud.count == 0)
+            {
+                continue;
+            }
+            const float centerX = ox + static_cast<float>(slotIndex) * (slot + gap) + slot * 0.5f;
+            const float centerY = sy0 + slot * 0.5f;
+            const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
+                slotHud.blockType,
+                vibecraft::world::BlockFace::Side);
+            const float iconScale = slotIndex == frameDebugData.hotbarSelectedIndex ? 1.06f : 1.0f;
+            drawAtlasIcon(centerX, centerY, iconBase * iconScale, tileIndex);
+        }
+    }
+    else
+    {
+        const float charWidthPx = static_cast<float>(width_) / static_cast<float>(textWidth);
+        const int hotbarStartCol = computeCenteredHotbarStartColumn();
+        for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+        {
+            const FrameDebugData::HotbarSlotHud& slotHud = frameDebugData.hotbarSlots[slotIndex];
+            if (slotHud.count == 0)
+            {
+                continue;
+            }
+            const float cellCol = static_cast<float>(hotbarStartCol + static_cast<int>(slotIndex) * 6);
+            const float centerX = (cellCol + 2.5f) * charWidthPx;
+            const float centerY = static_cast<float>(hotbarRow) * charHeightPx + charHeightPx * 0.42f;
+            const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
+                slotHud.blockType,
+                vibecraft::world::BlockFace::Side);
+            const float iconSize =
+                slotIndex == frameDebugData.hotbarSelectedIndex ? 14.0f : 13.0f;
+            drawAtlasIcon(centerX, centerY, iconSize, tileIndex);
+        }
+    }
+
+    constexpr float kBagIconScale = 0.94f;
+    const float bagIconSize = std::max(11.0f, iconBase * kBagIconScale);
+    const float charWidthPx = static_cast<float>(width_) / static_cast<float>(textWidth);
     const int bagStartCol = computeCenteredColumnStart(computeBagGridWidthChars());
     for (int rowIndex = 0; rowIndex < 3; ++rowIndex)
     {
         for (int colIndex = 0; colIndex < 9; ++colIndex)
         {
-            const std::size_t slotIndex = static_cast<std::size_t>(rowIndex * 9 + colIndex);
-            const FrameDebugData::HotbarSlotHud& slot = frameDebugData.bagSlots[slotIndex];
-            if (slot.count == 0)
+            const std::size_t slotIdx = static_cast<std::size_t>(rowIndex * 9 + colIndex);
+            const FrameDebugData::HotbarSlotHud& slotHud = frameDebugData.bagSlots[slotIdx];
+            if (slotHud.count == 0)
             {
                 continue;
             }
             const float centerX =
-                static_cast<float>(bagStartCol + colIndex * 8) * charWidthPx + charWidthPx * 3.0f;
+                static_cast<float>(bagStartCol + colIndex * 8) * charWidthPx + charWidthPx * 3.5f;
             const float centerY = static_cast<float>(bagRows[static_cast<std::size_t>(rowIndex)]) * charHeightPx
-                + charHeightPx * 0.40f;
+                + charHeightPx * 0.42f;
             const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
-                slot.blockType,
+                slotHud.blockType,
                 vibecraft::world::BlockFace::Side);
-            drawAtlasIcon(centerX, centerY, kBagIconSizePx, tileIndex);
+            drawAtlasIcon(centerX, centerY, bagIconSize, tileIndex);
         }
     }
 }

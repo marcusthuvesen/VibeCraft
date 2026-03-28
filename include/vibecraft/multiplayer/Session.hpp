@@ -34,11 +34,7 @@ class HostSession
     [[nodiscard]] const std::vector<ConnectedClient>& clients() const;
     [[nodiscard]] std::vector<protocol::ClientInputMessage> takePendingInputs();
 
-    void broadcastSnapshot(
-        std::uint32_t serverTick,
-        float dayNightElapsedSeconds,
-        float weatherElapsedSeconds,
-        const std::vector<protocol::PlayerSnapshotMessage>& players);
+    void broadcastSnapshot(const protocol::ServerSnapshotMessage& snapshot);
     void broadcastBlockEdit(const protocol::BlockEditEventMessage& edit);
     void sendChunkSnapshot(std::uint16_t clientId, const protocol::ChunkSnapshotMessage& chunk);
 

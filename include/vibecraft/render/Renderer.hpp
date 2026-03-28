@@ -72,6 +72,8 @@ struct FrameDebugData
     glm::vec3 cameraPosition{0.0f};
     float health = 20.0f;
     float maxHealth = 20.0f;
+    /// 0–1 progress toward the next level (visual XP bar only until gameplay tracks XP).
+    float experienceFill = 0.0f;
     bool hasTarget = false;
     glm::ivec3 targetBlock{0, 0, 0};
     std::string statusLine;
@@ -86,17 +88,36 @@ struct FrameDebugData
     };
     std::vector<WorldPickupHud> worldPickups;
 
+    struct WorldMobHud
+    {
+        glm::vec3 feetPosition{0.0f};
+        float halfWidth = 0.28f;
+        float height = 1.75f;
+    };
+    std::vector<WorldMobHud> worldMobs;
+
     /// When true, the 3D view and in-game HUD are hidden and the title menu is drawn instead.
     bool mainMenuActive = false;
     /// Index of the menu control under the cursor, or -1 (ids match hitTestMainMenu).
     int mainMenuHoveredButton = -1;
     float mainMenuTimeSeconds = 0.0f;
     std::string mainMenuNotice;
+    bool mainMenuSoundSettingsActive = false;
+    int mainMenuSoundSettingsHoveredControl = -1;
+    float mainMenuSoundMusicVolume = 0.85f;
+    float mainMenuSoundSfxVolume = 1.0f;
 
     /// In-game pause overlay (world still rendered underneath).
     bool pauseMenuActive = false;
     int pauseMenuHoveredButton = -1;
     std::string pauseMenuNotice;
+    bool pauseSoundSettingsActive = false;
+    int pauseSoundSettingsHoveredControl = -1;
+    float pauseSoundMusicVolume = 0.34f;
+    float pauseSoundSfxVolume = 1.0f;
+    bool pauseGameSettingsActive = false;
+    int pauseGameSettingsHoveredControl = -1;
+    bool mobSpawningEnabled = true;
 };
 
 class Renderer
@@ -119,8 +140,26 @@ class Renderer
         std::uint16_t textWidth,
         std::uint16_t textHeight);
 
-    /// Pause menu buttons: 0 Resume, 1 Options, 2 Quit to title, 3 Quit game. Layout matches drawPauseMenuOverlay().
+    /// Pause menu: 0 Resume, 1 Sound settings, 2 Quit to title, 3 Quit game, 4 Game options.
     [[nodiscard]] static int hitTestPauseMenu(
+        float mouseX,
+        float mouseY,
+        std::uint32_t windowWidth,
+        std::uint32_t windowHeight,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight);
+
+    /// Pause game options: 0 Back, 1 Mob spawning toggle.
+    [[nodiscard]] static int hitTestPauseGameSettingsMenu(
+        float mouseX,
+        float mouseY,
+        std::uint32_t windowWidth,
+        std::uint32_t windowHeight,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight);
+
+    /// Sound settings panel (pause or title menu): 0 Back, 1 Music-, 2 Music+, 3 SFX-, 4 SFX+.
+    [[nodiscard]] static int hitTestPauseSoundMenu(
         float mouseX,
         float mouseY,
         std::uint32_t windowWidth,
@@ -142,6 +181,7 @@ class Renderer
     void destroySceneMeshes();
     void drawMainMenuLogo();
     void drawCrosshairOverlay();
+    void drawUiSolidRect(float x0, float y0, float x1, float y1, std::uint32_t abgr);
     void drawInventoryItemIcons(
         const FrameDebugData& frameDebugData,
         std::uint16_t textWidth,
@@ -173,6 +213,7 @@ class Renderer
     std::uint16_t crosshairTextureHandle_ = UINT16_MAX;
     std::uint16_t crosshairSamplerHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiProgramHandle_ = UINT16_MAX;
+    std::uint16_t inventoryUiSolidProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSamplerHandle_ = UINT16_MAX;
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };

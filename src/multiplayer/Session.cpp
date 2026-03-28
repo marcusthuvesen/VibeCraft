@@ -169,21 +169,11 @@ std::vector<protocol::ClientInputMessage> HostSession::takePendingInputs()
     return pending;
 }
 
-void HostSession::broadcastSnapshot(
-    const std::uint32_t serverTick,
-    const float dayNightElapsedSeconds,
-    const float weatherElapsedSeconds,
-    const std::vector<protocol::PlayerSnapshotMessage>& players)
+void HostSession::broadcastSnapshot(const protocol::ServerSnapshotMessage& snapshot)
 {
-    protocol::ServerSnapshotMessage snapshot{
-        .serverTick = serverTick,
-        .dayNightElapsedSeconds = dayNightElapsedSeconds,
-        .weatherElapsedSeconds = weatherElapsedSeconds,
-        .players = players,
-    };
     for (const ConnectedClient& client : clients_)
     {
-        sendToClient(client, protocol::MessageType::ServerSnapshot, snapshot, serverTick);
+        sendToClient(client, protocol::MessageType::ServerSnapshot, snapshot, snapshot.serverTick);
     }
 }
 

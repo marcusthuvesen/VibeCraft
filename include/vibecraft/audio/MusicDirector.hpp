@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL_audio.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -13,9 +14,12 @@ namespace vibecraft::audio
 class MusicDirector
 {
   public:
-    bool initialize(const std::filesystem::path& audioRoot);
+    /// `stream` must stay valid until `shutdown()` (typically from SharedAudioOutput).
+    bool initialize(SDL_AudioStream* stream, const std::filesystem::path& audioRoot);
     void shutdown();
     void update(float deltaTimeSeconds, MusicContext desiredContext);
+    void setMasterGain(float gain);
+    [[nodiscard]] float masterGain() const;
 
     [[nodiscard]] bool initialized() const
     {
@@ -49,5 +53,6 @@ class MusicDirector
     int queuedSilenceFrames_ = 0;
     int lastTrackIndexByContext_[4] = {-1, -1, -1, -1};
     std::uint32_t rngState_ = 0x91e10da5u;
+    float streamGain_ = 0.85f;
 };
 }  // namespace vibecraft::audio

@@ -6,5 +6,5 @@ SAMPLER2D(s_uiAtlas, 0);
 
 void main()
 {
-    gl_FragColor = texture2D(s_uiAtlas, v_uv);
+    gl_FragColor = texture2D(s_uiAtlas, v_uv) * v_color0;
 }

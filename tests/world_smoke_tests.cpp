@@ -8,6 +8,10 @@
 #include <memory>
 #include <thread>
 
+#include <glm/vec3.hpp>
+
+#include "vibecraft/game/DayNightCycle.hpp"
+#include "vibecraft/game/MobSpawnSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
 #include "vibecraft/multiplayer/Protocol.hpp"
@@ -333,20 +337,22 @@ TEST_CASE("host and client sessions establish and exchange snapshots")
     }
     REQUIRE(connected);
 
-    host.broadcastSnapshot(
-        55,
-        12.0f,
-        8.0f,
-        {{
-            .clientId = 0,
-            .posX = 1.0f,
-            .posY = 2.0f,
-            .posZ = 3.0f,
-            .yawDegrees = 45.0f,
-            .pitchDegrees = 0.0f,
-            .health = 20.0f,
-            .air = 10.0f,
-        }});
+    host.broadcastSnapshot({
+        .serverTick = 55,
+        .dayNightElapsedSeconds = 12.0f,
+        .weatherElapsedSeconds = 8.0f,
+        .players =
+            {{
+                .clientId = 0,
+                .posX = 1.0f,
+                .posY = 2.0f,
+                .posZ = 3.0f,
+                .yawDegrees = 45.0f,
+                .pitchDegrees = 0.0f,
+                .health = 20.0f,
+                .air = 10.0f,
+            }},
+    });
 
     bool receivedSnapshot = false;
     for (int i = 0; i < 200 && !receivedSnapshot; ++i)
@@ -448,4 +454,43 @@ TEST_CASE("generateMissingChunksAround adds only missing chunks near a center")
     CHECK(world.chunks().contains(vibecraft::world::ChunkCoord{2, -3}));
     CHECK(world.blockAt(3 * vibecraft::world::Chunk::kSize, 0, -2 * vibecraft::world::Chunk::kSize)
         != vibecraft::world::BlockType::Air);
+}
+
+TEST_CASE("MobSpawnSystem clearAllMobs leaves empty enemy list")
+{
+    vibecraft::game::MobSpawnSystem sys;
+    CHECK(sys.enemies().empty());
+    sys.clearAllMobs();
+    CHECK(sys.enemies().empty());
+}
+
+TEST_CASE("MobSpawnSystem does not spawn hostiles during daytime")
+{
+    vibecraft::world::World world;
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    world.generateRadius(terrainGenerator, 3);
+
+    vibecraft::game::MobSpawnSettings settings;
+    settings.spawnAttemptIntervalSeconds = 0.01f;
+    vibecraft::game::MobSpawnSystem sys(settings);
+    sys.setRngSeedForTests(12'345u);
+
+    vibecraft::game::PlayerVitals vitals;
+    const int surfaceY = terrainGenerator.surfaceHeightAt(0, 0);
+    const glm::vec3 playerFeet{0.5f, static_cast<float>(surfaceY) + 1.0f, 0.5f};
+
+    for (int i = 0; i < 400; ++i)
+    {
+        sys.tick(
+            world,
+            terrainGenerator,
+            playerFeet,
+            0.3f,
+            0.02f,
+            vibecraft::game::TimeOfDayPeriod::Day,
+            true,
+            vitals);
+    }
+
+    CHECK(sys.enemies().empty());
 }

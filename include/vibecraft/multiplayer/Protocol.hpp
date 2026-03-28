@@ -99,12 +99,26 @@ struct PlayerSnapshotMessage
     float air = 10.0f;
 };
 
+struct DroppedItemSnapshotMessage
+{
+    world::BlockType blockType = world::BlockType::Air;
+    float posX = 0.0f;
+    float posY = 0.0f;
+    float posZ = 0.0f;
+    float velocityX = 0.0f;
+    float velocityY = 0.0f;
+    float velocityZ = 0.0f;
+    float ageSeconds = 0.0f;
+    float spinRadians = 0.0f;
+};
+
 struct ServerSnapshotMessage
 {
     std::uint32_t serverTick = 0;
     float dayNightElapsedSeconds = 0.0f;
     float weatherElapsedSeconds = 0.0f;
     std::vector<PlayerSnapshotMessage> players;
+    std::vector<DroppedItemSnapshotMessage> droppedItems;
 };
 
 struct BlockEditEventMessage

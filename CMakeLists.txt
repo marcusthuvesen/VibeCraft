@@ -50,7 +50,15 @@ if(APPLE)
     vibecraft_compile_shader(FS_CHUNK_METAL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment osx metal metal)
     vibecraft_compile_shader(FS_LOGO_METAL "${VIBECRAFT_SHADER_DIR}/fs_logo.sc" fragment osx metal metal)
     vibecraft_compile_shader(FS_UI_METAL "${VIBECRAFT_SHADER_DIR}/fs_ui.sc" fragment osx metal metal)
-    list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_METAL}" "${FS_CHUNK_METAL}" "${FS_LOGO_METAL}" "${FS_UI_METAL}")
+    vibecraft_compile_shader(FS_UI_SOLID_METAL "${VIBECRAFT_SHADER_DIR}/fs_ui_solid.sc" fragment osx metal metal)
+    list(
+        APPEND
+        VIBECRAFT_SHADER_OUTPUTS
+        "${VS_CHUNK_METAL}"
+        "${FS_CHUNK_METAL}"
+        "${FS_LOGO_METAL}"
+        "${FS_UI_METAL}"
+        "${FS_UI_SOLID_METAL}")
 endif()
 
 if(WIN32)
@@ -58,11 +66,25 @@ if(WIN32)
     vibecraft_compile_shader(FS_CHUNK_DXBC "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment windows s_5_0 dxbc)
     vibecraft_compile_shader(FS_LOGO_DXBC "${VIBECRAFT_SHADER_DIR}/fs_logo.sc" fragment windows s_5_0 dxbc)
     vibecraft_compile_shader(FS_UI_DXBC "${VIBECRAFT_SHADER_DIR}/fs_ui.sc" fragment windows s_5_0 dxbc)
+    vibecraft_compile_shader(FS_UI_SOLID_DXBC "${VIBECRAFT_SHADER_DIR}/fs_ui_solid.sc" fragment windows s_5_0 dxbc)
     vibecraft_compile_shader(VS_CHUNK_DXIL "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex windows s_6_0 dxil)
     vibecraft_compile_shader(FS_CHUNK_DXIL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment windows s_6_0 dxil)
     vibecraft_compile_shader(FS_LOGO_DXIL "${VIBECRAFT_SHADER_DIR}/fs_logo.sc" fragment windows s_6_0 dxil)
     vibecraft_compile_shader(FS_UI_DXIL "${VIBECRAFT_SHADER_DIR}/fs_ui.sc" fragment windows s_6_0 dxil)
-    list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_DXBC}" "${FS_CHUNK_DXBC}" "${FS_LOGO_DXBC}" "${FS_UI_DXBC}" "${VS_CHUNK_DXIL}" "${FS_CHUNK_DXIL}" "${FS_LOGO_DXIL}" "${FS_UI_DXIL}")
+    vibecraft_compile_shader(FS_UI_SOLID_DXIL "${VIBECRAFT_SHADER_DIR}/fs_ui_solid.sc" fragment windows s_6_0 dxil)
+    list(
+        APPEND
+        VIBECRAFT_SHADER_OUTPUTS
+        "${VS_CHUNK_DXBC}"
+        "${FS_CHUNK_DXBC}"
+        "${FS_LOGO_DXBC}"
+        "${FS_UI_DXBC}"
+        "${FS_UI_SOLID_DXBC}"
+        "${VS_CHUNK_DXIL}"
+        "${FS_CHUNK_DXIL}"
+        "${FS_LOGO_DXIL}"
+        "${FS_UI_DXIL}"
+        "${FS_UI_SOLID_DXIL}")
 endif()
 
 if(UNIX AND NOT APPLE)
@@ -70,18 +92,40 @@ if(UNIX AND NOT APPLE)
     vibecraft_compile_shader(FS_CHUNK_GLSL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment linux 120 glsl)
     vibecraft_compile_shader(FS_LOGO_GLSL "${VIBECRAFT_SHADER_DIR}/fs_logo.sc" fragment linux 120 glsl)
     vibecraft_compile_shader(FS_UI_GLSL "${VIBECRAFT_SHADER_DIR}/fs_ui.sc" fragment linux 120 glsl)
-    list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_GLSL}" "${FS_CHUNK_GLSL}" "${FS_LOGO_GLSL}" "${FS_UI_GLSL}")
+    vibecraft_compile_shader(FS_UI_SOLID_GLSL "${VIBECRAFT_SHADER_DIR}/fs_ui_solid.sc" fragment linux 120 glsl)
+    list(
+        APPEND
+        VIBECRAFT_SHADER_OUTPUTS
+        "${VS_CHUNK_GLSL}"
+        "${FS_CHUNK_GLSL}"
+        "${FS_LOGO_GLSL}"
+        "${FS_UI_GLSL}"
+        "${FS_UI_SOLID_GLSL}")
 endif()
 
 vibecraft_compile_shader(VS_CHUNK_SPIRV "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex linux spirv spirv)
 vibecraft_compile_shader(FS_CHUNK_SPIRV "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment linux spirv spirv)
 vibecraft_compile_shader(FS_LOGO_SPIRV "${VIBECRAFT_SHADER_DIR}/fs_logo.sc" fragment linux spirv spirv)
 vibecraft_compile_shader(FS_UI_SPIRV "${VIBECRAFT_SHADER_DIR}/fs_ui.sc" fragment linux spirv spirv)
+vibecraft_compile_shader(FS_UI_SOLID_SPIRV "${VIBECRAFT_SHADER_DIR}/fs_ui_solid.sc" fragment linux spirv spirv)
 vibecraft_compile_shader(VS_CHUNK_WGSL "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex linux wgsl wgsl)
 vibecraft_compile_shader(FS_CHUNK_WGSL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment linux wgsl wgsl)
 vibecraft_compile_shader(FS_LOGO_WGSL "${VIBECRAFT_SHADER_DIR}/fs_logo.sc" fragment linux wgsl wgsl)
 vibecraft_compile_shader(FS_UI_WGSL "${VIBECRAFT_SHADER_DIR}/fs_ui.sc" fragment linux wgsl wgsl)
-list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_SPIRV}" "${FS_CHUNK_SPIRV}" "${FS_LOGO_SPIRV}" "${FS_UI_SPIRV}" "${VS_CHUNK_WGSL}" "${FS_CHUNK_WGSL}" "${FS_LOGO_WGSL}" "${FS_UI_WGSL}")
+vibecraft_compile_shader(FS_UI_SOLID_WGSL "${VIBECRAFT_SHADER_DIR}/fs_ui_solid.sc" fragment linux wgsl wgsl)
+list(
+    APPEND
+    VIBECRAFT_SHADER_OUTPUTS
+    "${VS_CHUNK_SPIRV}"
+    "${FS_CHUNK_SPIRV}"
+    "${FS_LOGO_SPIRV}"
+    "${FS_UI_SPIRV}"
+    "${FS_UI_SOLID_SPIRV}"
+    "${VS_CHUNK_WGSL}"
+    "${FS_CHUNK_WGSL}"
+    "${FS_LOGO_WGSL}"
+    "${FS_UI_WGSL}"
+    "${FS_UI_SOLID_WGSL}")
 
 add_custom_target(
     vibecraft_shaders
@@ -93,12 +137,20 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/ChunkAtlasLayout.hpp
     include/vibecraft/app/Application.hpp
     include/vibecraft/app/Inventory.hpp
+    include/vibecraft/audio/MusicCatalog.hpp
+    include/vibecraft/audio/MusicDirector.hpp
+    include/vibecraft/audio/RuntimeAudioRoot.hpp
+    include/vibecraft/audio/SharedAudioOutput.hpp
+    include/vibecraft/audio/SoundEffects.hpp
     include/vibecraft/core/Logger.hpp
     include/vibecraft/multiplayer/Protocol.hpp
     include/vibecraft/multiplayer/Session.hpp
     include/vibecraft/multiplayer/Transport.hpp
     include/vibecraft/multiplayer/UdpTransport.hpp
     include/vibecraft/game/Camera.hpp
+    include/vibecraft/game/CollisionHelpers.hpp
+    include/vibecraft/game/EnemyTypes.hpp
+    include/vibecraft/game/MobSpawnSystem.hpp
     include/vibecraft/game/PlayerVitals.hpp
     include/vibecraft/meshing/ChunkMesher.hpp
     include/vibecraft/platform/InputState.hpp
@@ -120,8 +172,15 @@ set(VIBECRAFT_SOURCES
     src/app/Application.cpp
     src/app/Inventory.cpp
     src/app/main.cpp
+    src/audio/MusicCatalog.cpp
+    src/audio/MusicDirector.cpp
+    src/audio/RuntimeAudioRoot.cpp
+    src/audio/SharedAudioOutput.cpp
+    src/audio/SoundEffects.cpp
     src/core/Logger.cpp
     src/game/Camera.cpp
+    src/game/CollisionHelpers.cpp
+    src/game/MobSpawnSystem.cpp
     src/game/PlayerVitals.cpp
     src/multiplayer/Protocol.cpp
     src/multiplayer/Session.cpp
@@ -135,6 +194,7 @@ set(VIBECRAFT_SOURCES
     src/world/underground/OreVeinRules.cpp
     src/world/World.cpp
     src/world/WorldSerializer.cpp
+    third_party/stb_vorbis.c
     ${BGFX_EXAMPLES_COMMON_DIR}/debugdraw/debugdraw.cpp
 )
 
@@ -154,6 +214,7 @@ endif()
 target_include_directories(vibecraft
     PRIVATE
         include
+        third_party
         ${BGFX_EXAMPLES_COMMON_DIR}
         ${BGFX_EXAMPLES_COMMON_DIR}/debugdraw
 )
@@ -177,6 +238,9 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures"
         "$<TARGET_FILE_DIR:vibecraft>/textures"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/audio"
+        "$<TARGET_FILE_DIR:vibecraft>/audio"
 )
 
 if(MSVC)
@@ -187,6 +251,8 @@ endif()
 
 add_executable(vibecraft_tests
     tests/world_smoke_tests.cpp
+    src/game/CollisionHelpers.cpp
+    src/game/MobSpawnSystem.cpp
     src/game/PlayerVitals.cpp
     src/multiplayer/Protocol.cpp
     src/multiplayer/Session.cpp

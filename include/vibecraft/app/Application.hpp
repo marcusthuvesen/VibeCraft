@@ -10,8 +10,12 @@
 #include <vector>
 
 #include "vibecraft/app/Inventory.hpp"
+#include "vibecraft/audio/MusicDirector.hpp"
+#include "vibecraft/audio/SharedAudioOutput.hpp"
+#include "vibecraft/audio/SoundEffects.hpp"
 #include "vibecraft/game/Camera.hpp"
 #include "vibecraft/game/DayNightCycle.hpp"
+#include "vibecraft/game/MobSpawnSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
 #include "vibecraft/game/WeatherSystem.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
@@ -87,7 +91,7 @@ class Application
     void sendInitialWorldToClient(std::uint16_t clientId);
     void applyChunkSnapshot(const vibecraft::multiplayer::protocol::ChunkSnapshotMessage& chunkMessage);
     void applyRemoteBlockEdit(const vibecraft::multiplayer::protocol::BlockEditEventMessage& editMessage);
-    [[nodiscard]] std::vector<vibecraft::multiplayer::protocol::PlayerSnapshotMessage> buildServerSnapshots() const;
+    [[nodiscard]] vibecraft::multiplayer::protocol::ServerSnapshotMessage buildServerSnapshot() const;
 
     void update(float deltaTimeSeconds);
     void processInput(float deltaTimeSeconds);
@@ -99,6 +103,9 @@ class Application
     vibecraft::platform::Window window_;
     vibecraft::platform::InputState inputState_;
     vibecraft::render::Renderer renderer_;
+    vibecraft::audio::SharedAudioOutput sharedAudioOutput_;
+    vibecraft::audio::MusicDirector musicDirector_;
+    vibecraft::audio::SoundEffects soundEffects_;
     vibecraft::game::Camera camera_;
     vibecraft::game::DayNightCycle dayNightCycle_;
     vibecraft::game::WeatherSystem weatherSystem_;
@@ -116,6 +123,7 @@ class Application
     bool jumpWasHeld_ = false;
     vibecraft::game::EnvironmentalHazards playerHazards_{};
     vibecraft::game::PlayerVitals playerVitals_{};
+    vibecraft::game::MobSpawnSystem mobSpawnSystem_{};
     HotbarSlots hotbarSlots_{};
     BagSlots bagSlots_{};
     std::size_t selectedHotbarIndex_ = 0;
@@ -138,6 +146,12 @@ class Application
     float mainMenuTimeSeconds_ = 0.0f;
     std::string mainMenuNotice_;
     std::string pauseMenuNotice_;
+    bool pauseSoundSettingsOpen_ = false;
+    bool pauseGameSettingsOpen_ = false;
+    bool mobSpawningEnabled_ = true;
+    bool mainMenuSoundSettingsOpen_ = false;
+    float musicVolume_ = 0.85f;
+    float sfxVolume_ = 1.0f;
     std::string respawnNotice_;
     std::vector<DroppedItem> droppedItems_;
     /// Run-loop frame index (used to ignore spurious startup mouse-down on the main menu).

@@ -280,6 +280,19 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
                     writer.writeF32(player.health);
                     writer.writeF32(player.air);
                 }
+                writer.writeU16(static_cast<std::uint16_t>(message.droppedItems.size()));
+                for (const DroppedItemSnapshotMessage& droppedItem : message.droppedItems)
+                {
+                    writer.writeU8(static_cast<std::uint8_t>(droppedItem.blockType));
+                    writer.writeF32(droppedItem.posX);
+                    writer.writeF32(droppedItem.posY);
+                    writer.writeF32(droppedItem.posZ);
+                    writer.writeF32(droppedItem.velocityX);
+                    writer.writeF32(droppedItem.velocityY);
+                    writer.writeF32(droppedItem.velocityZ);
+                    writer.writeF32(droppedItem.ageSeconds);
+                    writer.writeF32(droppedItem.spinRadians);
+                }
             }
             else if constexpr (std::is_same_v<MessageT, BlockEditEventMessage>)
             {
@@ -388,6 +401,7 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
     {
         ServerSnapshotMessage message;
         std::uint8_t playerCount = 0;
+        std::uint16_t droppedItemCount = 0;
         if (!reader.readU32(message.serverTick) || !reader.readF32(message.dayNightElapsedSeconds)
             || !reader.readF32(message.weatherElapsedSeconds) || !reader.readU8(playerCount))
         {
@@ -405,6 +419,25 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
                 return std::nullopt;
             }
             message.players.push_back(player);
+        }
+        if (!reader.readU16(droppedItemCount))
+        {
+            return std::nullopt;
+        }
+        message.droppedItems.reserve(droppedItemCount);
+        for (std::uint16_t i = 0; i < droppedItemCount; ++i)
+        {
+            DroppedItemSnapshotMessage droppedItem;
+            std::uint8_t blockType = 0;
+            if (!reader.readU8(blockType) || !reader.readF32(droppedItem.posX) || !reader.readF32(droppedItem.posY)
+                || !reader.readF32(droppedItem.posZ) || !reader.readF32(droppedItem.velocityX)
+                || !reader.readF32(droppedItem.velocityY) || !reader.readF32(droppedItem.velocityZ)
+                || !reader.readF32(droppedItem.ageSeconds) || !reader.readF32(droppedItem.spinRadians))
+            {
+                return std::nullopt;
+            }
+            droppedItem.blockType = static_cast<world::BlockType>(blockType);
+            message.droppedItems.push_back(droppedItem);
         }
         decoded.payload = std::move(message);
         break;

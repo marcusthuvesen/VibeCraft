@@ -11,7 +11,7 @@ Window::~Window()
 
 bool Window::create(const std::string& title, const std::uint32_t width, const std::uint32_t height)
 {
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO))
     {
         core::logError(SDL_GetError());
         return false;

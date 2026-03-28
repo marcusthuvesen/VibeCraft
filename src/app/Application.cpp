@@ -13,7 +13,9 @@
 #include <unordered_set>
 #include <vector>
 
+#include "vibecraft/audio/RuntimeAudioRoot.hpp"
 #include "vibecraft/core/Logger.hpp"
+#include "vibecraft/game/CollisionHelpers.hpp"
 #include "vibecraft/multiplayer/UdpTransport.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
@@ -98,12 +100,6 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         return "clear";
     }
 }
-
-struct Aabb
-{
-    glm::vec3 min{0.0f};
-    glm::vec3 max{0.0f};
-};
 
 [[nodiscard]] std::uint64_t chunkMeshId(const world::ChunkCoord& coord)
 {
@@ -275,18 +271,43 @@ struct MeshSyncCpuData
 
         render::SceneMeshData sceneMesh;
         sceneMesh.id = meshId;
-        sceneMesh.boundsMin = chunkBoundsMin(coord);
-        sceneMesh.boundsMax = chunkBoundsMax(coord);
         sceneMesh.indices = std::move(meshData.indices);
         sceneMesh.vertices.reserve(meshData.vertices.size());
 
+        glm::vec3 tightMin{0.0f};
+        glm::vec3 tightMax{0.0f};
+        bool haveBounds = false;
         for (const meshing::DebugVertex& vertex : meshData.vertices)
         {
+            const glm::vec3 p{vertex.x, vertex.y, vertex.z};
             sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
-                .position = {vertex.x, vertex.y, vertex.z},
+                .position = p,
                 .uv = {vertex.u, vertex.v},
                 .abgr = vertex.abgr,
             });
+            if (!haveBounds)
+            {
+                tightMin = p;
+                tightMax = p;
+                haveBounds = true;
+            }
+            else
+            {
+                tightMin = glm::min(tightMin, p);
+                tightMax = glm::max(tightMax, p);
+            }
+        }
+
+        constexpr float kMeshBoundsPad = 0.02f;
+        if (haveBounds)
+        {
+            sceneMesh.boundsMin = tightMin - kMeshBoundsPad;
+            sceneMesh.boundsMax = tightMax + kMeshBoundsPad;
+        }
+        else
+        {
+            sceneMesh.boundsMin = chunkBoundsMin(coord);
+            sceneMesh.boundsMax = chunkBoundsMax(coord);
         }
 
         buildVertexNormals(sceneMesh);
@@ -338,23 +359,10 @@ void applyMeshSyncGpuData(
     }
 }
 
-[[nodiscard]] Aabb playerAabbAt(const glm::vec3& feetPosition, const float colliderHeight)
+[[nodiscard]] game::Aabb playerAabbAt(const glm::vec3& feetPosition, const float colliderHeight)
 {
-    return Aabb{
-        .min = {
-            feetPosition.x - kPlayerMovementSettings.colliderHalfWidth,
-            feetPosition.y,
-            feetPosition.z - kPlayerMovementSettings.colliderHalfWidth,
-        },
-        .max = {
-            feetPosition.x + kPlayerMovementSettings.colliderHalfWidth,
-            feetPosition.y + colliderHeight,
-            feetPosition.z + kPlayerMovementSettings.colliderHalfWidth,
-        },
-    };
+    return game::aabbAtFeet(feetPosition, kPlayerMovementSettings.colliderHalfWidth, colliderHeight);
 }
-
-[[nodiscard]] bool collidesWithSolidBlock(const world::World& worldState, const Aabb& aabb);
 
 [[nodiscard]] glm::vec3 findInitialSpawnFeetPosition(
     const world::World& worldState,
@@ -375,7 +383,7 @@ void applyMeshSyncGpuData(
     constexpr int kSpawnClearanceSearchLimit = 64;
     for (int attempt = 0; attempt <= kSpawnClearanceSearchLimit; ++attempt)
     {
-        if (!collidesWithSolidBlock(worldState, playerAabbAt(spawnFeetPosition, colliderHeight)))
+        if (!game::collidesWithSolidBlock(worldState, playerAabbAt(spawnFeetPosition, colliderHeight)))
         {
             return spawnFeetPosition;
         }
@@ -383,31 +391,6 @@ void applyMeshSyncGpuData(
     }
 
     return spawnFeetPosition;
-}
-
-[[nodiscard]] bool collidesWithSolidBlock(const world::World& worldState, const Aabb& aabb)
-{
-    const int minX = static_cast<int>(std::floor(aabb.min.x));
-    const int minY = static_cast<int>(std::floor(aabb.min.y));
-    const int minZ = static_cast<int>(std::floor(aabb.min.z));
-    const int maxX = static_cast<int>(std::floor(aabb.max.x - kFloatEpsilon));
-    const int maxY = static_cast<int>(std::floor(aabb.max.y - kFloatEpsilon));
-    const int maxZ = static_cast<int>(std::floor(aabb.max.z - kFloatEpsilon));
-
-    for (int z = minZ; z <= maxZ; ++z)
-    {
-        for (int y = minY; y <= maxY; ++y)
-        {
-            for (int x = minX; x <= maxX; ++x)
-            {
-                if (world::isSolid(worldState.blockAt(x, y, z)))
-                {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
 }
 
 [[nodiscard]] bool movePlayerAxisWithCollision(
@@ -435,7 +418,7 @@ void applyMeshSyncGpuData(
         glm::vec3 candidatePosition = basePosition;
         candidatePosition[axisIndex] += step;
 
-        if (!collidesWithSolidBlock(worldState, playerAabbAt(candidatePosition, colliderHeight)))
+        if (!game::collidesWithSolidBlock(worldState, playerAabbAt(candidatePosition, colliderHeight)))
         {
             feetPosition = candidatePosition;
             remaining -= step;
@@ -449,7 +432,7 @@ void applyMeshSyncGpuData(
             const float mid = (low + high) * 0.5f;
             glm::vec3 sweepPosition = basePosition;
             sweepPosition[axisIndex] += step * mid;
-            if (collidesWithSolidBlock(worldState, playerAabbAt(sweepPosition, colliderHeight)))
+            if (game::collidesWithSolidBlock(worldState, playerAabbAt(sweepPosition, colliderHeight)))
             {
                 high = mid;
             }
@@ -474,20 +457,20 @@ void applyMeshSyncGpuData(
 {
     glm::vec3 groundedProbe = feetPosition;
     groundedProbe.y -= kPlayerMovementSettings.groundProbeDistance;
-    return collidesWithSolidBlock(worldState, playerAabbAt(groundedProbe, colliderHeight));
+    return game::collidesWithSolidBlock(worldState, playerAabbAt(groundedProbe, colliderHeight));
 }
 
 [[nodiscard]] bool aabbTouchesBlockType(
     const world::World& worldState,
-    const Aabb& aabb,
+    const game::Aabb& aabb,
     const world::BlockType blockType)
 {
     const int minX = static_cast<int>(std::floor(aabb.min.x));
     const int minY = static_cast<int>(std::floor(aabb.min.y));
     const int minZ = static_cast<int>(std::floor(aabb.min.z));
-    const int maxX = static_cast<int>(std::floor(aabb.max.x - kFloatEpsilon));
-    const int maxY = static_cast<int>(std::floor(aabb.max.y - kFloatEpsilon));
-    const int maxZ = static_cast<int>(std::floor(aabb.max.z - kFloatEpsilon));
+    const int maxX = static_cast<int>(std::floor(aabb.max.x - game::kAabbEpsilon));
+    const int maxY = static_cast<int>(std::floor(aabb.max.y - game::kAabbEpsilon));
+    const int maxZ = static_cast<int>(std::floor(aabb.max.z - game::kAabbEpsilon));
 
     for (int z = minZ; z <= maxZ; ++z)
     {
@@ -512,7 +495,7 @@ void applyMeshSyncGpuData(
     const float colliderHeight,
     const float eyeHeight)
 {
-    const Aabb playerBody = playerAabbAt(feetPosition, colliderHeight);
+    const game::Aabb playerBody = playerAabbAt(feetPosition, colliderHeight);
     const glm::vec3 eyeSamplePosition = feetPosition + glm::vec3(0.0f, eyeHeight - 0.1f, 0.0f);
     const world::BlockType eyeBlock = worldState.blockAt(
         static_cast<int>(std::floor(eyeSamplePosition.x)),
@@ -583,6 +566,26 @@ bool Application::initialize()
         return false;
     }
 
+    const std::filesystem::path minecraftAudioRoot = audio::resolveMinecraftAudioRoot();
+    core::logInfo(fmt::format("Minecraft audio assets: {}", minecraftAudioRoot.generic_string()));
+    if (!sharedAudioOutput_.initialize())
+    {
+        core::logWarning("Shared audio output failed to open; music and SFX are disabled.");
+    }
+    else
+    {
+        if (!musicDirector_.initialize(sharedAudioOutput_.musicStream(), minecraftAudioRoot))
+        {
+            core::logWarning("Music system failed to initialize; continuing without music.");
+        }
+        if (!soundEffects_.initialize(sharedAudioOutput_.sfxStream(), minecraftAudioRoot))
+        {
+            core::logWarning("SFX system failed to initialize; continuing without sound effects.");
+        }
+    }
+    musicDirector_.setMasterGain(musicVolume_);
+    soundEffects_.setMasterGain(sfxVolume_);
+
     window_.setRelativeMouseMode(true);
     mouseCaptured_ = true;
 
@@ -628,6 +631,9 @@ int Application::run()
     }
 
     stopMultiplayerSessions();
+    musicDirector_.shutdown();
+    soundEffects_.shutdown();
+    sharedAudioOutput_.shutdown();
     renderer_.shutdown();
     return 0;
 }
@@ -679,6 +685,20 @@ void Application::update(const float deltaTimeSeconds)
         syncWorldData();
         const float currentEyeHeight = std::max(0.0f, camera_.position().y - playerFeetPosition_.y);
         updateDroppedItems(deltaTimeSeconds, currentEyeHeight);
+    }
+
+    // Multiplayer clients do not receive mob state from the host yet; skip local simulation.
+    if (gameScreen_ == GameScreen::Playing && multiplayerMode_ != MultiplayerRuntimeMode::Client)
+    {
+        mobSpawnSystem_.tick(
+            world_,
+            terrainGenerator_,
+            playerFeetPosition_,
+            kPlayerMovementSettings.colliderHalfWidth,
+            deltaTimeSeconds,
+            dayNightSample.period,
+            mobSpawningEnabled_,
+            playerVitals_);
     }
 
     std::optional<world::RaycastHit> raycastHit;
@@ -741,6 +761,20 @@ void Application::update(const float deltaTimeSeconds)
         });
     }
 
+    if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
+    {
+        const game::MobSpawnSettings& mobSettings = mobSpawnSystem_.settings();
+        frameDebugData.worldMobs.reserve(mobSpawnSystem_.enemies().size());
+        for (const game::EnemyInstance& enemy : mobSpawnSystem_.enemies())
+        {
+            frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
+                .feetPosition = {enemy.feetX, enemy.feetY, enemy.feetZ},
+                .halfWidth = mobSettings.mobHalfWidth,
+                .height = mobSettings.mobHeight,
+            });
+        }
+    }
+
     if (raycastHit.has_value())
     {
         frameDebugData.hasTarget = true;
@@ -756,13 +790,29 @@ void Application::update(const float deltaTimeSeconds)
         const std::uint16_t textWidth =
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
         const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
-        frameDebugData.mainMenuHoveredButton = render::Renderer::hitTestMainMenu(
-            inputState_.mouseWindowX,
-            inputState_.mouseWindowY,
-            window_.width(),
-            window_.height(),
-            textWidth,
-            textHeight);
+        if (mainMenuSoundSettingsOpen_)
+        {
+            frameDebugData.mainMenuSoundSettingsActive = true;
+            frameDebugData.mainMenuSoundMusicVolume = musicVolume_;
+            frameDebugData.mainMenuSoundSfxVolume = sfxVolume_;
+            frameDebugData.mainMenuSoundSettingsHoveredControl = render::Renderer::hitTestPauseSoundMenu(
+                inputState_.mouseWindowX,
+                inputState_.mouseWindowY,
+                window_.width(),
+                window_.height(),
+                textWidth,
+                textHeight);
+        }
+        else
+        {
+            frameDebugData.mainMenuHoveredButton = render::Renderer::hitTestMainMenu(
+                inputState_.mouseWindowX,
+                inputState_.mouseWindowY,
+                window_.width(),
+                window_.height(),
+                textWidth,
+                textHeight);
+        }
     }
 
     if (gameScreen_ == GameScreen::Paused)
@@ -773,14 +823,58 @@ void Application::update(const float deltaTimeSeconds)
         const std::uint16_t pauseTextWidth =
             pauseStats != nullptr && pauseStats->textWidth > 0 ? pauseStats->textWidth : 100;
         const std::uint16_t pauseTextHeight = pauseStats != nullptr ? pauseStats->textHeight : 30;
-        frameDebugData.pauseMenuHoveredButton = render::Renderer::hitTestPauseMenu(
-            inputState_.mouseWindowX,
-            inputState_.mouseWindowY,
-            window_.width(),
-            window_.height(),
-            pauseTextWidth,
-            pauseTextHeight);
+        if (pauseGameSettingsOpen_)
+        {
+            frameDebugData.pauseGameSettingsActive = true;
+            frameDebugData.mobSpawningEnabled = mobSpawningEnabled_;
+            frameDebugData.pauseGameSettingsHoveredControl = render::Renderer::hitTestPauseGameSettingsMenu(
+                inputState_.mouseWindowX,
+                inputState_.mouseWindowY,
+                window_.width(),
+                window_.height(),
+                pauseTextWidth,
+                pauseTextHeight);
+        }
+        else if (pauseSoundSettingsOpen_)
+        {
+            frameDebugData.pauseSoundSettingsActive = true;
+            frameDebugData.pauseSoundMusicVolume = musicVolume_;
+            frameDebugData.pauseSoundSfxVolume = sfxVolume_;
+            frameDebugData.pauseSoundSettingsHoveredControl = render::Renderer::hitTestPauseSoundMenu(
+                inputState_.mouseWindowX,
+                inputState_.mouseWindowY,
+                window_.width(),
+                window_.height(),
+                pauseTextWidth,
+                pauseTextHeight);
+        }
+        else
+        {
+            frameDebugData.pauseMenuHoveredButton = render::Renderer::hitTestPauseMenu(
+                inputState_.mouseWindowX,
+                inputState_.mouseWindowY,
+                window_.width(),
+                window_.height(),
+                pauseTextWidth,
+                pauseTextHeight);
+        }
     }
+
+    audio::MusicContext musicContext = audio::MusicContext::OverworldDay;
+    if (gameScreen_ == GameScreen::MainMenu)
+    {
+        musicContext = audio::MusicContext::Menu;
+    }
+    else if (playerHazards_.headSubmergedInWater)
+    {
+        musicContext = audio::MusicContext::Underwater;
+    }
+    else if (dayNightSample.period == game::TimeOfDayPeriod::Dusk
+             || dayNightSample.period == game::TimeOfDayPeriod::Night)
+    {
+        musicContext = audio::MusicContext::OverworldNight;
+    }
+    musicDirector_.update(deltaTimeSeconds, musicContext);
 
     renderer_.renderFrame(
         frameDebugData,
@@ -822,17 +916,37 @@ void Application::processInput(const float deltaTimeSeconds)
         if (gameScreen_ == GameScreen::Playing)
         {
             gameScreen_ = GameScreen::Paused;
+            pauseSoundSettingsOpen_ = false;
+            pauseGameSettingsOpen_ = false;
             mouseCaptured_ = false;
             window_.setRelativeMouseMode(false);
             pauseMenuNotice_.clear();
         }
         else if (gameScreen_ == GameScreen::Paused)
         {
-            gameScreen_ = GameScreen::Playing;
-            mouseCaptured_ = true;
-            window_.setRelativeMouseMode(true);
-            pauseMenuNotice_.clear();
-            inputState_.clearMouseMotion();
+            if (pauseGameSettingsOpen_)
+            {
+                pauseGameSettingsOpen_ = false;
+                pauseMenuNotice_.clear();
+            }
+            else if (pauseSoundSettingsOpen_)
+            {
+                pauseSoundSettingsOpen_ = false;
+                pauseMenuNotice_ = "Sound settings saved.";
+            }
+            else
+            {
+                gameScreen_ = GameScreen::Playing;
+                mouseCaptured_ = true;
+                window_.setRelativeMouseMode(true);
+                pauseMenuNotice_.clear();
+                inputState_.clearMouseMotion();
+            }
+        }
+        else if (gameScreen_ == GameScreen::MainMenu && mainMenuSoundSettingsOpen_)
+        {
+            mainMenuSoundSettingsOpen_ = false;
+            mainMenuNotice_ = "Sound settings saved.";
         }
     }
 
@@ -861,47 +975,87 @@ void Application::processInput(const float deltaTimeSeconds)
         // onto "Singleplayer" and skips the title screen.
         if (inputState_.leftMousePressed && runFrameIndex_ > 0)
         {
-            const int hit = render::Renderer::hitTestMainMenu(
-                inputState_.mouseWindowX,
-                inputState_.mouseWindowY,
-                window_.width(),
-                window_.height(),
-                textWidth,
-                textHeight);
-            switch (hit)
+            if (mainMenuSoundSettingsOpen_)
             {
-            case 0:
-                stopMultiplayerSessions();
-                gameScreen_ = GameScreen::Playing;
-                mouseCaptured_ = true;
-                window_.setRelativeMouseMode(true);
-                mainMenuNotice_.clear();
-                inputState_.clearMouseMotion();
-                break;
-            case 1:
-                mainMenuNotice_ = fmt::format(
-                    "Press H to host on {} or J to join {}:{}.",
-                    multiplayerPort_,
-                    multiplayerAddress_,
-                    multiplayerPort_);
-                break;
-            case 2:
-                mainMenuNotice_ = "VibeCraft Realms is not available yet.";
-                break;
-            case 3:
-                mainMenuNotice_ = "Options are not available yet.";
-                break;
-            case 4:
-                inputState_.quitRequested = true;
-                break;
-            case 5:
-                mainMenuNotice_ = "Language selection is not available yet.";
-                break;
-            case 6:
-                mainMenuNotice_ = "Accessibility options are not available yet.";
-                break;
-            default:
-                break;
+                const int hit = render::Renderer::hitTestPauseSoundMenu(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                switch (hit)
+                {
+                case 0:
+                    mainMenuSoundSettingsOpen_ = false;
+                    mainMenuNotice_ = "Sound settings saved.";
+                    break;
+                case 1:
+                    musicVolume_ = std::max(0.0f, musicVolume_ - 0.05f);
+                    musicDirector_.setMasterGain(musicVolume_);
+                    break;
+                case 2:
+                    musicVolume_ = std::min(1.0f, musicVolume_ + 0.05f);
+                    musicDirector_.setMasterGain(musicVolume_);
+                    break;
+                case 3:
+                    sfxVolume_ = std::max(0.0f, sfxVolume_ - 0.05f);
+                    soundEffects_.setMasterGain(sfxVolume_);
+                    break;
+                case 4:
+                    sfxVolume_ = std::min(1.0f, sfxVolume_ + 0.05f);
+                    soundEffects_.setMasterGain(sfxVolume_);
+                    break;
+                default:
+                    break;
+                }
+            }
+            else
+            {
+                const int hit = render::Renderer::hitTestMainMenu(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                switch (hit)
+                {
+                case 0:
+                    stopMultiplayerSessions();
+                    gameScreen_ = GameScreen::Playing;
+                    mainMenuSoundSettingsOpen_ = false;
+                    mouseCaptured_ = true;
+                    window_.setRelativeMouseMode(true);
+                    mainMenuNotice_.clear();
+                    inputState_.clearMouseMotion();
+                    break;
+                case 1:
+                    mainMenuNotice_ = fmt::format(
+                        "Press H to host on {} or J to join {}:{}.",
+                        multiplayerPort_,
+                        multiplayerAddress_,
+                        multiplayerPort_);
+                    break;
+                case 2:
+                    mainMenuNotice_ = "VibeCraft Realms is not available yet.";
+                    break;
+                case 3:
+                    mainMenuSoundSettingsOpen_ = true;
+                    mainMenuNotice_.clear();
+                    break;
+                case 4:
+                    inputState_.quitRequested = true;
+                    break;
+                case 5:
+                    mainMenuNotice_ = "Language selection is not available yet.";
+                    break;
+                case 6:
+                    mainMenuNotice_ = "Accessibility options are not available yet.";
+                    break;
+                default:
+                    break;
+                }
             }
         }
         return;
@@ -916,37 +1070,111 @@ void Application::processInput(const float deltaTimeSeconds)
 
         if (inputState_.leftMousePressed)
         {
-            const int hit = render::Renderer::hitTestPauseMenu(
-                inputState_.mouseWindowX,
-                inputState_.mouseWindowY,
-                window_.width(),
-                window_.height(),
-                textWidth,
-                textHeight);
-            switch (hit)
+            if (pauseGameSettingsOpen_)
             {
-            case 0:
-                gameScreen_ = GameScreen::Playing;
-                mouseCaptured_ = true;
-                window_.setRelativeMouseMode(true);
-                pauseMenuNotice_.clear();
-                inputState_.clearMouseMotion();
-                break;
-            case 1:
-                pauseMenuNotice_ = "Options are not available yet.";
-                break;
-            case 2:
-                stopMultiplayerSessions();
-                gameScreen_ = GameScreen::MainMenu;
-                mouseCaptured_ = false;
-                window_.setRelativeMouseMode(false);
-                pauseMenuNotice_.clear();
-                break;
-            case 3:
-                inputState_.quitRequested = true;
-                break;
-            default:
-                break;
+                const int hit = render::Renderer::hitTestPauseGameSettingsMenu(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                switch (hit)
+                {
+                case 0:
+                    pauseGameSettingsOpen_ = false;
+                    pauseMenuNotice_.clear();
+                    break;
+                case 1:
+                    mobSpawningEnabled_ = !mobSpawningEnabled_;
+                    if (!mobSpawningEnabled_)
+                    {
+                        mobSpawnSystem_.clearAllMobs();
+                    }
+                    pauseMenuNotice_ = mobSpawningEnabled_ ? "Mob spawning enabled." : "Mob spawning disabled.";
+                    break;
+                default:
+                    break;
+                }
+            }
+            else if (pauseSoundSettingsOpen_)
+            {
+                const int hit = render::Renderer::hitTestPauseSoundMenu(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                switch (hit)
+                {
+                case 0:
+                    pauseSoundSettingsOpen_ = false;
+                    pauseMenuNotice_ = "Sound settings saved.";
+                    break;
+                case 1:
+                    musicVolume_ = std::max(0.0f, musicVolume_ - 0.05f);
+                    musicDirector_.setMasterGain(musicVolume_);
+                    break;
+                case 2:
+                    musicVolume_ = std::min(1.0f, musicVolume_ + 0.05f);
+                    musicDirector_.setMasterGain(musicVolume_);
+                    break;
+                case 3:
+                    sfxVolume_ = std::max(0.0f, sfxVolume_ - 0.05f);
+                    soundEffects_.setMasterGain(sfxVolume_);
+                    break;
+                case 4:
+                    sfxVolume_ = std::min(1.0f, sfxVolume_ + 0.05f);
+                    soundEffects_.setMasterGain(sfxVolume_);
+                    break;
+                default:
+                    break;
+                }
+            }
+            else
+            {
+                const int hit = render::Renderer::hitTestPauseMenu(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                switch (hit)
+                {
+                case 0:
+                    gameScreen_ = GameScreen::Playing;
+                    pauseSoundSettingsOpen_ = false;
+                    pauseGameSettingsOpen_ = false;
+                    mouseCaptured_ = true;
+                    window_.setRelativeMouseMode(true);
+                    pauseMenuNotice_.clear();
+                    inputState_.clearMouseMotion();
+                    break;
+                case 1:
+                    pauseSoundSettingsOpen_ = true;
+                    pauseMenuNotice_.clear();
+                    break;
+                case 2:
+                    stopMultiplayerSessions();
+                    gameScreen_ = GameScreen::MainMenu;
+                    pauseSoundSettingsOpen_ = false;
+                    pauseGameSettingsOpen_ = false;
+                    mouseCaptured_ = false;
+                    window_.setRelativeMouseMode(false);
+                    pauseMenuNotice_.clear();
+                    break;
+                case 3:
+                    inputState_.quitRequested = true;
+                    break;
+                case 4:
+                    pauseGameSettingsOpen_ = true;
+                    pauseMenuNotice_.clear();
+                    break;
+                default:
+                    break;
+                }
             }
         }
         return;
@@ -1148,6 +1376,7 @@ void Application::processInput(const float deltaTimeSeconds)
         if (world_.applyEditCommand(command))
         {
             spawnDroppedItem(raycastHit->blockType, raycastHit->solidBlock);
+            soundEffects_.playBlockBreak(raycastHit->blockType);
             if (hostSession_ != nullptr && hostSession_->running())
             {
                 hostSession_->broadcastBlockEdit({
@@ -1190,6 +1419,7 @@ void Application::processInput(const float deltaTimeSeconds)
         if (world_.applyEditCommand(command))
         {
             consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+            soundEffects_.playBlockPlace(command.blockType);
             if (hostSession_ != nullptr && hostSession_->running())
             {
                 hostSession_->broadcastBlockEdit({
@@ -1457,11 +1687,14 @@ void Application::applyRemoteBlockEdit(const multiplayer::protocol::BlockEditEve
     }));
 }
 
-std::vector<multiplayer::protocol::PlayerSnapshotMessage> Application::buildServerSnapshots() const
+multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() const
 {
-    std::vector<multiplayer::protocol::PlayerSnapshotMessage> snapshots;
-    snapshots.reserve(remotePlayers_.size() + 1);
-    snapshots.push_back(multiplayer::protocol::PlayerSnapshotMessage{
+    multiplayer::protocol::ServerSnapshotMessage snapshot;
+    snapshot.serverTick = networkServerTick_;
+    snapshot.dayNightElapsedSeconds = dayNightCycle_.elapsedSeconds();
+    snapshot.weatherElapsedSeconds = weatherSystem_.elapsedSeconds();
+    snapshot.players.reserve(remotePlayers_.size() + 1);
+    snapshot.players.push_back(multiplayer::protocol::PlayerSnapshotMessage{
         .clientId = localClientId_,
         .posX = playerFeetPosition_.x,
         .posY = playerFeetPosition_.y,
@@ -1473,7 +1706,7 @@ std::vector<multiplayer::protocol::PlayerSnapshotMessage> Application::buildServ
     });
     for (const RemotePlayerState& remote : remotePlayers_)
     {
-        snapshots.push_back(multiplayer::protocol::PlayerSnapshotMessage{
+        snapshot.players.push_back(multiplayer::protocol::PlayerSnapshotMessage{
             .clientId = remote.clientId,
             .posX = remote.position.x,
             .posY = remote.position.y,
@@ -1484,7 +1717,22 @@ std::vector<multiplayer::protocol::PlayerSnapshotMessage> Application::buildServ
             .air = remote.air,
         });
     }
-    return snapshots;
+    snapshot.droppedItems.reserve(droppedItems_.size());
+    for (const DroppedItem& droppedItem : droppedItems_)
+    {
+        snapshot.droppedItems.push_back(multiplayer::protocol::DroppedItemSnapshotMessage{
+            .blockType = droppedItem.blockType,
+            .posX = droppedItem.worldPosition.x,
+            .posY = droppedItem.worldPosition.y,
+            .posZ = droppedItem.worldPosition.z,
+            .velocityX = droppedItem.velocity.x,
+            .velocityY = droppedItem.velocity.y,
+            .velocityZ = droppedItem.velocity.z,
+            .ageSeconds = droppedItem.ageSeconds,
+            .spinRadians = droppedItem.spinRadians,
+        });
+    }
+    return snapshot;
 }
 
 void Application::updateMultiplayer(const float deltaTimeSeconds)
@@ -1583,11 +1831,7 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
         {
             networkTickAccumulatorSeconds_ -= kNetworkTickSeconds;
             ++networkServerTick_;
-            hostSession_->broadcastSnapshot(
-                networkServerTick_,
-                dayNightCycle_.elapsedSeconds(),
-                weatherSystem_.elapsedSeconds(),
-                buildServerSnapshots());
+            hostSession_->broadcastSnapshot(buildServerSnapshot());
         }
 
         multiplayerStatusLine_ =
@@ -1621,22 +1865,53 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
             const multiplayer::protocol::ServerSnapshotMessage& latest = snapshots.back();
             dayNightCycle_.setElapsedSeconds(latest.dayNightElapsedSeconds);
             weatherSystem_.setElapsedSeconds(latest.weatherElapsedSeconds);
-            remotePlayers_.clear();
+            droppedItems_.clear();
+            droppedItems_.reserve(latest.droppedItems.size());
+            for (const multiplayer::protocol::DroppedItemSnapshotMessage& droppedItem : latest.droppedItems)
+            {
+                droppedItems_.push_back(DroppedItem{
+                    .blockType = droppedItem.blockType,
+                    .worldPosition = {droppedItem.posX, droppedItem.posY, droppedItem.posZ},
+                    .velocity = {droppedItem.velocityX, droppedItem.velocityY, droppedItem.velocityZ},
+                    .ageSeconds = droppedItem.ageSeconds,
+                    .pickupDelaySeconds = 0.1f,
+                    .spinRadians = droppedItem.spinRadians,
+                });
+            }
+            std::vector<RemotePlayerState> updatedRemotePlayers;
+            updatedRemotePlayers.reserve(latest.players.size());
             for (const multiplayer::protocol::PlayerSnapshotMessage& player : latest.players)
             {
                 if (player.clientId == localClientId_)
                 {
+                    const glm::vec3 authoritativePosition{player.posX, player.posY, player.posZ};
+                    // Lightweight reconciliation to soften position snaps while converging quickly.
+                    playerFeetPosition_ = glm::mix(playerFeetPosition_, authoritativePosition, 0.4f);
+                    camera_.setPosition(
+                        playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
                     continue;
                 }
-                remotePlayers_.push_back(RemotePlayerState{
+                const auto previousIt = std::find_if(
+                    remotePlayers_.begin(),
+                    remotePlayers_.end(),
+                    [&player](const RemotePlayerState& state)
+                    {
+                        return state.clientId == player.clientId;
+                    });
+                const glm::vec3 targetPosition{player.posX, player.posY, player.posZ};
+                const glm::vec3 smoothedPosition = previousIt == remotePlayers_.end()
+                    ? targetPosition
+                    : glm::mix(previousIt->position, targetPosition, 0.35f);
+                updatedRemotePlayers.push_back(RemotePlayerState{
                     .clientId = player.clientId,
-                    .position = {player.posX, player.posY, player.posZ},
+                    .position = smoothedPosition,
                     .yawDegrees = player.yawDegrees,
                     .pitchDegrees = player.pitchDegrees,
                     .health = player.health,
                     .air = player.air,
                 });
             }
+            remotePlayers_ = std::move(updatedRemotePlayers);
         }
 
         if (clientSession_->connected())
