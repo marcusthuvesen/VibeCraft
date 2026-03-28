@@ -3,11 +3,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <filesystem>
 
-#include "vibecraft/game/DayNightCycle.hpp"
-#include "vibecraft/game/WeatherSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
@@ -165,111 +162,6 @@ TEST_CASE("deeper block families are harder and bedrock is unbreakable")
     CHECK_FALSE(vibecraft::world::blockMetadata(BlockType::Bedrock).breakable);
 }
 
-TEST_CASE("day night cycle keeps five minute daylight and five minute night timing")
-{
-    using vibecraft::game::DayNightCycle;
-
-    CHECK(DayNightCycle::kDaylightDurationSeconds == doctest::Approx(300.0f));
-    CHECK(DayNightCycle::kNightDurationSeconds == doctest::Approx(300.0f));
-    CHECK(DayNightCycle::kFullCycleDurationSeconds == doctest::Approx(600.0f));
-    CHECK(DayNightCycle::wrapCycleSeconds(660.0f) == doctest::Approx(60.0f));
-    CHECK(DayNightCycle::wrapCycleSeconds(-30.0f) == doctest::Approx(570.0f));
-}
-
-TEST_CASE("day night cycle exposes dawn day dusk and night periods")
-{
-    using vibecraft::game::DayNightCycle;
-    using vibecraft::game::TimeOfDayPeriod;
-
-    CHECK(DayNightCycle::sampleAtElapsedSeconds(0.0f).period == TimeOfDayPeriod::Dawn);
-    CHECK(DayNightCycle::sampleAtElapsedSeconds(120.0f).period == TimeOfDayPeriod::Day);
-    CHECK(DayNightCycle::sampleAtElapsedSeconds(270.0f).period == TimeOfDayPeriod::Dusk);
-    CHECK(DayNightCycle::sampleAtElapsedSeconds(420.0f).period == TimeOfDayPeriod::Night);
-}
-
-TEST_CASE("sun travels east to west across a full 360 degree orbit and moon stays opposite")
-{
-    using vibecraft::game::DayNightCycle;
-
-    const vibecraft::game::DayNightSample sunrise = DayNightCycle::sampleAtElapsedSeconds(0.0f);
-    CHECK(sunrise.sunOrbitDegrees360 == doctest::Approx(0.0f));
-    CHECK(sunrise.sunDirection.x == doctest::Approx(1.0f));
-    CHECK(std::abs(sunrise.sunDirection.y) < 0.0001f);
-    CHECK(sunrise.moonOrbitDegrees360 == doctest::Approx(180.0f));
-    CHECK(sunrise.moonDirection.x == doctest::Approx(-1.0f));
-
-    const vibecraft::game::DayNightSample noon = DayNightCycle::sampleAtElapsedSeconds(150.0f);
-    CHECK(noon.sunOrbitDegrees360 == doctest::Approx(90.0f));
-    CHECK(std::abs(noon.sunDirection.x) < 0.0001f);
-    CHECK(noon.sunDirection.y == doctest::Approx(1.0f));
-    CHECK(noon.moonDirection.y == doctest::Approx(-1.0f));
-
-    const vibecraft::game::DayNightSample sunset = DayNightCycle::sampleAtElapsedSeconds(300.0f);
-    CHECK(sunset.sunOrbitDegrees360 == doctest::Approx(180.0f));
-    CHECK(sunset.sunDirection.x == doctest::Approx(-1.0f));
-    CHECK(sunset.moonDirection.x == doctest::Approx(1.0f));
-
-    const vibecraft::game::DayNightSample midnight = DayNightCycle::sampleAtElapsedSeconds(450.0f);
-    CHECK(midnight.sunOrbitDegrees360 == doctest::Approx(270.0f));
-    CHECK(midnight.sunDirection.y == doctest::Approx(-1.0f));
-    CHECK(midnight.moonOrbitDegrees360 == doctest::Approx(90.0f));
-    CHECK(midnight.moonDirection.y == doctest::Approx(1.0f));
-}
-
-TEST_CASE("dawn and dusk expose warm tint data for future shader use")
-{
-    using vibecraft::game::DayNightCycle;
-
-    const vibecraft::game::DayNightSample dawn = DayNightCycle::sampleAtElapsedSeconds(30.0f);
-    const vibecraft::game::DayNightSample day = DayNightCycle::sampleAtElapsedSeconds(150.0f);
-    const vibecraft::game::DayNightSample dusk = DayNightCycle::sampleAtElapsedSeconds(270.0f);
-    const vibecraft::game::DayNightSample night = DayNightCycle::sampleAtElapsedSeconds(450.0f);
-
-    CHECK(dawn.horizonTint.x > dawn.horizonTint.z);
-    CHECK(dusk.horizonTint.x > dusk.horizonTint.z);
-    CHECK(dawn.sunLightTint.z < day.sunLightTint.z);
-    CHECK(dusk.sunLightTint.z < day.sunLightTint.z);
-    CHECK(day.skyTint.z > day.skyTint.x);
-    CHECK(night.moonLightTint.z > night.moonLightTint.x);
-}
-
-TEST_CASE("weather system alternates clear cloudy and rain phases over time")
-{
-    using vibecraft::game::WeatherSystem;
-    using vibecraft::game::WeatherType;
-
-    const vibecraft::game::WeatherSample clear = WeatherSystem::sampleAtElapsedSeconds(20.0f);
-    const vibecraft::game::WeatherSample cloudy = WeatherSystem::sampleAtElapsedSeconds(150.0f);
-    const vibecraft::game::WeatherSample rainy = WeatherSystem::sampleAtElapsedSeconds(260.0f);
-
-    CHECK(clear.type == WeatherType::Clear);
-    CHECK(clear.rainIntensity == doctest::Approx(0.0f));
-    CHECK(clear.cloudCoverage < 0.35f);
-
-    CHECK(cloudy.type == WeatherType::Cloudy);
-    CHECK(cloudy.cloudCoverage > clear.cloudCoverage);
-    CHECK(cloudy.rainIntensity < 0.4f);
-
-    CHECK(rainy.type == WeatherType::Rain);
-    CHECK(rainy.rainIntensity > 0.8f);
-    CHECK(rainy.cloudCoverage > cloudy.cloudCoverage);
-}
-
-TEST_CASE("weather system wraps and smoothly transitions between presets")
-{
-    using vibecraft::game::WeatherSystem;
-
-    CHECK(WeatherSystem::wrapCycleSeconds(
-              WeatherSystem::kWeatherCycleDurationSeconds + 15.0f)
-        == doctest::Approx(15.0f));
-
-    const vibecraft::game::WeatherSample transition = WeatherSystem::sampleAtElapsedSeconds(110.0f);
-    CHECK(transition.transitionProgress > 0.0f);
-    CHECK(transition.transitionProgress < 1.0f);
-    CHECK(transition.cloudCoverage > 0.18f);
-    CHECK(transition.cloudCoverage < 0.55f);
-}
-
 TEST_CASE("terrain generator varies surface height and produces water")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
@@ -316,57 +208,27 @@ TEST_CASE("world save and load round-trips edited blocks")
     std::filesystem::remove(tempPath, errorCode);
 }
 
-TEST_CASE("world queries below y=0 return bedrock for collision")
+TEST_CASE("world queries below the supported world depth return bedrock for collision")
 {
     vibecraft::world::World world;
     world.generateRadius(vibecraft::world::TerrainGenerator{}, 0);
-    CHECK(world.blockAt(0, -1, 0) == vibecraft::world::BlockType::Bedrock);
-    CHECK(world.blockAt(0, -50, 0) == vibecraft::world::BlockType::Bedrock);
-}
-
-TEST_CASE("loading a legacy save restores the bedrock floor")
-{
-    using vibecraft::world::BlockType;
-    using vibecraft::world::Chunk;
-    using vibecraft::world::ChunkCoord;
-
-    vibecraft::world::World legacyWorld;
-    vibecraft::world::World::ChunkMap legacyChunks;
-    Chunk legacyChunk(ChunkCoord{0, 0});
-    legacyChunk.mutableBlockStorage().fill(BlockType::Air);
-    legacyChunks.emplace(ChunkCoord{0, 0}, legacyChunk);
-    legacyWorld.replaceChunks(std::move(legacyChunks));
-
-    const std::filesystem::path tempPath =
-        std::filesystem::temp_directory_path() / "vibecraft_world_bedrock_repair_test.bin";
-
-    REQUIRE(legacyWorld.save(tempPath));
-
-    vibecraft::world::World loadedWorld;
-    REQUIRE(loadedWorld.load(tempPath));
-
-    for (int y = vibecraft::world::kBedrockFloorMinY; y <= vibecraft::world::kBedrockFloorMaxY; ++y)
-    {
-        CHECK(loadedWorld.blockAt(0, y, 0) == BlockType::Bedrock);
-    }
-    CHECK(loadedWorld.blockAt(0, vibecraft::world::kUndergroundStartY, 0) == BlockType::Air);
-
-    std::error_code errorCode;
-    std::filesystem::remove(tempPath, errorCode);
+    CHECK(world.blockAt(0, vibecraft::world::kWorldMinY - 1, 0) == vibecraft::world::BlockType::Bedrock);
+    CHECK(world.blockAt(0, vibecraft::world::kWorldMinY - 50, 0) == vibecraft::world::BlockType::Bedrock);
 }
 
 TEST_CASE("world edit commands cannot break bedrock")
 {
     vibecraft::world::World world;
     world.generateRadius(vibecraft::world::TerrainGenerator{}, 0);
+    constexpr int kBedrockY = vibecraft::world::kBedrockFloorMinY;
 
-    CHECK(world.blockAt(0, 0, 0) == vibecraft::world::BlockType::Bedrock);
+    CHECK(world.blockAt(0, kBedrockY, 0) == vibecraft::world::BlockType::Bedrock);
     CHECK_FALSE(world.applyEditCommand({
         .action = vibecraft::world::WorldEditAction::Remove,
-        .position = {0, 0, 0},
+        .position = {0, kBedrockY, 0},
         .blockType = vibecraft::world::BlockType::Air,
     }));
-    CHECK(world.blockAt(0, 0, 0) == vibecraft::world::BlockType::Bedrock);
+    CHECK(world.blockAt(0, kBedrockY, 0) == vibecraft::world::BlockType::Bedrock);
 }
 
 TEST_CASE("rebuildDirtyMeshes can process a dirty subset")

@@ -10,7 +10,6 @@
 #include <cmath>
 #include <optional>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "vibecraft/core/Logger.hpp"
@@ -66,8 +65,6 @@ constexpr StreamingSettings kStreamingSettings{};
 constexpr InputTuning kInputTuning{};
 constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
-/// When false, the main menu is not shown and input is ignored there (boot straight into gameplay).
-constexpr bool kTitleScreenEnabled = false;
 
 [[nodiscard]] const char* timeOfDayLabel(const game::TimeOfDayPeriod period)
 {
@@ -115,7 +112,7 @@ struct Aabb
 {
     return {
         static_cast<float>(coord.x * world::Chunk::kSize),
-        0.0f,
+        static_cast<float>(world::kWorldMinY),
         static_cast<float>(coord.z * world::Chunk::kSize),
     };
 }
@@ -124,7 +121,7 @@ struct Aabb
 {
     return {
         static_cast<float>((coord.x + 1) * world::Chunk::kSize),
-        static_cast<float>(world::Chunk::kHeight),
+        static_cast<float>(world::kWorldMaxY + 1),
         static_cast<float>((coord.z + 1) * world::Chunk::kSize),
     };
 }
@@ -343,6 +340,37 @@ void applyMeshSyncGpuData(
     };
 }
 
+[[nodiscard]] bool collidesWithSolidBlock(const world::World& worldState, const Aabb& aabb);
+
+[[nodiscard]] glm::vec3 findInitialSpawnFeetPosition(
+    const world::World& worldState,
+    const world::TerrainGenerator& terrainGenerator,
+    const glm::vec3& preferredCameraPosition,
+    const float colliderHeight)
+{
+    const int spawnWorldX = static_cast<int>(std::floor(preferredCameraPosition.x));
+    const int spawnWorldZ = static_cast<int>(std::floor(preferredCameraPosition.z));
+    glm::vec3 spawnFeetPosition(
+        preferredCameraPosition.x,
+        static_cast<float>(terrainGenerator.surfaceHeightAt(spawnWorldX, spawnWorldZ) + 1),
+        preferredCameraPosition.z);
+
+    // The expanded modern world height moved the terrain surface far above the legacy dev-camera
+    // spawn. Start on top of the actual surface, then keep stepping upward until the player
+    // capsule has full headroom (e.g. if a tree generated at the spawn column).
+    constexpr int kSpawnClearanceSearchLimit = 64;
+    for (int attempt = 0; attempt <= kSpawnClearanceSearchLimit; ++attempt)
+    {
+        if (!collidesWithSolidBlock(worldState, playerAabbAt(spawnFeetPosition, colliderHeight)))
+        {
+            return spawnFeetPosition;
+        }
+        spawnFeetPosition.y += 1.0f;
+    }
+
+    return spawnFeetPosition;
+}
+
 [[nodiscard]] bool collidesWithSolidBlock(const world::World& worldState, const Aabb& aabb)
 {
     const int minX = static_cast<int>(std::floor(aabb.min.x));
@@ -507,23 +535,21 @@ bool Application::initialize()
 {
     core::initializeLogger();
 
-    if (!kTitleScreenEnabled)
-    {
-        gameScreen_ = GameScreen::Playing;
-    }
-
     if (!window_.create("VibeCraft", kWindowSettings.width, kWindowSettings.height))
     {
         return false;
     }
 
-    // Fresh world every launch (no save load). Generate before bgfx so the render thread does not
-    // race heap-allocated chunk maps during startup.
+    // Always start from a fresh origin-centered dev world. Persisted worlds are currently easy
+    // to invalidate while terrain/render experiments are in flight, so skip loading and clear any
+    // previous save to keep reruns deterministic.
     {
+        std::error_code errorCode;
+        std::filesystem::remove(savePath_, errorCode);
         vibecraft::world::World::ChunkMap emptyChunks;
         world_.replaceChunks(std::move(emptyChunks));
+        world_.generateRadius(terrainGenerator_, kStreamingSettings.bootstrapChunkRadius);
     }
-    world_.generateRadius(terrainGenerator_, kStreamingSettings.bootstrapChunkRadius);
 
     if (!renderer_.initialize(window_.nativeWindowHandle(), window_.width(), window_.height()))
     {
@@ -531,20 +557,13 @@ bool Application::initialize()
         return false;
     }
 
-    playerFeetPosition_ = camera_.position() - glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f);
+    window_.setRelativeMouseMode(true);
+    mouseCaptured_ = true;
+
     const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
-    if (collidesWithSolidBlock(world_, playerAabbAt(playerFeetPosition_, spawnHeight)))
-    {
-        for (int attempt = 0; attempt < 32; ++attempt)
-        {
-            playerFeetPosition_.y += 1.0f;
-            if (!collidesWithSolidBlock(world_, playerAabbAt(playerFeetPosition_, spawnHeight)))
-            {
-                break;
-            }
-        }
-    }
+    playerFeetPosition_ = findInitialSpawnFeetPosition(world_, terrainGenerator_, camera_.position(), spawnHeight);
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
+    camera_.addYawPitch(90.0f, 35.0f);
     spawnFeetPosition_ = playerFeetPosition_;
     accumulatedFallDistance_ = 0.0f;
     playerVitals_.reset();
@@ -553,7 +572,6 @@ bool Application::initialize()
         playerFeetPosition_,
         kPlayerMovementSettings.standingColliderHeight,
         kPlayerMovementSettings.standingEyeHeight);
-    camera_.addYawPitch(90.0f, 35.0f);
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
     dayNightCycle_.setElapsedSeconds(70.0f);
     weatherSystem_.setElapsedSeconds(0.0f);
@@ -561,10 +579,6 @@ bool Application::initialize()
     syncWorldData();
 
     gameScreen_ = GameScreen::Playing;
-    mouseCaptured_ = true;
-    window_.setRelativeMouseMode(true);
-    mainMenuNotice_.clear();
-    inputState_.clearMouseMotion();
     return true;
 }
 
@@ -586,7 +600,6 @@ int Application::run()
         ++runFrameIndex_;
     }
 
-    world_.save(savePath_);
     renderer_.shutdown();
     return 0;
 }
@@ -621,7 +634,7 @@ void Application::update(const float deltaTimeSeconds)
             smoothedFrameTimeMs_ + (frameTimeMs - smoothedFrameTimeMs_) * kFrameTimeSmoothingAlpha;
     }
 
-    if (kTitleScreenEnabled && gameScreen_ == GameScreen::MainMenu)
+    if (gameScreen_ == GameScreen::MainMenu)
     {
         mainMenuTimeSeconds_ += deltaTimeSeconds;
     }
@@ -690,7 +703,7 @@ void Application::update(const float deltaTimeSeconds)
         frameDebugData.targetBlock = raycastHit->solidBlock;
     }
 
-    if (kTitleScreenEnabled && gameScreen_ == GameScreen::MainMenu)
+    if (gameScreen_ == GameScreen::MainMenu)
     {
         frameDebugData.mainMenuActive = true;
         frameDebugData.mainMenuTimeSeconds = mainMenuTimeSeconds_;
@@ -792,7 +805,7 @@ void Application::processInput(const float deltaTimeSeconds)
         inputState_.clearMouseMotion();
     }
 
-    if (kTitleScreenEnabled && gameScreen_ == GameScreen::MainMenu)
+    if (gameScreen_ == GameScreen::MainMenu)
     {
         const bgfx::Stats* const stats = bgfx::getStats();
         const std::uint16_t textWidth =
@@ -810,13 +823,35 @@ void Application::processInput(const float deltaTimeSeconds)
                 window_.height(),
                 textWidth,
                 textHeight);
-            if (hit == 0)
+            switch (hit)
             {
+            case 0:
                 gameScreen_ = GameScreen::Playing;
                 mouseCaptured_ = true;
                 window_.setRelativeMouseMode(true);
                 mainMenuNotice_.clear();
                 inputState_.clearMouseMotion();
+                break;
+            case 1:
+                mainMenuNotice_ = "Multiplayer is not available yet.";
+                break;
+            case 2:
+                mainMenuNotice_ = "VibeCraft Realms is not available yet.";
+                break;
+            case 3:
+                mainMenuNotice_ = "Options are not available yet.";
+                break;
+            case 4:
+                inputState_.quitRequested = true;
+                break;
+            case 5:
+                mainMenuNotice_ = "Language selection is not available yet.";
+                break;
+            case 6:
+                mainMenuNotice_ = "Accessibility options are not available yet.";
+                break;
+            default:
+                break;
             }
         }
         return;
@@ -851,20 +886,9 @@ void Application::processInput(const float deltaTimeSeconds)
                 pauseMenuNotice_ = "Options are not available yet.";
                 break;
             case 2:
-                if (kTitleScreenEnabled)
-                {
-                    gameScreen_ = GameScreen::MainMenu;
-                    mouseCaptured_ = false;
-                    window_.setRelativeMouseMode(false);
-                    mainMenuNotice_ = "Singleplayer starts a fresh world.";
-                }
-                else
-                {
-                    gameScreen_ = GameScreen::Playing;
-                    mouseCaptured_ = true;
-                    window_.setRelativeMouseMode(true);
-                    inputState_.clearMouseMotion();
-                }
+                gameScreen_ = GameScreen::MainMenu;
+                mouseCaptured_ = false;
+                window_.setRelativeMouseMode(false);
                 pauseMenuNotice_.clear();
                 break;
             case 3:
