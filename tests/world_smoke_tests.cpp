@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 
@@ -28,23 +29,23 @@ TEST_CASE("single block creates six exposed faces")
     CHECK(statsIt->second.indexCount == 36);
 }
 
-TEST_CASE("terrain generator produces solid ground and air above it")
+TEST_CASE("terrain generator produces solid ground and non-solid space above it")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     const int surface = terrainGenerator.surfaceHeightAt(12, -9);
 
     CHECK(vibecraft::world::isSolid(terrainGenerator.blockTypeAt(12, surface, -9)));
-    CHECK(terrainGenerator.blockTypeAt(12, surface + 1, -9) == vibecraft::world::BlockType::Air);
+    CHECK(!vibecraft::world::isSolid(terrainGenerator.blockTypeAt(12, surface + 1, -9)));
 }
 
-TEST_CASE("terrain generator carves underground caves without breaking the surface")
+TEST_CASE("terrain generator carves underground non-solid cave space without breaking the surface")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
-    bool foundUndergroundCave = false;
+    bool foundUndergroundCaveSpace = false;
 
-    for (int worldX = -16; worldX <= 16 && !foundUndergroundCave; ++worldX)
+    for (int worldX = -48; worldX <= 48 && !foundUndergroundCaveSpace; ++worldX)
     {
-        for (int worldZ = -16; worldZ <= 16 && !foundUndergroundCave; ++worldZ)
+        for (int worldZ = -48; worldZ <= 48 && !foundUndergroundCaveSpace; ++worldZ)
         {
             const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
 
@@ -53,16 +54,16 @@ TEST_CASE("terrain generator carves underground caves without breaking the surfa
 
             for (int y = 4; y <= surface - 5; ++y)
             {
-                if (terrainGenerator.blockTypeAt(worldX, y, worldZ) == vibecraft::world::BlockType::Air)
+                if (!vibecraft::world::isSolid(terrainGenerator.blockTypeAt(worldX, y, worldZ)))
                 {
-                    foundUndergroundCave = true;
+                    foundUndergroundCaveSpace = true;
                     break;
                 }
             }
         }
     }
 
-    CHECK(foundUndergroundCave);
+    CHECK(foundUndergroundCaveSpace);
 }
 
 TEST_CASE("terrain generator keeps common layers broad and clusters rare ore")
@@ -124,10 +125,11 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     using vibecraft::world::BlockType;
 
     CHECK(vibecraft::world::textureTileIndex(BlockType::Grass, BlockFace::Top) == 0);
-    CHECK(vibecraft::world::textureTileIndex(BlockType::Grass, BlockFace::Bottom) == 1);
-    CHECK(vibecraft::world::textureTileIndex(BlockType::Dirt, BlockFace::Side) == 1);
-    CHECK(vibecraft::world::textureTileIndex(BlockType::Stone, BlockFace::Top) == 2);
-    CHECK(vibecraft::world::textureTileIndex(BlockType::Sand, BlockFace::Side) == 3);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Grass, BlockFace::Bottom) == 2);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Dirt, BlockFace::Side) == 2);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Stone, BlockFace::Top) == 3);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Sand, BlockFace::Side) == 7);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Water, BlockFace::Side) == 6);
     CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xff607d8b);
 }
 
@@ -139,6 +141,29 @@ TEST_CASE("deeper block families are harder and bedrock is unbreakable")
     CHECK(vibecraft::world::blockMetadata(BlockType::Stone).hardness < vibecraft::world::blockMetadata(BlockType::Deepslate).hardness);
     CHECK(vibecraft::world::blockMetadata(BlockType::Deepslate).hardness < vibecraft::world::blockMetadata(BlockType::Bedrock).hardness);
     CHECK_FALSE(vibecraft::world::blockMetadata(BlockType::Bedrock).breakable);
+}
+
+TEST_CASE("terrain generator varies surface height and produces water")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    int minSurface = 999;
+    int maxSurface = -999;
+    bool foundWater = false;
+
+    for (int worldX = -96; worldX <= 96; worldX += 8)
+    {
+        for (int worldZ = -96; worldZ <= 96; worldZ += 8)
+        {
+            const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            minSurface = std::min(minSurface, surface);
+            maxSurface = std::max(maxSurface, surface);
+            foundWater = foundWater
+                || terrainGenerator.blockTypeAt(worldX, surface + 1, worldZ) == vibecraft::world::BlockType::Water;
+        }
+    }
+
+    CHECK(maxSurface - minSurface >= 10);
+    CHECK(foundWater);
 }
 
 TEST_CASE("world save and load round-trips edited blocks")
@@ -193,4 +218,22 @@ TEST_CASE("rebuildDirtyMeshes can process a dirty subset")
     world.rebuildDirtyMeshes(mesher, selectedCoords);
 
     CHECK(world.dirtyChunkCount() == initialDirtyChunkCount - 1);
+}
+
+TEST_CASE("generateMissingChunksAround adds only missing chunks near a center")
+{
+    vibecraft::world::World world;
+    vibecraft::world::TerrainGenerator terrainGenerator;
+
+    world.generateRadius(terrainGenerator, 1);
+    const std::size_t initialChunkCount = world.chunks().size();
+    REQUIRE(initialChunkCount == 9);
+
+    world.generateMissingChunksAround(terrainGenerator, vibecraft::world::ChunkCoord{3, -2}, 1);
+
+    CHECK(world.chunks().size() > initialChunkCount);
+    CHECK(world.chunks().contains(vibecraft::world::ChunkCoord{3, -2}));
+    CHECK(world.chunks().contains(vibecraft::world::ChunkCoord{2, -3}));
+    CHECK(world.blockAt(3 * vibecraft::world::Chunk::kSize, 0, -2 * vibecraft::world::Chunk::kSize)
+        != vibecraft::world::BlockType::Air);
 }

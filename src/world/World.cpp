@@ -1,5 +1,6 @@
 #include "vibecraft/world/World.hpp"
 
+#include <algorithm>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
@@ -14,31 +15,94 @@
 
 namespace vibecraft::world
 {
+namespace
+{
+void populateChunkFromTerrain(
+    Chunk& chunk,
+    const ChunkCoord& coord,
+    const TerrainGenerator& terrainGenerator)
+{
+    for (int localZ = 0; localZ < Chunk::kSize; ++localZ)
+    {
+        for (int localX = 0; localX < Chunk::kSize; ++localX)
+        {
+            const int worldX = coord.x * Chunk::kSize + localX;
+            const int worldZ = coord.z * Chunk::kSize + localZ;
+
+            for (int y = 0; y < Chunk::kHeight; ++y)
+            {
+                chunk.setBlock(localX, y, localZ, terrainGenerator.blockTypeAt(worldX, y, worldZ));
+            }
+        }
+    }
+}
+}  // namespace
+
 void World::generateRadius(const TerrainGenerator& terrainGenerator, const int chunkRadius)
 {
-    for (int chunkZ = -chunkRadius; chunkZ <= chunkRadius; ++chunkZ)
+    generateMissingChunksAround(terrainGenerator, ChunkCoord{0, 0}, chunkRadius);
+}
+
+void World::generateMissingChunksAround(
+    const TerrainGenerator& terrainGenerator,
+    const ChunkCoord& center,
+    const int chunkRadius,
+    const std::size_t maxChunksToGenerate)
+{
+    std::vector<ChunkCoord> pendingCoords;
+    pendingCoords.reserve(static_cast<std::size_t>((chunkRadius * 2 + 1) * (chunkRadius * 2 + 1)));
+
+    for (int chunkZ = center.z - chunkRadius; chunkZ <= center.z + chunkRadius; ++chunkZ)
     {
-        for (int chunkX = -chunkRadius; chunkX <= chunkRadius; ++chunkX)
+        for (int chunkX = center.x - chunkRadius; chunkX <= center.x + chunkRadius; ++chunkX)
         {
             const ChunkCoord coord{chunkX, chunkZ};
-            Chunk& chunk = ensureChunk(coord);
-
-            for (int localZ = 0; localZ < Chunk::kSize; ++localZ)
+            if (chunks_.contains(coord))
             {
-                for (int localX = 0; localX < Chunk::kSize; ++localX)
-                {
-                    const int worldX = coord.x * Chunk::kSize + localX;
-                    const int worldZ = coord.z * Chunk::kSize + localZ;
-
-                    for (int y = 0; y < Chunk::kHeight; ++y)
-                    {
-                        chunk.setBlock(localX, y, localZ, terrainGenerator.blockTypeAt(worldX, y, worldZ));
-                    }
-                }
+                continue;
             }
-
-            markChunkDirty(coord);
+            pendingCoords.push_back(coord);
         }
+    }
+
+    std::sort(
+        pendingCoords.begin(),
+        pendingCoords.end(),
+        [&center](const ChunkCoord& lhs, const ChunkCoord& rhs)
+        {
+            const int lhsDx = lhs.x - center.x;
+            const int lhsDz = lhs.z - center.z;
+            const int rhsDx = rhs.x - center.x;
+            const int rhsDz = rhs.z - center.z;
+            const int lhsDistanceSq = lhsDx * lhsDx + lhsDz * lhsDz;
+            const int rhsDistanceSq = rhsDx * rhsDx + rhsDz * rhsDz;
+            if (lhsDistanceSq != rhsDistanceSq)
+            {
+                return lhsDistanceSq < rhsDistanceSq;
+            }
+            if (lhs.z != rhs.z)
+            {
+                return lhs.z < rhs.z;
+            }
+            return lhs.x < rhs.x;
+        });
+
+    std::size_t generatedCount = 0;
+    for (const ChunkCoord& coord : pendingCoords)
+    {
+        if (generatedCount >= maxChunksToGenerate)
+        {
+            break;
+        }
+        if (chunks_.contains(coord))
+        {
+            continue;
+        }
+
+        Chunk& chunk = ensureChunk(coord);
+        populateChunkFromTerrain(chunk, coord, terrainGenerator);
+        markChunkDirty(coord);
+        ++generatedCount;
     }
 }
 

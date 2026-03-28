@@ -42,6 +42,11 @@ class World
     using ChunkMap = std::unordered_map<ChunkCoord, Chunk, ChunkCoordHash>;
 
     void generateRadius(const TerrainGenerator& terrainGenerator, int chunkRadius);
+    void generateMissingChunksAround(
+        const TerrainGenerator& terrainGenerator,
+        const ChunkCoord& center,
+        int chunkRadius,
+        std::size_t maxChunksToGenerate = static_cast<std::size_t>(-1));
     bool applyEditCommand(const WorldEditCommand& command);
     bool save(const std::filesystem::path& outputPath) const;
     bool load(const std::filesystem::path& inputPath);

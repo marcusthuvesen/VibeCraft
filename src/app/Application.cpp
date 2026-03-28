@@ -26,7 +26,12 @@ struct StreamingSettings
 {
     int bootstrapChunkRadius = 2;
     int residentChunkRadius = 3;
+    int generationChunkRadius = 5;
+    std::size_t generationChunkBudgetPerFrame = 12;
+    std::size_t prefetchGenerationBudgetPerFrame = 6;
+    std::size_t meshBuildBudgetPerFrame = 8;
     std::size_t offResidentDirtyRebuildBudget = 8;
+    int forwardPrefetchChunks = 2;
 };
 
 struct InputTuning
@@ -147,12 +152,16 @@ struct MeshSyncCpuData
     const meshing::ChunkMesher& chunkMesher,
     const std::unordered_set<std::uint64_t>& residentChunkMeshIds,
     const std::unordered_set<world::ChunkCoord, world::ChunkCoordHash>& dirtyCoordSet,
-    const world::ChunkCoord& cameraChunk)
+    const world::ChunkCoord& cameraChunk,
+    const std::size_t meshBuildBudget)
 {
     MeshSyncCpuData cpuData;
     cpuData.sceneMeshesToUpload.reserve(dirtyCoordSet.size());
     cpuData.removedMeshIds.reserve(dirtyCoordSet.size() + residentChunkMeshIds.size());
     cpuData.residentDirtyCoords.reserve(dirtyCoordSet.size());
+    std::vector<std::pair<world::ChunkCoord, bool>> pendingResidentCoords;
+    pendingResidentCoords.reserve(static_cast<std::size_t>(
+        (kStreamingSettings.residentChunkRadius * 2 + 1) * (kStreamingSettings.residentChunkRadius * 2 + 1)));
 
     for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
          chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius;
@@ -167,11 +176,6 @@ struct MeshSyncCpuData
             cpuData.desiredResidentIds.insert(meshId);
 
             const bool isDirty = dirtyCoordSet.contains(coord);
-            if (isDirty)
-            {
-                cpuData.residentDirtyCoords.push_back(coord);
-            }
-
             const auto chunkIt = world.chunks().find(coord);
             if (chunkIt == world.chunks().end())
             {
@@ -183,32 +187,76 @@ struct MeshSyncCpuData
             {
                 continue;
             }
-
-            meshing::ChunkMeshData meshData = chunkMesher.buildMesh(world, coord);
-            if (meshData.vertices.empty() || meshData.indices.empty())
-            {
-                cpuData.removedMeshIds.push_back(meshId);
-                continue;
-            }
-
-            render::SceneMeshData sceneMesh;
-            sceneMesh.id = meshId;
-            sceneMesh.boundsMin = chunkBoundsMin(coord);
-            sceneMesh.boundsMax = chunkBoundsMax(coord);
-            sceneMesh.indices = std::move(meshData.indices);
-            sceneMesh.vertices.reserve(meshData.vertices.size());
-
-            for (const meshing::DebugVertex& vertex : meshData.vertices)
-            {
-                sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
-                    .position = {vertex.x, vertex.y, vertex.z},
-                    .abgr = vertex.abgr,
-                });
-            }
-
-            buildVertexNormals(sceneMesh);
-            cpuData.sceneMeshesToUpload.push_back(std::move(sceneMesh));
+            pendingResidentCoords.push_back({coord, isDirty});
         }
+    }
+
+    std::sort(
+        pendingResidentCoords.begin(),
+        pendingResidentCoords.end(),
+        [&cameraChunk](const auto& lhs, const auto& rhs)
+        {
+            const int lhsDx = lhs.first.x - cameraChunk.x;
+            const int lhsDz = lhs.first.z - cameraChunk.z;
+            const int rhsDx = rhs.first.x - cameraChunk.x;
+            const int rhsDz = rhs.first.z - cameraChunk.z;
+            const int lhsDistanceSq = lhsDx * lhsDx + lhsDz * lhsDz;
+            const int rhsDistanceSq = rhsDx * rhsDx + rhsDz * rhsDz;
+            if (lhsDistanceSq != rhsDistanceSq)
+            {
+                return lhsDistanceSq < rhsDistanceSq;
+            }
+            if (lhs.first.z != rhs.first.z)
+            {
+                return lhs.first.z < rhs.first.z;
+            }
+            return lhs.first.x < rhs.first.x;
+        });
+
+    std::size_t builtThisFrame = 0;
+    for (const auto& [coord, isDirty] : pendingResidentCoords)
+    {
+        if (builtThisFrame >= meshBuildBudget)
+        {
+            break;
+        }
+
+        const std::uint64_t meshId = chunkMeshId(coord);
+        meshing::ChunkMeshData meshData = chunkMesher.buildMesh(world, coord);
+        if (meshData.vertices.empty() || meshData.indices.empty())
+        {
+            cpuData.removedMeshIds.push_back(meshId);
+            if (isDirty)
+            {
+                cpuData.residentDirtyCoords.push_back(coord);
+            }
+            ++builtThisFrame;
+            continue;
+        }
+
+        render::SceneMeshData sceneMesh;
+        sceneMesh.id = meshId;
+        sceneMesh.boundsMin = chunkBoundsMin(coord);
+        sceneMesh.boundsMax = chunkBoundsMax(coord);
+        sceneMesh.indices = std::move(meshData.indices);
+        sceneMesh.vertices.reserve(meshData.vertices.size());
+
+        for (const meshing::DebugVertex& vertex : meshData.vertices)
+        {
+            sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
+                .position = {vertex.x, vertex.y, vertex.z},
+                .uv = {vertex.u, vertex.v},
+                .abgr = vertex.abgr,
+            });
+        }
+
+        buildVertexNormals(sceneMesh);
+        cpuData.sceneMeshesToUpload.push_back(std::move(sceneMesh));
+        if (isDirty)
+        {
+            cpuData.residentDirtyCoords.push_back(coord);
+        }
+        ++builtThisFrame;
     }
 
     for (const std::uint64_t residentId : residentChunkMeshIds)
@@ -351,44 +399,6 @@ void applyMeshSyncGpuData(
     return collidesWithSolidBlock(worldState, playerAabbAt(groundedProbe, colliderHeight));
 }
 
-void tryAutoStepUpOneBlock(
-    const world::World& worldState,
-    glm::vec3& feetPosition,
-    const glm::vec3& feetBefore,
-    const glm::vec3& horizontalDisplacement,
-    const float colliderHeight,
-    const bool grounded)
-{
-    if (!grounded)
-    {
-        return;
-    }
-
-    const float dx = horizontalDisplacement.x;
-    const float dz = horizontalDisplacement.z;
-    if (dx * dx + dz * dz < kFloatEpsilon * kFloatEpsilon)
-    {
-        return;
-    }
-
-    glm::vec3 tryFeet = feetBefore;
-    tryFeet.x += dx;
-    tryFeet.z += dz;
-
-    if (!collidesWithSolidBlock(worldState, playerAabbAt(tryFeet, colliderHeight)))
-    {
-        return;
-    }
-
-    glm::vec3 steppedFeet = tryFeet;
-    steppedFeet.y += 1.0f;
-    if (collidesWithSolidBlock(worldState, playerAabbAt(steppedFeet, colliderHeight)))
-    {
-        return;
-    }
-
-    feetPosition = steppedFeet;
-}
 }
 
 bool Application::initialize()
@@ -495,6 +505,13 @@ void Application::update(const float deltaTimeSeconds)
         savePath_.generic_string(),
         safeFrameTimeMs,
         smoothedFps);
+    for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+    {
+        frameDebugData.hotbarSlots[slotIndex].blockType = hotbarSlots_[slotIndex].blockType;
+        frameDebugData.hotbarSlots[slotIndex].count = hotbarSlots_[slotIndex].count;
+    }
+    frameDebugData.hotbarSelectedIndex = selectedHotbarIndex_;
+    frameDebugData.bagLine = formatBagLine(bagSlots_);
 
     if (raycastHit.has_value())
     {
@@ -538,8 +555,45 @@ void Application::processInput(const float deltaTimeSeconds)
     if (mouseCaptured_)
     {
         camera_.addYawPitch(
-            inputState_.mouseDeltaX * kInputTuning.mouseSensitivity,
+            -inputState_.mouseDeltaX * kInputTuning.mouseSensitivity,
             -inputState_.mouseDeltaY * kInputTuning.mouseSensitivity);
+    }
+
+    if (inputState_.isKeyDown(SDL_SCANCODE_1))
+    {
+        selectedHotbarIndex_ = 0;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_2))
+    {
+        selectedHotbarIndex_ = 1;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_3))
+    {
+        selectedHotbarIndex_ = 2;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_4))
+    {
+        selectedHotbarIndex_ = 3;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_5))
+    {
+        selectedHotbarIndex_ = 4;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_6))
+    {
+        selectedHotbarIndex_ = 5;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_7))
+    {
+        selectedHotbarIndex_ = 6;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_8))
+    {
+        selectedHotbarIndex_ = 7;
+    }
+    if (inputState_.isKeyDown(SDL_SCANCODE_9))
+    {
+        selectedHotbarIndex_ = 8;
     }
 
     const bool sneaking = inputState_.isKeyDown(SDL_SCANCODE_LSHIFT);
@@ -602,22 +656,12 @@ void Application::processInput(const float deltaTimeSeconds)
     glm::vec3 horizontalDisplacement =
         horizontalForward * localMotion.z + horizontalRight * localMotion.x;
 
-    const glm::vec3 feetBeforeHorizontal = playerFeetPosition_;
-    const bool wasGrounded = isGroundedAtFeetPosition(world_, playerFeetPosition_, colliderHeight);
-
     if (glm::dot(horizontalDisplacement, horizontalDisplacement) > 0.0f)
     {
         static_cast<void>(movePlayerAxisWithCollision(
             world_, playerFeetPosition_, 0, horizontalDisplacement.x, colliderHeight));
         static_cast<void>(movePlayerAxisWithCollision(
             world_, playerFeetPosition_, 2, horizontalDisplacement.z, colliderHeight));
-        tryAutoStepUpOneBlock(
-            world_,
-            playerFeetPosition_,
-            feetBeforeHorizontal,
-            horizontalDisplacement,
-            colliderHeight,
-            wasGrounded);
     }
 
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, colliderHeight);
@@ -664,39 +708,80 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (inputState_.leftMousePressed)
     {
-        world_.applyEditCommand(world::WorldEditCommand{
+        if (world_.applyEditCommand(world::WorldEditCommand{
             .action = world::WorldEditAction::Remove,
             .position = raycastHit->solidBlock,
             .blockType = world::BlockType::Air,
-        });
+        }))
+        {
+            static_cast<void>(
+                addBlockToInventory(hotbarSlots_, bagSlots_, raycastHit->blockType, selectedHotbarIndex_));
+        }
     }
 
     if (inputState_.rightMousePressed)
     {
-        world_.applyEditCommand(world::WorldEditCommand{
+        InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+        if (selectedSlot.count == 0)
+        {
+            return;
+        }
+
+        if (world_.applyEditCommand(world::WorldEditCommand{
             .action = world::WorldEditAction::Place,
             .position = raycastHit->buildTarget,
-            .blockType = world::BlockType::Dirt,
-        });
+            .blockType = selectedSlot.blockType,
+        }))
+        {
+            consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+        }
     }
 }
 
 void Application::syncWorldData()
 {
+    const world::ChunkCoord cameraChunk = world::worldToChunkCoord(
+        static_cast<int>(std::floor(camera_.position().x)),
+        static_cast<int>(std::floor(camera_.position().z)));
+    world_.generateMissingChunksAround(
+        terrainGenerator_,
+        cameraChunk,
+        kStreamingSettings.generationChunkRadius,
+        kStreamingSettings.generationChunkBudgetPerFrame);
+
+    glm::vec3 prefetchDirection = camera_.forward();
+    prefetchDirection.y = 0.0f;
+    if (glm::dot(prefetchDirection, prefetchDirection) > 0.0f)
+    {
+        prefetchDirection = glm::normalize(prefetchDirection);
+        const float prefetchDistanceWorldUnits =
+            static_cast<float>(kStreamingSettings.forwardPrefetchChunks * world::Chunk::kSize);
+        const int prefetchWorldX =
+            static_cast<int>(std::floor(camera_.position().x + prefetchDirection.x * prefetchDistanceWorldUnits));
+        const int prefetchWorldZ =
+            static_cast<int>(std::floor(camera_.position().z + prefetchDirection.z * prefetchDistanceWorldUnits));
+        const world::ChunkCoord prefetchChunk = world::worldToChunkCoord(prefetchWorldX, prefetchWorldZ);
+        if (!(prefetchChunk == cameraChunk))
+        {
+            world_.generateMissingChunksAround(
+                terrainGenerator_,
+                prefetchChunk,
+                kStreamingSettings.generationChunkRadius,
+                kStreamingSettings.prefetchGenerationBudgetPerFrame);
+        }
+    }
+
     const std::vector<world::ChunkCoord> dirtyCoords = world_.dirtyChunkCoords();
     std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> dirtyCoordSet(
         dirtyCoords.begin(),
         dirtyCoords.end());
-
-    const world::ChunkCoord cameraChunk = world::worldToChunkCoord(
-        static_cast<int>(std::floor(camera_.position().x)),
-        static_cast<int>(std::floor(camera_.position().z)));
     const MeshSyncCpuData cpuData = buildMeshSyncCpuData(
         world_,
         chunkMesher_,
         residentChunkMeshIds_,
         dirtyCoordSet,
-        cameraChunk);
+        cameraChunk,
+        kStreamingSettings.meshBuildBudgetPerFrame);
     applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
 
     if (!cpuData.residentDirtyCoords.empty())

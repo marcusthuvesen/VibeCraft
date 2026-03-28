@@ -80,6 +80,7 @@ flowchart TD
 |-- assets/
 |   |-- shaders/
 |   |-- saves/
+|   |-- textures/
 |-- cmake/
 |   |-- Dependencies.cmake
 |-- include/
@@ -125,6 +126,7 @@ flowchart TD
 - Owns frame lifecycle and resize handling.
 - Owns renderer-side scene resources created from app-submitted mesh data.
 - Owns the project shader pipeline under `assets/shaders/`.
+- Owns the runtime chunk material atlas under `assets/textures/`.
 - Updates GPU chunk resources incrementally instead of replacing the full scene on every world edit.
 - Culls chunk draw calls against the camera frustum before submission.
 - Uses a lighting-ready chunk vertex format with normals for basic directional shading.
@@ -262,13 +264,18 @@ This section tracks what is already landed versus what each contributor should p
 - SDL3 focus and pixel-size handling; camera movement and mouse look gated on window focus.
 - `World` exposes `dirtyChunkCoords()` for incremental app-side sync.
 - Resident-only dirty mesh stat rebuilds: `Application` now asks `World` to rebuild just in-range dirty chunks, avoiding full dirty remeshing every frame.
+- Streaming hitch reduction in `app`: missing chunk generation and resident chunk mesh builds now run with per-frame budgets and nearest-first prioritization, smoothing terrain pop-in while moving.
+- Directional prefetch in `app`: chunk streaming now spends a dedicated budget on a forward look-ahead ring, reducing visible terrain pop when moving quickly.
 - Budgeted off-resident dirty stat cleanup: `Application` now rebuilds only a small capped subset of off-resident dirty chunks per frame.
 - Explicit sync staging in `Application`: CPU mesh generation and GPU upload/application are now separated into dedicated phases.
 - Smoothed frame timing and FPS are now included in the renderer status line for quick performance checks.
 - Added Windows-oriented CMake presets (`windows-debug` for configure/build/test) so Windows bring-up uses the same workflow as macOS.
 - Renderer overlay now includes `bgfx` CPU/GPU frame times and draw/triangle counters for deeper graphics-side profiling.
-- First-pass textured chunk materials: renderer now uses a generated atlas texture with UV-projected sampling in chunk shaders, making terrain read more like block materials than flat color.
+- Textured chunk materials now use imported pixel-art assets under `assets/textures/`, with `ChunkMesher` emitting deterministic atlas UVs per block type instead of renderer-side planar projection.
 - Grounded player controller in `app` (Minecraft-style): **1.8-block** standing hitbox (1.5 when sneaking), **Shift sneak** / **Ctrl sprint**, ~Java walking speed, gravity + jump, voxel collision, and **auto step-up** onto single-block ledges (no free-fly).
+- First infinite terrain pass in `app`: the camera-centered streaming loop now asks `World` to generate missing chunks around the player beyond the resident render radius, so terrain extends as you move.
+- Terrain generator now has layered deterministic noise and sea-level filling for more varied biomes and visible water regions.
+- Inventory/bag expansion in `app`: mined blocks now flow through a 9-slot hotbar plus 27-slot bag with stack limits and hotbar auto-refill from bag; `1-9` selects the active hotbar slot.
 
 ### Person B: recently completed
 
@@ -283,8 +290,8 @@ These are the **next logical tasks** after the current vertical slice. Split kee
 **Person A should focus on**
 
 1. **Infinite terrain generation (streaming):** extend the camera-centered loop so the world **generates and loads chunks as the player moves**, unloads or stops meshing far chunks within agreed budgets, and keeps GPU uploads stable. Person B defines *what* is in a chunk at `(chunkX, chunkZ)`; Person A owns *when* chunks exist, resident radius, and the `app` → `meshing` → `render` pipeline for scale.
-2. **Inventory “bag” and hotbar (Minecraft-like):** player-facing slots (e.g. hotbar + main inventory), selection of which block type to place, and UI in the overlay or a minimal HUD—implemented in `game` data + `app` wiring + `render` debug/text or simple quads, without bloating `world` with SDL/bgfx.
-3. **Mining → inventory:** when the player **breaks** a block (left click), the **block type removed** is added as an item stack to the bag/hotbar (respecting stack limits later). Optional later: **item entities on the ground** and pickup when **walking onto/near** them; the first step is **direct grant on break** so gameplay is usable without physics drops.
+2. **Inventory UI polish:** current bag/hotbar flow works in debug text; next step is a clearer HUD (slot highlights, compact counts) and interaction polish for transfers/splitting.
+3. **Mining → pickup progression:** direct grant-on-break is in; optional later step is **item entities on the ground** and pickup when **walking onto/near** them for a more Minecraft-like feel.
 
 **Person B should focus on**
 
@@ -297,7 +304,7 @@ These are the **next logical tasks** after the current vertical slice. Split kee
 
 Ongoing work in parallel with the milestone above:
 
-1. **Real block-tile mapping handoff:** coordinate with Person B so `ChunkMesher` emits deterministic per-face UVs / tile ids (grass top vs side, dirt, stone, ore) instead of renderer-side planar projection only.
+1. **Material expansion:** extend the imported atlas from the current per-block texture set to richer per-face rules (grass top vs side, dedicated ore variants, biome-driven swaps) without regressing the current UV contract.
 2. **Sky and depth cues:** sky gradient and distance fog that match **Person B’s sun direction** once exposed.
 3. **Occlusion and polish:** selection outline, optional AA after textures are stable.
 4. **Windows bring-up:** run the `windows-debug` preset on a Windows host and fix shader output layout, runtime DLL copy, and path issues.
@@ -307,7 +314,7 @@ Ongoing work in parallel with the milestone above:
 ### Person B: suggested next steps
 
 1. **Sun and trees (milestone):** as in **Next milestone priorities** above—world-facing sun direction / day cycle hooks, then tree blocks and generation.
-2. **Content and data:** additional `BlockType` values, biome hooks, and **block → texture tile index** once Person A’s UV contract is fixed.
+2. **Content and data:** additional `BlockType` values, biome hooks, and expanded **block → texture tile mapping** on top of the atlas + UV path that now exists.
 3. **Meshing algorithms (CPU only):** greedy meshing, ambient occlusion baking—coordinate before changing vertex layout or adding attributes.
 4. **Tests and saves:** new blocks, terrain edge cases, serializer changes as the world grows.
 5. **Interface discipline:** any change to chunk vertex layout or GPU attributes is coordinated first; Person B does not own `render/` or final `app/` integration.

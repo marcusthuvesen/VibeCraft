@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <unordered_set>
 
+#include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/game/Camera.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
 #include "vibecraft/platform/InputState.hpp"
@@ -40,6 +41,9 @@ class Application
     float verticalVelocity_ = 0.0f;
     bool isGrounded_ = false;
     bool jumpWasHeld_ = false;
+    HotbarSlots hotbarSlots_{};
+    BagSlots bagSlots_{};
+    std::size_t selectedHotbarIndex_ = 0;
     float smoothedFrameTimeMs_ = 0.0f;
     bool frameTimeInitialized_ = false;
 };

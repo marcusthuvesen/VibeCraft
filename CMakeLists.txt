@@ -79,6 +79,7 @@ add_custom_target(
 
 set(VIBECRAFT_HEADERS
     include/vibecraft/app/Application.hpp
+    include/vibecraft/app/Inventory.hpp
     include/vibecraft/core/Logger.hpp
     include/vibecraft/game/Camera.hpp
     include/vibecraft/meshing/ChunkMesher.hpp
@@ -95,6 +96,7 @@ set(VIBECRAFT_HEADERS
 
 set(VIBECRAFT_SOURCES
     src/app/Application.cpp
+    src/app/Inventory.cpp
     src/app/main.cpp
     src/core/Logger.cpp
     src/game/Camera.cpp
@@ -144,6 +146,9 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:SDL3::SDL3>
         $<TARGET_FILE_DIR:vibecraft>
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures"
+        "$<TARGET_FILE_DIR:vibecraft>/textures"
 )
 
 if(MSVC)

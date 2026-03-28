@@ -1,11 +1,16 @@
 #pragma once
 
 #include <glm/vec3.hpp>
+#include <glm/vec2.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "vibecraft/world/Block.hpp"
 
 namespace vibecraft::render
 {
@@ -26,6 +31,7 @@ struct SceneMeshData
     {
         glm::vec3 position{0.0f};
         glm::vec3 normal{0.0f, 1.0f, 0.0f};
+        glm::vec2 uv{0.0f};
         std::uint32_t abgr = 0xffffffff;
     };
 
@@ -37,6 +43,12 @@ struct SceneMeshData
 
 struct FrameDebugData
 {
+    struct HotbarSlotHud
+    {
+        vibecraft::world::BlockType blockType = vibecraft::world::BlockType::Air;
+        std::uint32_t count = 0;
+    };
+
     std::uint32_t chunkCount = 0;
     std::uint32_t dirtyChunkCount = 0;
     std::uint32_t totalFaces = 0;
@@ -45,6 +57,9 @@ struct FrameDebugData
     bool hasTarget = false;
     glm::ivec3 targetBlock{0, 0, 0};
     std::string statusLine;
+    std::string bagLine;
+    std::array<HotbarSlotHud, 9> hotbarSlots{};
+    std::size_t hotbarSelectedIndex = 0;
 };
 
 class Renderer

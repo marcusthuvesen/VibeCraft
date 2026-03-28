@@ -17,6 +17,8 @@ struct DebugVertex
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;
+    float u = 0.0f;
+    float v = 0.0f;
     std::uint32_t abgr = 0;
 };
 

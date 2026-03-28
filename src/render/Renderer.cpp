@@ -7,10 +7,12 @@
 #include <bx/math.h>
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <cmath>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,6 +26,8 @@ constexpr bgfx::ViewId kMainView = 0;
 constexpr std::uint32_t kDefaultResetFlags = BGFX_RESET_VSYNC;
 constexpr std::uint64_t kChunkRenderState =
     BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
+constexpr std::uint16_t kChunkAtlasWidth = 64;
+constexpr std::uint16_t kChunkAtlasHeight = 32;
 
 struct ChunkVertex
 {
@@ -75,22 +79,11 @@ struct ChunkVertex
     return bgfx::UniformHandle{handleIndex};
 }
 
-[[nodiscard]] std::pair<float, float> planarUvForVertex(const ChunkVertex& vertex)
+[[nodiscard]] std::filesystem::path runtimeAssetPath(const std::filesystem::path& relativePath)
 {
-    const float absNx = std::abs(vertex.nx);
-    const float absNy = std::abs(vertex.ny);
-    const float absNz = std::abs(vertex.nz);
-    constexpr float kUvScale = 0.25f;
-
-    if (absNy >= absNx && absNy >= absNz)
-    {
-        return {vertex.x * kUvScale, vertex.z * kUvScale};
-    }
-    if (absNx >= absNy && absNx >= absNz)
-    {
-        return {vertex.z * kUvScale, vertex.y * kUvScale};
-    }
-    return {vertex.x * kUvScale, vertex.y * kUvScale};
+    const char* const basePathCStr = SDL_GetBasePath();
+    const std::filesystem::path basePath = basePathCStr != nullptr ? basePathCStr : "";
+    return basePath / relativePath;
 }
 
 [[nodiscard]] bool isAabbInsideFrustum(const bx::Plane* const frustumPlanes, const bx::Aabb& aabb)
@@ -110,6 +103,99 @@ struct ChunkVertex
     }
 
     return true;
+}
+
+[[nodiscard]] char hotbarGlyphForBlock(const vibecraft::world::BlockType blockType)
+{
+    using vibecraft::world::BlockType;
+    switch (blockType)
+    {
+    case BlockType::Grass:
+        return 'G';
+    case BlockType::Dirt:
+        return 'D';
+    case BlockType::Stone:
+        return 'S';
+    case BlockType::Deepslate:
+        return 'd';
+    case BlockType::CoalOre:
+        return 'C';
+    case BlockType::Sand:
+        return 's';
+    case BlockType::Bedrock:
+        return 'B';
+    case BlockType::Water:
+        return 'W';
+    case BlockType::Air:
+    default:
+        return '?';
+    }
+}
+
+[[nodiscard]] std::string formatHotbarCell(const FrameDebugData::HotbarSlotHud& slot)
+{
+    if (slot.count == 0)
+    {
+        return std::string("[   ]");
+    }
+
+    const char glyph = hotbarGlyphForBlock(slot.blockType);
+    const std::uint32_t displayCount = std::min(slot.count, 99u);
+    return fmt::format("[{}{:02}]", glyph, displayCount);
+}
+
+void dbgTextPrintfCenteredRow(
+    const std::uint16_t row,
+    const std::uint16_t attr,
+    const std::string& text)
+{
+    const bgfx::Stats* stats = bgfx::getStats();
+    const std::uint16_t textWidth = stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
+    const int col =
+        (static_cast<int>(textWidth) - static_cast<int>(text.size())) / 2;
+    const int clampedCol = std::max(0, col);
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(clampedCol), row, attr, "%s", text.c_str());
+}
+
+[[nodiscard]] int computeCenteredHotbarStartColumn()
+{
+    constexpr int kCellChars = 5;
+    constexpr int kGap = 1;
+    constexpr int kSlotCount = 9;
+    const int totalChars = kSlotCount * kCellChars + (kSlotCount - 1) * kGap;
+
+    const bgfx::Stats* stats = bgfx::getStats();
+    const std::uint16_t textWidth = stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
+    const int startCol = (static_cast<int>(textWidth) - totalChars) / 2;
+    return std::max(0, startCol);
+}
+
+void drawHotbarHud(const std::uint16_t row, const FrameDebugData& frameDebugData)
+{
+    constexpr int kCellChars = 5;
+    constexpr int kGap = 1;
+    int col = computeCenteredHotbarStartColumn();
+    for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+    {
+        const bool selected = slotIndex == frameDebugData.hotbarSelectedIndex;
+        const bool empty = frameDebugData.hotbarSlots[slotIndex].count == 0;
+        const std::uint16_t attr = selected ? 0x0f : (empty ? 0x08 : 0x0b);
+        const std::string cell = formatHotbarCell(frameDebugData.hotbarSlots[slotIndex]);
+        bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), row, attr, "%s", cell.c_str());
+        col += kCellChars + kGap;
+    }
+}
+
+void drawHotbarKeyHintsRow(const std::uint16_t row)
+{
+    constexpr int kCellChars = 5;
+    constexpr int kGap = 1;
+    int col = computeCenteredHotbarStartColumn();
+    for (int keyIndex = 1; keyIndex <= 9; ++keyIndex)
+    {
+        bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col + 2), row, 0x06, "%d", keyIndex);
+        col += kCellChars + kGap;
+    }
 }
 
 [[nodiscard]] const char* shaderProfileDirectory(const bgfx::RendererType::Enum rendererType)
@@ -145,11 +231,8 @@ struct ChunkVertex
         return BGFX_INVALID_HANDLE;
     }
 
-    const char* const basePathCStr = SDL_GetBasePath();
-    const std::filesystem::path basePath = basePathCStr != nullptr ? basePathCStr : "";
-
     const std::filesystem::path shaderPath =
-        basePath / "shaders" / profileDirectory / (shaderName + ".bin");
+        runtimeAssetPath(std::filesystem::path("shaders") / profileDirectory / (shaderName + ".bin"));
 
     std::ifstream shaderStream(shaderPath, std::ios::binary);
     if (!shaderStream)
@@ -194,7 +277,7 @@ struct ChunkVertex
     return bgfx::createProgram(vertexShader, fragmentShader, true);
 }
 
-[[nodiscard]] bgfx::TextureHandle createChunkAtlasTexture()
+[[nodiscard]] bgfx::TextureHandle createFallbackChunkAtlasTexture()
 {
     constexpr std::uint16_t kAtlasSize = 16;
     constexpr std::uint16_t kTileSize = 8;
@@ -256,6 +339,46 @@ struct ChunkVertex
         1,
         bgfx::TextureFormat::BGRA8,
         BGFX_TEXTURE_NONE,
+        atlasMemory);
+}
+
+[[nodiscard]] bgfx::TextureHandle createChunkAtlasTexture()
+{
+    const std::filesystem::path atlasPath = runtimeAssetPath("textures/chunk_atlas.bgra");
+    if (!std::filesystem::exists(atlasPath))
+    {
+        return createFallbackChunkAtlasTexture();
+    }
+
+    constexpr std::size_t kExpectedBytes =
+        static_cast<std::size_t>(kChunkAtlasWidth) * static_cast<std::size_t>(kChunkAtlasHeight) * 4U;
+    if (std::filesystem::file_size(atlasPath) != kExpectedBytes)
+    {
+        return createFallbackChunkAtlasTexture();
+    }
+
+    std::ifstream atlasStream(atlasPath, std::ios::binary);
+    if (!atlasStream)
+    {
+        return createFallbackChunkAtlasTexture();
+    }
+
+    std::vector<std::uint8_t> atlasPixels(kExpectedBytes);
+    atlasStream.read(reinterpret_cast<char*>(atlasPixels.data()), static_cast<std::streamsize>(atlasPixels.size()));
+    if (!atlasStream)
+    {
+        return createFallbackChunkAtlasTexture();
+    }
+
+    const bgfx::Memory* const atlasMemory =
+        bgfx::copy(atlasPixels.data(), static_cast<std::uint32_t>(atlasPixels.size()));
+    return bgfx::createTexture2D(
+        kChunkAtlasWidth,
+        kChunkAtlasHeight,
+        false,
+        1,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
         atlasMemory);
 }
 }
@@ -390,21 +513,17 @@ void Renderer::updateSceneMeshes(
 
         for (const SceneMeshData::Vertex& vertex : sceneMesh.vertices)
         {
-            ChunkVertex chunkVertex{
+            chunkVertices.push_back(ChunkVertex{
                 .x = vertex.position.x,
                 .y = vertex.position.y,
                 .z = vertex.position.z,
                 .nx = vertex.normal.x,
                 .ny = vertex.normal.y,
                 .nz = vertex.normal.z,
-                .u = 0.0f,
-                .v = 0.0f,
+                .u = vertex.uv.x,
+                .v = vertex.uv.y,
                 .abgr = vertex.abgr,
-            };
-            const auto [u, v] = planarUvForVertex(chunkVertex);
-            chunkVertex.u = u;
-            chunkVertex.v = v;
-            chunkVertices.push_back(chunkVertex);
+            });
         }
 
         const bgfx::VertexBufferHandle vertexBuffer = bgfx::createVertexBuffer(
@@ -536,6 +655,14 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     debugDrawEncoder.end();
 
     bgfx::dbgTextClear();
+    const bgfx::Stats* const bgfxStats = bgfx::getStats();
+    const std::uint16_t textHeight = bgfxStats != nullptr ? bgfxStats->textHeight : 30;
+    const std::uint16_t hotbarRow = textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
+    const std::uint16_t hotbarKeyRow = textHeight > 1 ? static_cast<std::uint16_t>(textHeight - 2) : 0;
+    const std::uint16_t bagHudRow = textHeight > 2 ? static_cast<std::uint16_t>(textHeight - 3) : 0;
+    const std::uint16_t controlsRow0 = textHeight > 3 ? static_cast<std::uint16_t>(textHeight - 4) : 0;
+    const std::uint16_t controlsRow1 = textHeight > 4 ? static_cast<std::uint16_t>(textHeight - 5) : 0;
+
     bgfx::dbgTextPrintf(0, 1, 0x0f, "VibeCraft foundation slice");
     bgfx::dbgTextPrintf(0, 3, 0x0a, "%s", frameDebugData.statusLine.c_str());
     bgfx::dbgTextPrintf(
@@ -547,7 +674,6 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         frameDebugData.dirtyChunkCount,
         frameDebugData.residentChunkCount);
     bgfx::dbgTextPrintf(0, 6, 0x0f, "Faces: %u  Visible chunks: %u", frameDebugData.totalFaces, visibleChunkCount);
-    const bgfx::Stats* const bgfxStats = bgfx::getStats();
     if (bgfxStats != nullptr)
     {
         const double cpuFrameMs = bgfxStats->cpuTimerFreq > 0
@@ -595,8 +721,19 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         bgfx::dbgTextPrintf(0, 9, 0x0f, "Target block: none");
     }
 
-    bgfx::dbgTextPrintf(0, 11, 0x0e, "Controls: WASD move, Shift sneak, Ctrl sprint, Space jump, mouse look");
-    bgfx::dbgTextPrintf(0, 12, 0x0e, "LMB remove, RMB place, Tab capture mouse, Esc release mouse");
+    drawHotbarHud(hotbarRow, frameDebugData);
+    drawHotbarKeyHintsRow(hotbarKeyRow);
+    dbgTextPrintfCenteredRow(bagHudRow, 0x0a, frameDebugData.bagLine);
+    bgfx::dbgTextPrintf(
+        0,
+        controlsRow0,
+        0x0e,
+        "Controls: WASD move, Shift sneak, Ctrl sprint, Space jump, mouse look");
+    bgfx::dbgTextPrintf(
+        0,
+        controlsRow1,
+        0x0e,
+        "LMB mine, RMB place, 1-9 select hotbar, Tab capture, Esc release");
 
     bgfx::frame();
 }
