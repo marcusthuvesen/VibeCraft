@@ -1,0 +1,9 @@
+build/
+.tools/
+.cache/
+.DS_Store
+.idea/
+.vscode/
+compile_commands.json
+Testing/
+assets/saves/*.bin

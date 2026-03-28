@@ -1,0 +1,28 @@
+#pragma once
+
+#include <glm/vec3.hpp>
+
+namespace vibecraft::game
+{
+class Camera
+{
+  public:
+    Camera();
+
+    void setPosition(const glm::vec3& position);
+    void addYawPitch(float yawDeltaDegrees, float pitchDeltaDegrees);
+    void moveLocal(const glm::vec3& localMotion);
+
+    [[nodiscard]] const glm::vec3& position() const;
+    [[nodiscard]] glm::vec3 forward() const;
+    [[nodiscard]] glm::vec3 right() const;
+    [[nodiscard]] glm::vec3 up() const;
+    [[nodiscard]] float yawDegrees() const;
+    [[nodiscard]] float pitchDegrees() const;
+
+  private:
+    glm::vec3 position_;
+    float yawDegrees_ = -90.0f;
+    float pitchDegrees_ = -20.0f;
+};
+}  // namespace vibecraft::game
