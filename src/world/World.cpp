@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "vibecraft/meshing/ChunkMesher.hpp"
+#include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/TerrainGenerator.hpp"
 #include "vibecraft/world/WorldSerializer.hpp"
 
@@ -50,15 +51,19 @@ bool World::applyEditCommand(const WorldEditCommand& command)
 
     const ChunkCoord coord = worldToChunkCoord(command.position.x, command.position.z);
     Chunk& chunk = ensureChunk(coord);
+    const int localX = worldToLocalCoord(command.position.x);
+    const int localZ = worldToLocalCoord(command.position.z);
+    const BlockType existingType = chunk.blockAt(localX, command.position.y, localZ);
+
+    if (existingType != BlockType::Air && !blockMetadata(existingType).breakable)
+    {
+        return false;
+    }
 
     const BlockType targetType =
         command.action == WorldEditAction::Place ? command.blockType : BlockType::Air;
 
-    if (!chunk.setBlock(
-            worldToLocalCoord(command.position.x),
-            command.position.y,
-            worldToLocalCoord(command.position.z),
-            targetType))
+    if (!chunk.setBlock(localX, command.position.y, localZ, targetType))
     {
         return false;
     }

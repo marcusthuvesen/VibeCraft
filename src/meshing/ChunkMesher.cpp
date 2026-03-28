@@ -2,6 +2,7 @@
 
 #include <array>
 
+#include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/World.hpp"
 
 namespace vibecraft::meshing
@@ -27,25 +28,6 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
     {0, 0, -1, {{{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}}},
 }};
 
-constexpr std::uint32_t colorForBlockType(const BlockType blockType)
-{
-    switch (blockType)
-    {
-    case BlockType::Grass:
-        return 0xff4caf50;
-    case BlockType::Dirt:
-        return 0xff795548;
-    case BlockType::Stone:
-        return 0xff9e9e9e;
-    case BlockType::Deepslate:
-        return 0xff455a64;
-    case BlockType::CoalOre:
-        return 0xff607d8b;
-    case BlockType::Air:
-    default:
-        return 0xffffffff;
-    }
-}
 }  // namespace
 
 ChunkMeshData ChunkMesher::buildMesh(
@@ -83,7 +65,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                             .x = static_cast<float>(worldX) + corner[0],
                             .y = static_cast<float>(y) + corner[1],
                             .z = static_cast<float>(worldZ) + corner[2],
-                            .abgr = colorForBlockType(blockType),
+                            .abgr = vibecraft::world::blockMetadata(blockType).debugColor,
                         });
                     }
 

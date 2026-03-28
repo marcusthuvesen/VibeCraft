@@ -5,6 +5,7 @@
 #include <filesystem>
 
 #include "vibecraft/meshing/ChunkMesher.hpp"
+#include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/TerrainGenerator.hpp"
 #include "vibecraft/world/World.hpp"
 
@@ -64,29 +65,80 @@ TEST_CASE("terrain generator carves underground caves without breaking the surfa
     CHECK(foundUndergroundCave);
 }
 
-TEST_CASE("terrain generator adds stratified underground layers and coal ore")
+TEST_CASE("terrain generator keeps common layers broad and clusters rare ore")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     bool foundDeepslate = false;
-    bool foundCoalOre = false;
+    bool foundSandSurface = false;
+    bool foundCoalCluster = false;
+    std::size_t commonRockCount = 0;
+    std::size_t coalOreCount = 0;
 
-    for (int worldX = -32; worldX <= 32 && (!foundDeepslate || !foundCoalOre); ++worldX)
+    for (int worldX = -32; worldX <= 32; ++worldX)
     {
-        for (int worldZ = -32; worldZ <= 32 && (!foundDeepslate || !foundCoalOre); ++worldZ)
+        for (int worldZ = -32; worldZ <= 32; ++worldZ)
         {
             const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            const vibecraft::world::BlockType surfaceBlock = terrainGenerator.blockTypeAt(worldX, surface, worldZ);
+            foundSandSurface = foundSandSurface || surfaceBlock == vibecraft::world::BlockType::Sand;
 
             for (int y = 1; y <= surface - 4; ++y)
             {
                 const vibecraft::world::BlockType blockType = terrainGenerator.blockTypeAt(worldX, y, worldZ);
                 foundDeepslate = foundDeepslate || blockType == vibecraft::world::BlockType::Deepslate;
-                foundCoalOre = foundCoalOre || blockType == vibecraft::world::BlockType::CoalOre;
+
+                if (blockType == vibecraft::world::BlockType::Stone || blockType == vibecraft::world::BlockType::Deepslate)
+                {
+                    ++commonRockCount;
+                }
+
+                if (blockType == vibecraft::world::BlockType::CoalOre)
+                {
+                    ++coalOreCount;
+
+                    if (!foundCoalCluster)
+                    {
+                        foundCoalCluster =
+                            terrainGenerator.blockTypeAt(worldX + 1, y, worldZ) == vibecraft::world::BlockType::CoalOre
+                            || terrainGenerator.blockTypeAt(worldX - 1, y, worldZ) == vibecraft::world::BlockType::CoalOre
+                            || terrainGenerator.blockTypeAt(worldX, y + 1, worldZ) == vibecraft::world::BlockType::CoalOre
+                            || terrainGenerator.blockTypeAt(worldX, y - 1, worldZ) == vibecraft::world::BlockType::CoalOre
+                            || terrainGenerator.blockTypeAt(worldX, y, worldZ + 1) == vibecraft::world::BlockType::CoalOre
+                            || terrainGenerator.blockTypeAt(worldX, y, worldZ - 1) == vibecraft::world::BlockType::CoalOre;
+                    }
+                }
             }
         }
     }
 
     CHECK(foundDeepslate);
-    CHECK(foundCoalOre);
+    CHECK(foundSandSurface);
+    CHECK(coalOreCount > 0);
+    CHECK(foundCoalCluster);
+    CHECK(commonRockCount > coalOreCount * 12);
+}
+
+TEST_CASE("block metadata exposes stable texture tile indices for current block set")
+{
+    using vibecraft::world::BlockFace;
+    using vibecraft::world::BlockType;
+
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Grass, BlockFace::Top) == 0);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Grass, BlockFace::Bottom) == 1);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Dirt, BlockFace::Side) == 1);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Stone, BlockFace::Top) == 2);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Sand, BlockFace::Side) == 3);
+    CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xff607d8b);
+}
+
+TEST_CASE("deeper block families are harder and bedrock is unbreakable")
+{
+    using vibecraft::world::BlockType;
+
+    CHECK(vibecraft::world::blockMetadata(BlockType::Dirt).hardness < vibecraft::world::blockMetadata(BlockType::Stone).hardness);
+    CHECK(vibecraft::world::blockMetadata(BlockType::Stone).hardness < vibecraft::world::blockMetadata(BlockType::Deepslate).hardness);
+    CHECK(vibecraft::world::blockMetadata(BlockType::Deepslate).hardness < vibecraft::world::blockMetadata(BlockType::Bedrock).hardness);
+    CHECK_FALSE(vibecraft::world::blockMetadata(BlockType::Bedrock).breakable);
 }
 
 TEST_CASE("world save and load round-trips edited blocks")
@@ -110,6 +162,20 @@ TEST_CASE("world save and load round-trips edited blocks")
 
     std::error_code errorCode;
     std::filesystem::remove(tempPath, errorCode);
+}
+
+TEST_CASE("world edit commands cannot break bedrock")
+{
+    vibecraft::world::World world;
+    world.generateRadius(vibecraft::world::TerrainGenerator{}, 0);
+
+    CHECK(world.blockAt(0, 0, 0) == vibecraft::world::BlockType::Bedrock);
+    CHECK_FALSE(world.applyEditCommand({
+        .action = vibecraft::world::WorldEditAction::Remove,
+        .position = {0, 0, 0},
+        .blockType = vibecraft::world::BlockType::Air,
+    }));
+    CHECK(world.blockAt(0, 0, 0) == vibecraft::world::BlockType::Bedrock);
 }
 
 TEST_CASE("rebuildDirtyMeshes can process a dirty subset")
