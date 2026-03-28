@@ -5,6 +5,26 @@
 
 namespace vibecraft::world
 {
+namespace
+{
+[[nodiscard]] bool shouldCarveCave(const int worldX, const int y, const int worldZ, const int surfaceHeight)
+{
+    if (y < 4 || y > surfaceHeight - 5)
+    {
+        return false;
+    }
+
+    const double caveDensity = std::sin(static_cast<double>(worldX) * 0.11) +
+        std::cos(static_cast<double>(worldZ) * 0.13) +
+        std::sin(static_cast<double>(worldX + worldZ) * 0.05) +
+        std::cos(static_cast<double>(y) * 0.21 + static_cast<double>(worldX) * 0.04) +
+        std::sin(static_cast<double>(y) * 0.17 - static_cast<double>(worldZ) * 0.03) +
+        std::sin(static_cast<double>(worldX - worldZ) * 0.09 + static_cast<double>(y) * 0.12);
+
+    return caveDensity > 2.2;
+}
+}  // namespace
+
 int TerrainGenerator::surfaceHeightAt(const int worldX, const int worldZ) const
 {
     const double hills = std::sin(static_cast<double>(worldX) * 0.18) * 4.0;
@@ -29,6 +49,10 @@ BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int
     if (y >= surfaceHeight - 3)
     {
         return BlockType::Dirt;
+    }
+    if (shouldCarveCave(worldX, y, worldZ, surfaceHeight))
+    {
+        return BlockType::Air;
     }
     return BlockType::Stone;
 }

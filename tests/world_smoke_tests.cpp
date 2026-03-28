@@ -35,6 +35,34 @@ TEST_CASE("terrain generator produces solid ground and air above it")
     CHECK(terrainGenerator.blockTypeAt(12, surface + 1, -9) == vibecraft::world::BlockType::Air);
 }
 
+TEST_CASE("terrain generator carves underground caves without breaking the surface")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    bool foundUndergroundCave = false;
+
+    for (int worldX = -16; worldX <= 16 && !foundUndergroundCave; ++worldX)
+    {
+        for (int worldZ = -16; worldZ <= 16 && !foundUndergroundCave; ++worldZ)
+        {
+            const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+
+            CHECK(vibecraft::world::isSolid(terrainGenerator.blockTypeAt(worldX, surface, worldZ)));
+            CHECK(vibecraft::world::isSolid(terrainGenerator.blockTypeAt(worldX, surface - 1, worldZ)));
+
+            for (int y = 4; y <= surface - 5; ++y)
+            {
+                if (terrainGenerator.blockTypeAt(worldX, y, worldZ) == vibecraft::world::BlockType::Air)
+                {
+                    foundUndergroundCave = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    CHECK(foundUndergroundCave);
+}
+
 TEST_CASE("world save and load round-trips edited blocks")
 {
     vibecraft::world::World world;
