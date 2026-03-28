@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <array>
 #include <filesystem>
 
 #include "vibecraft/meshing/ChunkMesher.hpp"
@@ -84,4 +85,21 @@ TEST_CASE("world save and load round-trips edited blocks")
 
     std::error_code errorCode;
     std::filesystem::remove(tempPath, errorCode);
+}
+
+TEST_CASE("rebuildDirtyMeshes can process a dirty subset")
+{
+    vibecraft::world::World world;
+    world.generateRadius(vibecraft::world::TerrainGenerator{}, 1);
+    const std::size_t initialDirtyChunkCount = world.dirtyChunkCount();
+    REQUIRE(initialDirtyChunkCount > 0);
+
+    const std::vector<vibecraft::world::ChunkCoord> dirtyCoords = world.dirtyChunkCoords();
+    REQUIRE(!dirtyCoords.empty());
+
+    vibecraft::meshing::ChunkMesher mesher;
+    const std::array<vibecraft::world::ChunkCoord, 1> selectedCoords{dirtyCoords.front()};
+    world.rebuildDirtyMeshes(mesher, selectedCoords);
+
+    CHECK(world.dirtyChunkCount() == initialDirtyChunkCount - 1);
 }

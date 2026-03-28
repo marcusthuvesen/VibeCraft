@@ -34,5 +34,7 @@ class Application
     std::filesystem::path savePath_ = "assets/saves/dev_world.bin";
     std::unordered_set<std::uint64_t> residentChunkMeshIds_;
     bool mouseCaptured_ = true;
+    float smoothedFrameTimeMs_ = 0.0f;
+    bool frameTimeInitialized_ = false;
 };
 }  // namespace vibecraft::app

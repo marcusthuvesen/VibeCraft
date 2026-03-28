@@ -261,27 +261,59 @@ This section tracks what is already landed versus what each contributor should p
 - Chunk vertices with normals and basic directional lighting in the fragment shader; per-vertex normals computed in `Application` before upload.
 - SDL3 focus and pixel-size handling; camera movement and mouse look gated on window focus.
 - `World` exposes `dirtyChunkCoords()` for incremental app-side sync.
+- Resident-only dirty mesh stat rebuilds: `Application` now asks `World` to rebuild just in-range dirty chunks, avoiding full dirty remeshing every frame.
+- Budgeted off-resident dirty stat cleanup: `Application` now rebuilds only a small capped subset of off-resident dirty chunks per frame.
+- Explicit sync staging in `Application`: CPU mesh generation and GPU upload/application are now separated into dedicated phases.
+- Smoothed frame timing and FPS are now included in the renderer status line for quick performance checks.
+- Added Windows-oriented CMake presets (`windows-debug` for configure/build/test) so Windows bring-up uses the same workflow as macOS.
+- Renderer overlay now includes `bgfx` CPU/GPU frame times and draw/triangle counters for deeper graphics-side profiling.
 
 ### Person B: recently completed
 
 - Procedural underground caves in `TerrainGenerator` using a density test that preserves the surface and shallow subsurface layers.
 - Tests covering solid surface columns, air above terrain, cave presence in a sampled region, and save/load round-trip for edited blocks.
 
-### Person A: suggested next steps
+### Person A: suggested next steps (Minecraft-like visuals first)
 
-1. Trim redundant per-frame CPU work: today `World::rebuildDirtyMeshes` may run for all dirty chunks after syncing resident meshes; tighten this so off-resident dirty chunks do not pay full mesh rebuild cost unless needed for stats or debugging.
-2. Separate **CPU mesh generation** from **GPU upload** more explicitly in `Application` (queue or staging structs) so future threading or budgeting is straightforward.
-3. Validate the `Windows` CMake preset and fix any platform-specific issues in `platform`, `render`, or runtime library paths.
-4. Extend the renderer with depth-aware passes, textures, or materials when the project is ready for art-driven surfaces.
-5. Add lightweight frame timing or GPU frame stats to the debug overlay for performance work.
+Focus here on **visible** upgrades: textures, lighting atmosphere, and solid 3D depth—so the game reads as a block world, not a flat-shaded prototype.
+
+1. **Texture atlas + UVs:** add a block texture atlas (or a small set of atlases), pass per-vertex UVs from meshing, and sample in `fs_chunk` with optional mip filtering. Coordinate with Person B on `BlockType` → tile index so art stays data-driven.
+2. **Per-face or per-block materials:** drive different tiles per face (grass top vs side) and block family (stone, dirt, ore) via meshing output and shader, still without pulling gameplay into `render`.
+3. **Sky and depth cues:** simple sky gradient or clear color, horizon fog or distance fog, and a sun direction that matches the directional light in the chunk shader.
+4. **Occlusion and polish:** confirm depth buffer usage for chunk draws; add MSAA or softer edges later if needed. Block outline / selection highlight can live in `render` once `app` exposes a stable target block.
+5. **Windows bring-up:** run the `windows-debug` preset on a Windows host and fix shader output layout, runtime DLL copy, and path issues.
+
+**How this stays merge-safe:** Person A owns the **GPU path** (`render/`, `assets/shaders/`, CMake shader build, and any new fields on `SceneMeshData` / renderer-facing structs). Person B owns **what gets meshed** (`meshing/`, block/tile tables in `world/`). For UVs, Person A lands the shader + vertex layout first; Person B fills `ChunkMesher` output to match—same handoff as `README` already describes, not two people editing `Application.cpp` in parallel.
 
 ### Person B: suggested next steps
 
-1. Expand world content on stable interfaces: additional `BlockType` values, simple ore or stratified underground layers, or biome hooks that stay data-driven.
-2. Gameplay iteration in `game` and `world`: hotbar or block selection for placement, simple survival-adjacent rules, or tools—without pulling renderer APIs into `world`.
-3. Meshing upgrades that stay CPU-side: slopes are out of scope until agreed; focus on greedy meshing, ambient occlusion baking, or per-face tint data if needed.
-4. More tests for new blocks, terrain edge cases, and serializer compatibility as the save format evolves.
-5. Coordinate with Person A before changing shared mesh vertex layouts or adding GPU-only attributes.
+1. **Content and data (no rendering):** additional `BlockType` values, ore layers, biome hooks, and a small **block → texture tile index** table that Person A’s shader can consume once UVs exist.
+2. **Gameplay and world rules:** hotbar, block selection for placement, survival-style rules—keep `world`/`game` free of bgfx/SDL beyond agreed queries.
+3. **Meshing algorithms (CPU only):** greedy meshing, ambient occlusion baking—optimize triangles without changing renderer ownership; coordinate before changing vertex layout or adding attributes.
+4. **Tests and saves:** new blocks, terrain edge cases, serializer changes as the world grows.
+5. **Interface discipline:** any change to chunk vertex layout or GPU attributes is coordinated first; Person B does not own `render/` or `app/` integration.
+
+### Overlap watchlist (intentional touch points, not duplicate work)
+
+| Topic | Person A | Person B |
+| --- | --- | --- |
+| Textures / UVs | Atlas loading, shader sampling, `SceneMeshData` layout, `fs_chunk` | Tile tables, which UVs each face emits in `ChunkMesher` |
+| “Minecraft-like” scale | Resident count, GPU budget, streaming loop in `app` | Generate/load chunks by coordinate, save format |
+| Walking | Camera hookup in `app` if needed | Grounding, collision, movement state in `game`/`world` |
+
+If both need the same file in one sprint, use **two PRs in order**: contract/struct/shader first (A), then mesh/world data (B)—or the reverse if B only adds data and A adapts shaders after.
+
+### Walking on the ground vs flying (when and who)
+
+- **Flying (current)** is appropriate while iterating on rendering, streaming, and mesh formats—you move freely to inspect chunks and shaders.
+- **Walking** belongs in the gameplay layer once you can answer: *where is the floor?* That needs **grounding**: height under the player (raycast or collision against voxels), optional player AABB vs blocks, and camera height tied to eye position—not noclip. Implement that in **`game`** (and small helpers in **`world`** for queries), with **`app`** applying camera transforms from the agreed interface. Person B typically leads movement rules; Person A integrates camera and input if the contract crosses `app`.
+- Add walking **after** chunk meshing and block types are stable enough that standing on grass/stone is meaningful—often right **after** a first pass of textures, so the world looks worth walking through.
+
+### Infinite map / “Minecraft-like” streaming (who owns what)
+
+- **Person B (`world`):** what a chunk *contains*—generation, biomes, caves, ores, serialization for chunks you have not visited yet, and rules for “generate chunk at coordinate.”
+- **Person A (`app` + `render`):** how many chunks stay **loaded**, **meshed**, and **drawn**—resident radius, frame budgets, GPU upload queues, frustum and future LOD—so performance stays stable as the playable area grows.
+- **Split the handoff:** Person B exposes a clear API like “ensure chunks in radius R exist” or “stream in chunk coords”; Person A calls it from the camera-centered loop and feeds `meshing` → `render`. That avoids two people editing the same streaming loop without a contract.
 
 ## Validation Checklist
 
@@ -291,6 +323,13 @@ Run these steps for meaningful changes:
 2. `cmake --build --preset debug`
 3. `ctest --preset debug --output-on-failure`
 4. Launch `build/default/bin/vibecraft` and verify startup, camera movement, focus-loss mouse release, and block editing smoke-test correctly.
+
+Windows host validation:
+
+1. `cmake --preset windows-debug`
+2. `cmake --build --preset windows-debug`
+3. `ctest --preset windows-debug --output-on-failure`
+4. Launch `build/windows-debug/bin/vibecraft.exe` and verify startup, movement, and block editing.
 
 ## Coding Guidelines
 

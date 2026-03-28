@@ -4,6 +4,7 @@
 #include <fmt/format.h>
 #include <glm/geometric.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_set>
 #include <vector>
@@ -25,6 +26,7 @@ struct StreamingSettings
 {
     int bootstrapChunkRadius = 2;
     int residentChunkRadius = 3;
+    std::size_t offResidentDirtyRebuildBudget = 8;
 };
 
 struct InputTuning
@@ -112,6 +114,116 @@ void buildVertexNormals(render::SceneMeshData& sceneMesh)
         vertex.normal = glm::normalize(vertex.normal);
     }
 }
+
+struct MeshSyncCpuData
+{
+    std::unordered_set<std::uint64_t> desiredResidentIds;
+    std::vector<render::SceneMeshData> sceneMeshesToUpload;
+    std::vector<std::uint64_t> removedMeshIds;
+    std::vector<world::ChunkCoord> residentDirtyCoords;
+};
+
+[[nodiscard]] MeshSyncCpuData buildMeshSyncCpuData(
+    const world::World& world,
+    const meshing::ChunkMesher& chunkMesher,
+    const std::unordered_set<std::uint64_t>& residentChunkMeshIds,
+    const std::unordered_set<world::ChunkCoord, world::ChunkCoordHash>& dirtyCoordSet,
+    const world::ChunkCoord& cameraChunk)
+{
+    MeshSyncCpuData cpuData;
+    cpuData.sceneMeshesToUpload.reserve(dirtyCoordSet.size());
+    cpuData.removedMeshIds.reserve(dirtyCoordSet.size() + residentChunkMeshIds.size());
+    cpuData.residentDirtyCoords.reserve(dirtyCoordSet.size());
+
+    for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
+         chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius;
+         ++chunkZ)
+    {
+        for (int chunkX = cameraChunk.x - kStreamingSettings.residentChunkRadius;
+             chunkX <= cameraChunk.x + kStreamingSettings.residentChunkRadius;
+             ++chunkX)
+        {
+            const world::ChunkCoord coord{chunkX, chunkZ};
+            const std::uint64_t meshId = chunkMeshId(coord);
+            cpuData.desiredResidentIds.insert(meshId);
+
+            const bool isDirty = dirtyCoordSet.contains(coord);
+            if (isDirty)
+            {
+                cpuData.residentDirtyCoords.push_back(coord);
+            }
+
+            const auto chunkIt = world.chunks().find(coord);
+            if (chunkIt == world.chunks().end())
+            {
+                continue;
+            }
+
+            const bool isResident = residentChunkMeshIds.contains(meshId);
+            if (isResident && !isDirty)
+            {
+                continue;
+            }
+
+            meshing::ChunkMeshData meshData = chunkMesher.buildMesh(world, coord);
+            if (meshData.vertices.empty() || meshData.indices.empty())
+            {
+                cpuData.removedMeshIds.push_back(meshId);
+                continue;
+            }
+
+            render::SceneMeshData sceneMesh;
+            sceneMesh.id = meshId;
+            sceneMesh.boundsMin = chunkBoundsMin(coord);
+            sceneMesh.boundsMax = chunkBoundsMax(coord);
+            sceneMesh.indices = std::move(meshData.indices);
+            sceneMesh.vertices.reserve(meshData.vertices.size());
+
+            const std::uint32_t color = chunkColor(coord);
+            for (const meshing::DebugVertex& vertex : meshData.vertices)
+            {
+                sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
+                    .position = {vertex.x, vertex.y, vertex.z},
+                    .abgr = color,
+                });
+            }
+
+            buildVertexNormals(sceneMesh);
+            cpuData.sceneMeshesToUpload.push_back(std::move(sceneMesh));
+        }
+    }
+
+    for (const std::uint64_t residentId : residentChunkMeshIds)
+    {
+        if (!cpuData.desiredResidentIds.contains(residentId))
+        {
+            cpuData.removedMeshIds.push_back(residentId);
+        }
+    }
+
+    return cpuData;
+}
+
+void applyMeshSyncGpuData(
+    render::Renderer& renderer,
+    const MeshSyncCpuData& cpuData,
+    std::unordered_set<std::uint64_t>& residentChunkMeshIds)
+{
+    if (!cpuData.sceneMeshesToUpload.empty() || !cpuData.removedMeshIds.empty())
+    {
+        renderer.updateSceneMeshes(cpuData.sceneMeshesToUpload, cpuData.removedMeshIds);
+    }
+
+    for (const std::uint64_t removedId : cpuData.removedMeshIds)
+    {
+        residentChunkMeshIds.erase(removedId);
+    }
+
+    for (const render::SceneMeshData& sceneMesh : cpuData.sceneMeshesToUpload)
+    {
+        residentChunkMeshIds.insert(sceneMesh.id);
+    }
+}
 }
 
 bool Application::initialize()
@@ -165,7 +277,18 @@ int Application::run()
 
 void Application::update(const float deltaTimeSeconds)
 {
-    static_cast<void>(deltaTimeSeconds);
+    const float frameTimeMs = deltaTimeSeconds * 1000.0f;
+    if (!frameTimeInitialized_)
+    {
+        smoothedFrameTimeMs_ = frameTimeMs;
+        frameTimeInitialized_ = true;
+    }
+    else
+    {
+        constexpr float kFrameTimeSmoothingAlpha = 0.1f;
+        smoothedFrameTimeMs_ =
+            smoothedFrameTimeMs_ + (frameTimeMs - smoothedFrameTimeMs_) * kFrameTimeSmoothingAlpha;
+    }
 
     if (inputState_.windowSizeChanged && window_.width() != 0 && window_.height() != 0)
     {
@@ -182,10 +305,14 @@ void Application::update(const float deltaTimeSeconds)
     frameDebugData.totalFaces = world_.totalVisibleFaces();
     frameDebugData.residentChunkCount = static_cast<std::uint32_t>(residentChunkMeshIds_.size());
     frameDebugData.cameraPosition = camera_.position();
+    const float safeFrameTimeMs = std::max(smoothedFrameTimeMs_, 0.001f);
+    const float smoothedFps = 1000.0f / safeFrameTimeMs;
     frameDebugData.statusLine = fmt::format(
-        "Mouse: {}  Save: {}",
+        "Mouse: {}  Save: {}  Frame: {:.2f} ms ({:.1f} fps)",
         mouseCaptured_ ? "captured" : "released",
-        savePath_.generic_string());
+        savePath_.generic_string(),
+        safeFrameTimeMs,
+        smoothedFps);
 
     if (raycastHit.has_value())
     {
@@ -296,97 +423,38 @@ void Application::syncWorldData()
     const world::ChunkCoord cameraChunk = world::worldToChunkCoord(
         static_cast<int>(std::floor(camera_.position().x)),
         static_cast<int>(std::floor(camera_.position().z)));
+    const MeshSyncCpuData cpuData = buildMeshSyncCpuData(
+        world_,
+        chunkMesher_,
+        residentChunkMeshIds_,
+        dirtyCoordSet,
+        cameraChunk);
+    applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
 
-    std::unordered_set<std::uint64_t> desiredResidentIds;
-    std::vector<render::SceneMeshData> sceneMeshes;
-    std::vector<std::uint64_t> removedMeshIds;
-
-    sceneMeshes.reserve(dirtyCoords.size());
-    removedMeshIds.reserve(dirtyCoords.size() + residentChunkMeshIds_.size());
-
-    for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
-         chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius;
-         ++chunkZ)
+    if (!cpuData.residentDirtyCoords.empty())
     {
-        for (int chunkX = cameraChunk.x - kStreamingSettings.residentChunkRadius;
-             chunkX <= cameraChunk.x + kStreamingSettings.residentChunkRadius;
-             ++chunkX)
+        world_.rebuildDirtyMeshes(chunkMesher_, cpuData.residentDirtyCoords);
+    }
+
+    std::vector<world::ChunkCoord> offResidentDirtyCoords;
+    offResidentDirtyCoords.reserve(kStreamingSettings.offResidentDirtyRebuildBudget);
+    for (const world::ChunkCoord& coord : dirtyCoords)
+    {
+        if (cpuData.desiredResidentIds.contains(chunkMeshId(coord)))
         {
-            const world::ChunkCoord coord{chunkX, chunkZ};
-            const std::uint64_t meshId = chunkMeshId(coord);
-            desiredResidentIds.insert(meshId);
+            continue;
+        }
 
-            const auto chunkIt = world_.chunks().find(coord);
-            if (chunkIt == world_.chunks().end())
-            {
-                continue;
-            }
-
-            const bool isResident = residentChunkMeshIds_.contains(meshId);
-            const bool isDirty = dirtyCoordSet.contains(coord);
-            if (isResident && !isDirty)
-            {
-                continue;
-            }
-
-            meshing::ChunkMeshData meshData = chunkMesher_.buildMesh(world_, coord);
-            if (meshData.vertices.empty() || meshData.indices.empty())
-            {
-                removedMeshIds.push_back(meshId);
-                continue;
-            }
-
-            render::SceneMeshData sceneMesh;
-            sceneMesh.id = meshId;
-            sceneMesh.boundsMin = chunkBoundsMin(coord);
-            sceneMesh.boundsMax = chunkBoundsMax(coord);
-            sceneMesh.indices = std::move(meshData.indices);
-            sceneMesh.vertices.reserve(meshData.vertices.size());
-
-            const std::uint32_t color = chunkColor(coord);
-
-            for (const meshing::DebugVertex& vertex : meshData.vertices)
-            {
-                sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
-                    .position = {vertex.x, vertex.y, vertex.z},
-                    .abgr = color,
-                });
-            }
-
-            buildVertexNormals(sceneMesh);
-            sceneMeshes.push_back(std::move(sceneMesh));
+        offResidentDirtyCoords.push_back(coord);
+        if (offResidentDirtyCoords.size() >= kStreamingSettings.offResidentDirtyRebuildBudget)
+        {
+            break;
         }
     }
 
-    const std::vector<std::uint64_t> residentIdsSnapshot(
-        residentChunkMeshIds_.begin(),
-        residentChunkMeshIds_.end());
-    for (const std::uint64_t residentId : residentIdsSnapshot)
+    if (!offResidentDirtyCoords.empty())
     {
-        if (!desiredResidentIds.contains(residentId))
-        {
-            removedMeshIds.push_back(residentId);
-        }
-    }
-
-    if (!sceneMeshes.empty() || !removedMeshIds.empty())
-    {
-        renderer_.updateSceneMeshes(sceneMeshes, removedMeshIds);
-    }
-
-    for (const std::uint64_t removedId : removedMeshIds)
-    {
-        residentChunkMeshIds_.erase(removedId);
-    }
-
-    for (const render::SceneMeshData& sceneMesh : sceneMeshes)
-    {
-        residentChunkMeshIds_.insert(sceneMesh.id);
-    }
-
-    if (world_.dirtyChunkCount() > 0)
-    {
-        world_.rebuildDirtyMeshes(chunkMesher_);
+        world_.rebuildDirtyMeshes(chunkMesher_, offResidentDirtyCoords);
     }
 }
 }  // namespace vibecraft::app

@@ -15,6 +15,21 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug Configure (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -22,6 +37,11 @@
       "name": "debug",
       "displayName": "Debug Build",
       "configurePreset": "default"
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug Build",
+      "configurePreset": "windows-debug"
     }
   ],
   "testPresets": [
@@ -29,6 +49,14 @@
       "name": "debug",
       "displayName": "Debug Tests",
       "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug Tests",
+      "configurePreset": "windows-debug",
       "output": {
         "outputOnFailure": true
       }

@@ -167,10 +167,21 @@ std::uint32_t World::totalVisibleFaces() const
 
 void World::rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher)
 {
-    std::vector<ChunkCoord> dirtyCoords(dirtyChunks_.begin(), dirtyChunks_.end());
+    const std::vector<ChunkCoord> dirtyCoords(dirtyChunks_.begin(), dirtyChunks_.end());
+    rebuildDirtyMeshes(chunkMesher, dirtyCoords);
+}
 
-    for (const ChunkCoord& coord : dirtyCoords)
+void World::rebuildDirtyMeshes(
+    const vibecraft::meshing::ChunkMesher& chunkMesher,
+    const std::span<const ChunkCoord> chunkCoords)
+{
+    for (const ChunkCoord& coord : chunkCoords)
     {
+        if (!dirtyChunks_.contains(coord))
+        {
+            continue;
+        }
+
         if (chunks_.find(coord) == chunks_.end())
         {
             dirtyChunks_.erase(coord);

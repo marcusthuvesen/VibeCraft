@@ -403,6 +403,32 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         frameDebugData.dirtyChunkCount,
         frameDebugData.residentChunkCount);
     bgfx::dbgTextPrintf(0, 6, 0x0f, "Faces: %u  Visible chunks: %u", frameDebugData.totalFaces, visibleChunkCount);
+    const bgfx::Stats* const bgfxStats = bgfx::getStats();
+    if (bgfxStats != nullptr)
+    {
+        const double cpuFrameMs = bgfxStats->cpuTimerFreq > 0
+            ? static_cast<double>(bgfxStats->cpuTimeFrame) * 1000.0
+                / static_cast<double>(bgfxStats->cpuTimerFreq)
+            : 0.0;
+        const double gpuFrameMs =
+            (bgfxStats->gpuTimerFreq > 0 && bgfxStats->gpuTimeEnd >= bgfxStats->gpuTimeBegin)
+            ? static_cast<double>(bgfxStats->gpuTimeEnd - bgfxStats->gpuTimeBegin) * 1000.0
+                / static_cast<double>(bgfxStats->gpuTimerFreq)
+            : 0.0;
+        bgfx::dbgTextPrintf(
+            0,
+            7,
+            0x0f,
+            "bgfx: cpu %.2f ms  gpu %.2f ms  draw %u  tri %u",
+            cpuFrameMs,
+            gpuFrameMs,
+            bgfxStats->numDraw,
+            bgfxStats->numPrims[bgfx::Topology::TriList]);
+    }
+    else
+    {
+        bgfx::dbgTextPrintf(0, 7, 0x0f, "bgfx: stats unavailable");
+    }
 
     const std::string cameraLine = fmt::format(
         "Camera: ({:.1f}, {:.1f}, {:.1f})",

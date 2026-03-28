@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -59,6 +60,9 @@ class World
     [[nodiscard]] std::uint32_t totalVisibleFaces() const;
 
     void rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher);
+    void rebuildDirtyMeshes(
+        const vibecraft::meshing::ChunkMesher& chunkMesher,
+        std::span<const ChunkCoord> chunkCoords);
     void replaceChunks(ChunkMap chunks);
 
   private:
