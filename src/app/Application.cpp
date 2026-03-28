@@ -244,11 +244,11 @@ void Application::processInput(const float deltaTimeSeconds)
     }
     if (inputState_.isKeyDown(SDL_SCANCODE_D))
     {
-        localMotion.x += kInputTuning.moveSpeed * deltaTimeSeconds;
+        localMotion.x -= kInputTuning.moveSpeed * deltaTimeSeconds;
     }
     if (inputState_.isKeyDown(SDL_SCANCODE_A))
     {
-        localMotion.x -= kInputTuning.moveSpeed * deltaTimeSeconds;
+        localMotion.x += kInputTuning.moveSpeed * deltaTimeSeconds;
     }
     if (inputState_.isKeyDown(SDL_SCANCODE_SPACE))
     {
