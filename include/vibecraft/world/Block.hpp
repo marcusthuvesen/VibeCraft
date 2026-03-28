@@ -9,7 +9,9 @@ enum class BlockType : std::uint8_t
     Air = 0,
     Grass,
     Dirt,
-    Stone
+    Stone,
+    Deepslate,
+    CoalOre
 };
 
 [[nodiscard]] constexpr bool isSolid(const BlockType blockType)

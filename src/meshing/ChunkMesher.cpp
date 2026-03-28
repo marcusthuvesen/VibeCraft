@@ -37,6 +37,10 @@ constexpr std::uint32_t colorForBlockType(const BlockType blockType)
         return 0xff795548;
     case BlockType::Stone:
         return 0xff9e9e9e;
+    case BlockType::Deepslate:
+        return 0xff455a64;
+    case BlockType::CoalOre:
+        return 0xff607d8b;
     case BlockType::Air:
     default:
         return 0xffffffff;

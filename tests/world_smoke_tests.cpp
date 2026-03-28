@@ -64,6 +64,31 @@ TEST_CASE("terrain generator carves underground caves without breaking the surfa
     CHECK(foundUndergroundCave);
 }
 
+TEST_CASE("terrain generator adds stratified underground layers and coal ore")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    bool foundDeepslate = false;
+    bool foundCoalOre = false;
+
+    for (int worldX = -32; worldX <= 32 && (!foundDeepslate || !foundCoalOre); ++worldX)
+    {
+        for (int worldZ = -32; worldZ <= 32 && (!foundDeepslate || !foundCoalOre); ++worldZ)
+        {
+            const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+
+            for (int y = 1; y <= surface - 4; ++y)
+            {
+                const vibecraft::world::BlockType blockType = terrainGenerator.blockTypeAt(worldX, y, worldZ);
+                foundDeepslate = foundDeepslate || blockType == vibecraft::world::BlockType::Deepslate;
+                foundCoalOre = foundCoalOre || blockType == vibecraft::world::BlockType::CoalOre;
+            }
+        }
+    }
+
+    CHECK(foundDeepslate);
+    CHECK(foundCoalOre);
+}
+
 TEST_CASE("world save and load round-trips edited blocks")
 {
     vibecraft::world::World world;
@@ -71,7 +96,7 @@ TEST_CASE("world save and load round-trips edited blocks")
     REQUIRE(world.applyEditCommand({
         .action = vibecraft::world::WorldEditAction::Place,
         .position = {2, 40, 2},
-        .blockType = vibecraft::world::BlockType::Stone,
+        .blockType = vibecraft::world::BlockType::CoalOre,
     }));
 
     const std::filesystem::path tempPath =
@@ -81,7 +106,7 @@ TEST_CASE("world save and load round-trips edited blocks")
 
     vibecraft::world::World loadedWorld;
     REQUIRE(loadedWorld.load(tempPath));
-    CHECK(loadedWorld.blockAt(2, 40, 2) == vibecraft::world::BlockType::Stone);
+    CHECK(loadedWorld.blockAt(2, 40, 2) == vibecraft::world::BlockType::CoalOre);
 
     std::error_code errorCode;
     std::filesystem::remove(tempPath, errorCode);

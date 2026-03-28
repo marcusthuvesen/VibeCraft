@@ -7,9 +7,16 @@ namespace vibecraft::world
 {
 namespace
 {
+constexpr int kTopsoilDepth = 3;
+constexpr int kMinCaveY = 4;
+constexpr int kCaveRoofBuffer = 5;
+constexpr int kCoalMinY = 8;
+constexpr int kCoalSurfaceBuffer = 6;
+constexpr int kDeepslateStartY = 18;
+
 [[nodiscard]] bool shouldCarveCave(const int worldX, const int y, const int worldZ, const int surfaceHeight)
 {
-    if (y < 4 || y > surfaceHeight - 5)
+    if (y < kMinCaveY || y > surfaceHeight - kCaveRoofBuffer)
     {
         return false;
     }
@@ -22,6 +29,25 @@ namespace
         std::sin(static_cast<double>(worldX - worldZ) * 0.09 + static_cast<double>(y) * 0.12);
 
     return caveDensity > 2.2;
+}
+
+[[nodiscard]] BlockType undergroundBlockTypeAt(const int y)
+{
+    return y < kDeepslateStartY ? BlockType::Deepslate : BlockType::Stone;
+}
+
+[[nodiscard]] bool shouldPlaceCoalOre(const int worldX, const int y, const int worldZ, const int surfaceHeight)
+{
+    if (y < kCoalMinY || y > surfaceHeight - kCoalSurfaceBuffer)
+    {
+        return false;
+    }
+
+    const double oreDensity = std::sin(static_cast<double>(worldX) * 0.23 + static_cast<double>(worldZ) * 0.11) +
+        std::cos(static_cast<double>(worldZ) * 0.19 - static_cast<double>(y) * 0.07) +
+        std::sin(static_cast<double>(y) * 0.31 + static_cast<double>(worldX) * 0.05);
+
+    return oreDensity > 2.35;
 }
 }  // namespace
 
@@ -46,7 +72,7 @@ BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int
     {
         return BlockType::Grass;
     }
-    if (y >= surfaceHeight - 3)
+    if (y >= surfaceHeight - kTopsoilDepth)
     {
         return BlockType::Dirt;
     }
@@ -54,6 +80,10 @@ BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int
     {
         return BlockType::Air;
     }
-    return BlockType::Stone;
+    if (shouldPlaceCoalOre(worldX, y, worldZ, surfaceHeight))
+    {
+        return BlockType::CoalOre;
+    }
+    return undergroundBlockTypeAt(y);
 }
 }  // namespace vibecraft::world
