@@ -8,10 +8,13 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <cmath>
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
 #include <string>
 #include <utility>
 #include <vector>
@@ -77,6 +80,204 @@ struct ChunkVertex
 [[nodiscard]] bgfx::UniformHandle toUniformHandle(const std::uint16_t handleIndex)
 {
     return bgfx::UniformHandle{handleIndex};
+}
+
+[[nodiscard]] std::uint32_t packRgba8(const glm::vec3& color, const float alpha = 1.0f)
+{
+    const auto toByte = [](const float channel)
+    {
+        return static_cast<std::uint32_t>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f));
+    };
+
+    const std::uint32_t r = toByte(color.r);
+    const std::uint32_t g = toByte(color.g);
+    const std::uint32_t b = toByte(color.b);
+    const std::uint32_t a = toByte(alpha);
+    return (r << 24U) | (g << 16U) | (b << 8U) | a;
+}
+
+[[nodiscard]] std::uint32_t packAbgr8(const glm::vec3& color, const float alpha = 1.0f)
+{
+    const auto toByte = [](const float channel)
+    {
+        return static_cast<std::uint32_t>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f));
+    };
+
+    const std::uint32_t r = toByte(color.r);
+    const std::uint32_t g = toByte(color.g);
+    const std::uint32_t b = toByte(color.b);
+    const std::uint32_t a = toByte(alpha);
+    return (a << 24U) | (b << 16U) | (g << 8U) | r;
+}
+
+void setVec4Uniform(
+    const std::uint16_t handleIndex,
+    const glm::vec3& xyz,
+    const float w)
+{
+    if (handleIndex == UINT16_MAX)
+    {
+        return;
+    }
+
+    const float values[4] = {
+        xyz.x,
+        xyz.y,
+        xyz.z,
+        w,
+    };
+    bgfx::setUniform(toUniformHandle(handleIndex), values);
+}
+
+[[nodiscard]] std::uint32_t hashUint32(
+    const std::int32_t a,
+    const std::int32_t b,
+    const std::int32_t c)
+{
+    std::uint32_t value = static_cast<std::uint32_t>(a) * 0x9e3779b9U;
+    value ^= static_cast<std::uint32_t>(b) * 0x85ebca6bU + 0x7f4a7c15U;
+    value ^= static_cast<std::uint32_t>(c) * 0xc2b2ae35U + 0x165667b1U;
+    value ^= value >> 16U;
+    value *= 0x7feb352dU;
+    value ^= value >> 15U;
+    value *= 0x846ca68bU;
+    value ^= value >> 16U;
+    return value;
+}
+
+[[nodiscard]] float hashUnitFloat(
+    const std::int32_t a,
+    const std::int32_t b,
+    const std::int32_t c)
+{
+    return static_cast<float>(hashUint32(a, b, c) & 0x00ffffffU) / static_cast<float>(0x01000000U);
+}
+
+[[nodiscard]] glm::vec2 normalizeOrFallback(const glm::vec2& vector, const glm::vec2& fallback)
+{
+    const float lengthSquared = glm::dot(vector, vector);
+    return lengthSquared > 0.0f ? glm::normalize(vector) : fallback;
+}
+
+void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
+{
+    if (cameraFrameData.cloudCoverage <= 0.02f)
+    {
+        return;
+    }
+
+    const glm::vec2 windDirection =
+        normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
+    const glm::vec2 windOffset = windDirection * cameraFrameData.weatherTimeSeconds * cameraFrameData.weatherWindSpeed;
+    constexpr float kCloudCellSize = 34.0f;
+    constexpr int kCloudRadiusInCells = 4;
+    const float cloudHeight = glm::max(72.0f, cameraFrameData.position.y + 40.0f);
+    const int baseCellX = static_cast<int>(std::floor((cameraFrameData.position.x + windOffset.x) / kCloudCellSize));
+    const int baseCellZ = static_cast<int>(std::floor((cameraFrameData.position.z + windOffset.y) / kCloudCellSize));
+
+    debugDrawEncoder.push();
+    debugDrawEncoder.setDepthTestLess(true);
+
+    for (int cellZ = -kCloudRadiusInCells; cellZ <= kCloudRadiusInCells; ++cellZ)
+    {
+        for (int cellX = -kCloudRadiusInCells; cellX <= kCloudRadiusInCells; ++cellX)
+        {
+            const int gridX = baseCellX + cellX;
+            const int gridZ = baseCellZ + cellZ;
+            const float density = hashUnitFloat(gridX, gridZ, 11);
+            if (density > cameraFrameData.cloudCoverage)
+            {
+                continue;
+            }
+
+            const float centerX =
+                static_cast<float>(gridX) * kCloudCellSize
+                - windOffset.x
+                + (hashUnitFloat(gridX, gridZ, 21) - 0.5f) * 14.0f;
+            const float centerZ =
+                static_cast<float>(gridZ) * kCloudCellSize
+                - windOffset.y
+                + (hashUnitFloat(gridX, gridZ, 31) - 0.5f) * 14.0f;
+            const float y = cloudHeight + (hashUnitFloat(gridX, gridZ, 41) - 0.5f) * 4.0f;
+            const float baseSize = 20.0f + hashUnitFloat(gridX, gridZ, 51) * 20.0f;
+            const float stretch = 0.8f + hashUnitFloat(gridX, gridZ, 61) * 0.7f;
+            const float secondaryOffset = 6.0f + hashUnitFloat(gridX, gridZ, 71) * 8.0f;
+            const glm::vec3 primaryTint =
+                glm::mix(cameraFrameData.cloudTint, cameraFrameData.horizonTint, 0.15f + density * 0.15f);
+            const glm::vec3 secondaryTint = glm::mix(primaryTint, cameraFrameData.skyTint, 0.18f);
+
+            debugDrawEncoder.setColor(packAbgr8(primaryTint, 1.0f));
+            debugDrawEncoder.drawQuad(
+                bx::Vec3(0.0f, 1.0f, 0.0f),
+                bx::Vec3(centerX, y, centerZ),
+                baseSize * stretch);
+
+            debugDrawEncoder.setColor(packAbgr8(secondaryTint, 1.0f));
+            debugDrawEncoder.drawQuad(
+                bx::Vec3(0.0f, 1.0f, 0.0f),
+                bx::Vec3(centerX + secondaryOffset, y - 1.0f, centerZ - secondaryOffset * 0.5f),
+                baseSize * 0.75f);
+        }
+    }
+
+    debugDrawEncoder.pop();
+}
+
+void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
+{
+    if (cameraFrameData.rainIntensity <= 0.02f)
+    {
+        return;
+    }
+
+    const glm::vec2 windDirection =
+        normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
+    constexpr float kRainGridSpacing = 3.5f;
+    constexpr int kRainRadiusInCells = 6;
+    const float rainFallDistance = 5.5f + cameraFrameData.rainIntensity * 3.5f;
+    const float rainSpeed = 14.0f + cameraFrameData.rainIntensity * 10.0f;
+    const glm::vec3 rainVector(
+        windDirection.x * 0.35f,
+        -1.0f,
+        windDirection.y * 0.35f);
+    const glm::vec3 normalizedRainVector = glm::normalize(rainVector);
+    const int baseCellX = static_cast<int>(std::floor(cameraFrameData.position.x / kRainGridSpacing));
+    const int baseCellZ = static_cast<int>(std::floor(cameraFrameData.position.z / kRainGridSpacing));
+    const glm::vec3 rainTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.70f, 0.82f, 1.0f), 0.65f);
+
+    debugDrawEncoder.push();
+    debugDrawEncoder.setDepthTestLess(true);
+    debugDrawEncoder.setColor(packAbgr8(rainTint, 1.0f));
+
+    for (int cellZ = -kRainRadiusInCells; cellZ <= kRainRadiusInCells; ++cellZ)
+    {
+        for (int cellX = -kRainRadiusInCells; cellX <= kRainRadiusInCells; ++cellX)
+        {
+            const int gridX = baseCellX + cellX;
+            const int gridZ = baseCellZ + cellZ;
+            if (hashUnitFloat(gridX, gridZ, 101) > cameraFrameData.rainIntensity * 0.92f)
+            {
+                continue;
+            }
+
+            const float offsetX = (hashUnitFloat(gridX, gridZ, 111) - 0.5f) * 1.6f;
+            const float offsetZ = (hashUnitFloat(gridX, gridZ, 121) - 0.5f) * 1.6f;
+            const float phase = hashUnitFloat(gridX, gridZ, 131);
+            const float dropCycle =
+                std::fmod(cameraFrameData.weatherTimeSeconds * rainSpeed + phase * rainFallDistance, rainFallDistance);
+            const float startY = cameraFrameData.position.y + 14.0f - dropCycle;
+            const glm::vec3 start(
+                static_cast<float>(gridX) * kRainGridSpacing + offsetX,
+                startY,
+                static_cast<float>(gridZ) * kRainGridSpacing + offsetZ);
+            const glm::vec3 end = start + normalizedRainVector * rainFallDistance;
+
+            debugDrawEncoder.moveTo(start.x, start.y, start.z);
+            debugDrawEncoder.lineTo(end.x, end.y, end.z);
+        }
+    }
+
+    debugDrawEncoder.pop();
 }
 
 [[nodiscard]] std::filesystem::path runtimeAssetPath(const std::filesystem::path& relativePath)
@@ -439,9 +640,56 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         return false;
     }
 
+    const bgfx::UniformHandle chunkSunDirection = bgfx::createUniform("u_sunDirection", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkSunLightColor = bgfx::createUniform("u_sunLightColor", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkMoonDirection = bgfx::createUniform("u_moonDirection", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkMoonLightColor =
+        bgfx::createUniform("u_moonLightColor", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkAmbientLight = bgfx::createUniform("u_ambientLight", bgfx::UniformType::Vec4);
+
+    if (!bgfx::isValid(chunkSunDirection)
+        || !bgfx::isValid(chunkSunLightColor)
+        || !bgfx::isValid(chunkMoonDirection)
+        || !bgfx::isValid(chunkMoonLightColor)
+        || !bgfx::isValid(chunkAmbientLight))
+    {
+        if (bgfx::isValid(chunkSunDirection))
+        {
+            bgfx::destroy(chunkSunDirection);
+        }
+        if (bgfx::isValid(chunkSunLightColor))
+        {
+            bgfx::destroy(chunkSunLightColor);
+        }
+        if (bgfx::isValid(chunkMoonDirection))
+        {
+            bgfx::destroy(chunkMoonDirection);
+        }
+        if (bgfx::isValid(chunkMoonLightColor))
+        {
+            bgfx::destroy(chunkMoonLightColor);
+        }
+        if (bgfx::isValid(chunkAmbientLight))
+        {
+            bgfx::destroy(chunkAmbientLight);
+        }
+        bgfx::destroy(chunkAtlasSampler);
+        bgfx::destroy(chunkAtlasTexture);
+        bgfx::destroy(chunkProgram);
+        ddShutdown();
+        bgfx::shutdown();
+        initialized_ = false;
+        return false;
+    }
+
     chunkProgramHandle_ = chunkProgram.idx;
     chunkAtlasTextureHandle_ = chunkAtlasTexture.idx;
     chunkAtlasSamplerHandle_ = chunkAtlasSampler.idx;
+    chunkSunDirectionUniformHandle_ = chunkSunDirection.idx;
+    chunkSunLightColorUniformHandle_ = chunkSunLightColor.idx;
+    chunkMoonDirectionUniformHandle_ = chunkMoonDirection.idx;
+    chunkMoonLightColorUniformHandle_ = chunkMoonLightColor.idx;
+    chunkAmbientLightUniformHandle_ = chunkAmbientLight.idx;
     return true;
 }
 
@@ -467,6 +715,31 @@ void Renderer::shutdown()
     {
         bgfx::destroy(toUniformHandle(chunkAtlasSamplerHandle_));
         chunkAtlasSamplerHandle_ = UINT16_MAX;
+    }
+    if (chunkSunDirectionUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(chunkSunDirectionUniformHandle_));
+        chunkSunDirectionUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkSunLightColorUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(chunkSunLightColorUniformHandle_));
+        chunkSunLightColorUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkMoonDirectionUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(chunkMoonDirectionUniformHandle_));
+        chunkMoonDirectionUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkMoonLightColorUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(chunkMoonLightColorUniformHandle_));
+        chunkMoonLightColorUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkAmbientLightUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(chunkAmbientLightUniformHandle_));
+        chunkAmbientLightUniformHandle_ = UINT16_MAX;
     }
     ddShutdown();
     bgfx::shutdown();
@@ -570,9 +843,23 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         cameraFrameData.farClip,
         bgfx::getCaps()->homogeneousDepth);
 
+    const std::uint32_t clearColor = packRgba8(cameraFrameData.skyTint);
+    bgfx::setViewClear(kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, clearColor, 1.0f, 0);
     bgfx::setViewRect(kMainView, 0, 0, static_cast<std::uint16_t>(width_), static_cast<std::uint16_t>(height_));
     bgfx::setViewTransform(kMainView, view, projection);
     bgfx::touch(kMainView);
+
+    const glm::vec3 ambientLight = glm::clamp(
+        cameraFrameData.skyTint * 0.45f
+            + cameraFrameData.horizonTint * 0.15f
+            + cameraFrameData.sunLightTint * (0.08f * cameraFrameData.sunVisibility)
+            + cameraFrameData.moonLightTint * (0.05f * cameraFrameData.moonVisibility),
+        glm::vec3(0.04f),
+        glm::vec3(0.72f));
+    const glm::vec3 sunLightColor =
+        cameraFrameData.sunLightTint * glm::max(cameraFrameData.sunVisibility, 0.0f);
+    const glm::vec3 moonLightColor =
+        cameraFrameData.moonLightTint * glm::max(cameraFrameData.moonVisibility * 0.35f, 0.0f);
 
     std::uint32_t visibleChunkCount = 0;
     if (chunkProgramHandle_ != UINT16_MAX)
@@ -622,6 +909,11 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
                     toUniformHandle(chunkAtlasSamplerHandle_),
                     toTextureHandle(chunkAtlasTextureHandle_));
             }
+            setVec4Uniform(chunkSunDirectionUniformHandle_, cameraFrameData.sunDirection, 0.0f);
+            setVec4Uniform(chunkSunLightColorUniformHandle_, sunLightColor, 0.0f);
+            setVec4Uniform(chunkMoonDirectionUniformHandle_, cameraFrameData.moonDirection, 0.0f);
+            setVec4Uniform(chunkMoonLightColorUniformHandle_, moonLightColor, 0.0f);
+            setVec4Uniform(chunkAmbientLightUniformHandle_, ambientLight, 0.0f);
             bgfx::setState(kChunkRenderState);
             bgfx::submit(kMainView, toProgramHandle(chunkProgramHandle_));
         }
@@ -629,6 +921,48 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
 
     DebugDrawEncoder debugDrawEncoder;
     debugDrawEncoder.begin(kMainView);
+    drawWeatherClouds(debugDrawEncoder, cameraFrameData);
+    debugDrawEncoder.push();
+    debugDrawEncoder.setDepthTestLess(false);
+    constexpr float kCelestialDistance = 240.0f;
+    constexpr float kSunRadius = 20.0f;
+    constexpr float kMoonRadius = 13.0f;
+    if (cameraFrameData.sunVisibility > 0.01f)
+    {
+        const glm::vec3 sunPosition = cameraFrameData.position + cameraFrameData.sunDirection * kCelestialDistance;
+        const bx::Vec3 sunCenter(sunPosition.x, sunPosition.y, sunPosition.z);
+        const bx::Vec3 sunFacingNormal(
+            cameraFrameData.position.x - sunPosition.x,
+            cameraFrameData.position.y - sunPosition.y,
+            cameraFrameData.position.z - sunPosition.z);
+        bx::Sphere sunSphere;
+        sunSphere.center = sunCenter;
+        sunSphere.radius = kSunRadius;
+        debugDrawEncoder.setColor(packAbgr8(glm::mix(cameraFrameData.horizonTint, cameraFrameData.sunLightTint, 0.65f), 1.0f));
+        debugDrawEncoder.drawQuad(sunFacingNormal, sunCenter, kSunRadius * 3.6f);
+        debugDrawEncoder.setColor(packAbgr8(cameraFrameData.sunLightTint, 1.0f));
+        debugDrawEncoder.draw(sunSphere);
+        debugDrawEncoder.setColor(packAbgr8(cameraFrameData.horizonTint, 1.0f));
+        debugDrawEncoder.drawCircle(sunFacingNormal, sunCenter, kSunRadius * 1.45f, 2.5f);
+    }
+    if (cameraFrameData.moonVisibility > 0.01f)
+    {
+        const glm::vec3 moonPosition = cameraFrameData.position + cameraFrameData.moonDirection * kCelestialDistance;
+        const bx::Vec3 moonCenter(moonPosition.x, moonPosition.y, moonPosition.z);
+        const bx::Vec3 moonFacingNormal(
+            cameraFrameData.position.x - moonPosition.x,
+            cameraFrameData.position.y - moonPosition.y,
+            cameraFrameData.position.z - moonPosition.z);
+        bx::Sphere moonSphere;
+        moonSphere.center = moonCenter;
+        moonSphere.radius = kMoonRadius;
+        debugDrawEncoder.setColor(packAbgr8(glm::mix(cameraFrameData.skyTint, cameraFrameData.moonLightTint, 0.55f), 1.0f));
+        debugDrawEncoder.drawQuad(moonFacingNormal, moonCenter, kMoonRadius * 2.8f);
+        debugDrawEncoder.setColor(packAbgr8(cameraFrameData.moonLightTint, 1.0f));
+        debugDrawEncoder.draw(moonSphere);
+    }
+    debugDrawEncoder.pop();
+    drawWeatherRain(debugDrawEncoder, cameraFrameData);
     debugDrawEncoder.setColor(0xff455a64);
     debugDrawEncoder.drawGrid(Axis::Y, bx::Vec3(0.0f, 0.0f, 0.0f), 48, 1.0f);
     debugDrawEncoder.drawAxis(0.0f, 0.0f, 0.0f, 2.0f);

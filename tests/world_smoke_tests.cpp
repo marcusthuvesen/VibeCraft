@@ -3,8 +3,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <filesystem>
 
+#include "vibecraft/game/DayNightCycle.hpp"
+#include "vibecraft/game/WeatherSystem.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/TerrainGenerator.hpp"
@@ -141,6 +144,111 @@ TEST_CASE("deeper block families are harder and bedrock is unbreakable")
     CHECK(vibecraft::world::blockMetadata(BlockType::Stone).hardness < vibecraft::world::blockMetadata(BlockType::Deepslate).hardness);
     CHECK(vibecraft::world::blockMetadata(BlockType::Deepslate).hardness < vibecraft::world::blockMetadata(BlockType::Bedrock).hardness);
     CHECK_FALSE(vibecraft::world::blockMetadata(BlockType::Bedrock).breakable);
+}
+
+TEST_CASE("day night cycle keeps five minute daylight and five minute night timing")
+{
+    using vibecraft::game::DayNightCycle;
+
+    CHECK(DayNightCycle::kDaylightDurationSeconds == doctest::Approx(300.0f));
+    CHECK(DayNightCycle::kNightDurationSeconds == doctest::Approx(300.0f));
+    CHECK(DayNightCycle::kFullCycleDurationSeconds == doctest::Approx(600.0f));
+    CHECK(DayNightCycle::wrapCycleSeconds(660.0f) == doctest::Approx(60.0f));
+    CHECK(DayNightCycle::wrapCycleSeconds(-30.0f) == doctest::Approx(570.0f));
+}
+
+TEST_CASE("day night cycle exposes dawn day dusk and night periods")
+{
+    using vibecraft::game::DayNightCycle;
+    using vibecraft::game::TimeOfDayPeriod;
+
+    CHECK(DayNightCycle::sampleAtElapsedSeconds(0.0f).period == TimeOfDayPeriod::Dawn);
+    CHECK(DayNightCycle::sampleAtElapsedSeconds(120.0f).period == TimeOfDayPeriod::Day);
+    CHECK(DayNightCycle::sampleAtElapsedSeconds(270.0f).period == TimeOfDayPeriod::Dusk);
+    CHECK(DayNightCycle::sampleAtElapsedSeconds(420.0f).period == TimeOfDayPeriod::Night);
+}
+
+TEST_CASE("sun travels east to west across a full 360 degree orbit and moon stays opposite")
+{
+    using vibecraft::game::DayNightCycle;
+
+    const vibecraft::game::DayNightSample sunrise = DayNightCycle::sampleAtElapsedSeconds(0.0f);
+    CHECK(sunrise.sunOrbitDegrees360 == doctest::Approx(0.0f));
+    CHECK(sunrise.sunDirection.x == doctest::Approx(1.0f));
+    CHECK(std::abs(sunrise.sunDirection.y) < 0.0001f);
+    CHECK(sunrise.moonOrbitDegrees360 == doctest::Approx(180.0f));
+    CHECK(sunrise.moonDirection.x == doctest::Approx(-1.0f));
+
+    const vibecraft::game::DayNightSample noon = DayNightCycle::sampleAtElapsedSeconds(150.0f);
+    CHECK(noon.sunOrbitDegrees360 == doctest::Approx(90.0f));
+    CHECK(std::abs(noon.sunDirection.x) < 0.0001f);
+    CHECK(noon.sunDirection.y == doctest::Approx(1.0f));
+    CHECK(noon.moonDirection.y == doctest::Approx(-1.0f));
+
+    const vibecraft::game::DayNightSample sunset = DayNightCycle::sampleAtElapsedSeconds(300.0f);
+    CHECK(sunset.sunOrbitDegrees360 == doctest::Approx(180.0f));
+    CHECK(sunset.sunDirection.x == doctest::Approx(-1.0f));
+    CHECK(sunset.moonDirection.x == doctest::Approx(1.0f));
+
+    const vibecraft::game::DayNightSample midnight = DayNightCycle::sampleAtElapsedSeconds(450.0f);
+    CHECK(midnight.sunOrbitDegrees360 == doctest::Approx(270.0f));
+    CHECK(midnight.sunDirection.y == doctest::Approx(-1.0f));
+    CHECK(midnight.moonOrbitDegrees360 == doctest::Approx(90.0f));
+    CHECK(midnight.moonDirection.y == doctest::Approx(1.0f));
+}
+
+TEST_CASE("dawn and dusk expose warm tint data for future shader use")
+{
+    using vibecraft::game::DayNightCycle;
+
+    const vibecraft::game::DayNightSample dawn = DayNightCycle::sampleAtElapsedSeconds(30.0f);
+    const vibecraft::game::DayNightSample day = DayNightCycle::sampleAtElapsedSeconds(150.0f);
+    const vibecraft::game::DayNightSample dusk = DayNightCycle::sampleAtElapsedSeconds(270.0f);
+    const vibecraft::game::DayNightSample night = DayNightCycle::sampleAtElapsedSeconds(450.0f);
+
+    CHECK(dawn.horizonTint.x > dawn.horizonTint.z);
+    CHECK(dusk.horizonTint.x > dusk.horizonTint.z);
+    CHECK(dawn.sunLightTint.z < day.sunLightTint.z);
+    CHECK(dusk.sunLightTint.z < day.sunLightTint.z);
+    CHECK(day.skyTint.z > day.skyTint.x);
+    CHECK(night.moonLightTint.z > night.moonLightTint.x);
+}
+
+TEST_CASE("weather system alternates clear cloudy and rain phases over time")
+{
+    using vibecraft::game::WeatherSystem;
+    using vibecraft::game::WeatherType;
+
+    const vibecraft::game::WeatherSample clear = WeatherSystem::sampleAtElapsedSeconds(20.0f);
+    const vibecraft::game::WeatherSample cloudy = WeatherSystem::sampleAtElapsedSeconds(150.0f);
+    const vibecraft::game::WeatherSample rainy = WeatherSystem::sampleAtElapsedSeconds(260.0f);
+
+    CHECK(clear.type == WeatherType::Clear);
+    CHECK(clear.rainIntensity == doctest::Approx(0.0f));
+    CHECK(clear.cloudCoverage < 0.35f);
+
+    CHECK(cloudy.type == WeatherType::Cloudy);
+    CHECK(cloudy.cloudCoverage > clear.cloudCoverage);
+    CHECK(cloudy.rainIntensity < 0.4f);
+
+    CHECK(rainy.type == WeatherType::Rain);
+    CHECK(rainy.rainIntensity > 0.8f);
+    CHECK(rainy.cloudCoverage > cloudy.cloudCoverage);
+}
+
+TEST_CASE("weather system wraps and smoothly transitions between presets")
+{
+    using vibecraft::game::WeatherSystem;
+
+    CHECK(WeatherSystem::wrapCycleSeconds(
+              WeatherSystem::kWeatherCycleDurationSeconds + 15.0f)
+        == doctest::Approx(15.0f));
+
+    const vibecraft::game::WeatherSample transition = WeatherSystem::sampleAtElapsedSeconds(110.0f);
+    CHECK(transition.transitionProgress > 0.0f);
+    CHECK(transition.transitionProgress < 1.0f);
+    CHECK(transition.cloudCoverage > 0.18f);
+    CHECK(transition.cloudCoverage < 0.55f);
 }
 
 TEST_CASE("terrain generator varies surface height and produces water")

@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL.h>
 #include <fmt/format.h>
+#include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
 #include <algorithm>
@@ -62,6 +63,36 @@ constexpr StreamingSettings kStreamingSettings{};
 constexpr InputTuning kInputTuning{};
 constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
+
+[[nodiscard]] const char* timeOfDayLabel(const game::TimeOfDayPeriod period)
+{
+    switch (period)
+    {
+    case game::TimeOfDayPeriod::Dawn:
+        return "dawn";
+    case game::TimeOfDayPeriod::Day:
+        return "day";
+    case game::TimeOfDayPeriod::Dusk:
+        return "dusk";
+    case game::TimeOfDayPeriod::Night:
+    default:
+        return "night";
+    }
+}
+
+[[nodiscard]] const char* weatherLabel(const game::WeatherType weatherType)
+{
+    switch (weatherType)
+    {
+    case game::WeatherType::Cloudy:
+        return "cloudy";
+    case game::WeatherType::Rain:
+        return "rain";
+    case game::WeatherType::Clear:
+    default:
+        return "clear";
+    }
+}
 
 struct Aabb
 {
@@ -438,7 +469,10 @@ bool Application::initialize()
         }
     }
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
+    camera_.addYawPitch(90.0f, 35.0f);
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+    dayNightCycle_.setElapsedSeconds(70.0f);
+    weatherSystem_.setElapsedSeconds(0.0f);
 
     syncWorldData();
     return true;
@@ -468,6 +502,21 @@ int Application::run()
 
 void Application::update(const float deltaTimeSeconds)
 {
+    dayNightCycle_.advanceSeconds(deltaTimeSeconds);
+    weatherSystem_.advanceSeconds(deltaTimeSeconds);
+    const game::DayNightSample dayNightSample = dayNightCycle_.sample();
+    const game::WeatherSample weatherSample = weatherSystem_.sample();
+    const glm::vec3 clearSkyTint = dayNightSample.skyTint * weatherSample.skyTintMultiplier;
+    const glm::vec3 clearHorizonTint = dayNightSample.horizonTint * weatherSample.horizonTintMultiplier;
+    const glm::vec3 skyTint =
+        glm::mix(clearSkyTint, weatherSample.cloudTint, weatherSample.cloudCoverage * 0.28f);
+    const glm::vec3 horizonTint =
+        glm::mix(clearHorizonTint, weatherSample.cloudTint, weatherSample.cloudCoverage * 0.18f);
+    const float sunLightScale = 1.0f - weatherSample.sunOcclusion * 0.55f;
+    const float moonLightScale = 1.0f - weatherSample.cloudCoverage * 0.20f;
+    const float visibleSunScale = 1.0f - weatherSample.sunOcclusion * 0.35f;
+    const float visibleMoonScale = 1.0f - weatherSample.cloudCoverage * 0.12f;
+
     const float frameTimeMs = deltaTimeSeconds * 1000.0f;
     if (!frameTimeInitialized_)
     {
@@ -498,10 +547,17 @@ void Application::update(const float deltaTimeSeconds)
     frameDebugData.cameraPosition = camera_.position();
     const float safeFrameTimeMs = std::max(smoothedFrameTimeMs_, 0.001f);
     const float smoothedFps = 1000.0f / safeFrameTimeMs;
+    const int cycleSeconds = static_cast<int>(std::floor(dayNightSample.elapsedSeconds));
+    const int cycleMinutesComponent = cycleSeconds / 60;
+    const int cycleSecondsComponent = cycleSeconds % 60;
     frameDebugData.statusLine = fmt::format(
-        "Mouse: {}  Grounded: {}  Save: {}  Frame: {:.2f} ms ({:.1f} fps)",
+        "Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Frame: {:.2f} ms ({:.1f} fps)",
         mouseCaptured_ ? "captured" : "released",
         isGrounded_ ? "yes" : "no",
+        timeOfDayLabel(dayNightSample.period),
+        cycleMinutesComponent,
+        cycleSecondsComponent,
+        weatherLabel(weatherSample.type),
         savePath_.generic_string(),
         safeFrameTimeMs,
         smoothedFps);
@@ -525,6 +581,20 @@ void Application::update(const float deltaTimeSeconds)
             .position = camera_.position(),
             .forward = camera_.forward(),
             .up = camera_.up(),
+            .skyTint = skyTint,
+            .horizonTint = horizonTint,
+            .sunDirection = dayNightSample.sunDirection,
+            .moonDirection = dayNightSample.moonDirection,
+            .sunLightTint = dayNightSample.sunLightTint * sunLightScale,
+            .moonLightTint = dayNightSample.moonLightTint * moonLightScale,
+            .cloudTint = weatherSample.cloudTint,
+            .weatherWindDirectionXZ = weatherSample.windDirectionXZ,
+            .sunVisibility = dayNightSample.sunVisibility * visibleSunScale,
+            .moonVisibility = dayNightSample.moonVisibility * visibleMoonScale,
+            .cloudCoverage = weatherSample.cloudCoverage,
+            .rainIntensity = weatherSample.rainIntensity,
+            .weatherTimeSeconds = weatherSample.elapsedSeconds,
+            .weatherWindSpeed = weatherSample.windSpeed,
         });
 }
 

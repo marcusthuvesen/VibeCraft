@@ -19,6 +19,20 @@ struct CameraFrameData
     glm::vec3 position{0.0f};
     glm::vec3 forward{0.0f, 0.0f, -1.0f};
     glm::vec3 up{0.0f, 1.0f, 0.0f};
+    glm::vec3 skyTint{0.54f, 0.76f, 0.98f};
+    glm::vec3 horizonTint{0.76f, 0.88f, 1.0f};
+    glm::vec3 sunDirection{1.0f, 0.0f, 0.0f};
+    glm::vec3 moonDirection{-1.0f, 0.0f, 0.0f};
+    glm::vec3 sunLightTint{1.0f, 0.97f, 0.92f};
+    glm::vec3 moonLightTint{0.62f, 0.72f, 1.0f};
+    glm::vec3 cloudTint{0.96f, 0.97f, 1.0f};
+    glm::vec2 weatherWindDirectionXZ{1.0f, 0.0f};
+    float sunVisibility = 1.0f;
+    float moonVisibility = 0.0f;
+    float cloudCoverage = 0.15f;
+    float rainIntensity = 0.0f;
+    float weatherTimeSeconds = 0.0f;
+    float weatherWindSpeed = 2.0f;
     float verticalFovDegrees = 60.0f;
     float nearClip = 0.1f;
     float farClip = 1024.0f;
@@ -92,6 +106,11 @@ class Renderer
     std::uint16_t chunkProgramHandle_ = UINT16_MAX;
     std::uint16_t chunkAtlasTextureHandle_ = UINT16_MAX;
     std::uint16_t chunkAtlasSamplerHandle_ = UINT16_MAX;
+    std::uint16_t chunkSunDirectionUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkSunLightColorUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkMoonDirectionUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkMoonLightColorUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkAmbientLightUniformHandle_ = UINT16_MAX;
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };
 }  // namespace vibecraft::render

@@ -7,6 +7,8 @@
 
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/game/Camera.hpp"
+#include "vibecraft/game/DayNightCycle.hpp"
+#include "vibecraft/game/WeatherSystem.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
 #include "vibecraft/platform/InputState.hpp"
 #include "vibecraft/platform/Window.hpp"
@@ -31,6 +33,8 @@ class Application
     vibecraft::platform::InputState inputState_;
     vibecraft::render::Renderer renderer_;
     vibecraft::game::Camera camera_;
+    vibecraft::game::DayNightCycle dayNightCycle_;
+    vibecraft::game::WeatherSystem weatherSystem_;
     vibecraft::world::TerrainGenerator terrainGenerator_;
     vibecraft::world::World world_;
     vibecraft::meshing::ChunkMesher chunkMesher_;
