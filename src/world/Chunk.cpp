@@ -65,12 +65,14 @@ std::array<BlockType, Chunk::kBlockCount>& Chunk::mutableBlockStorage()
 
 bool Chunk::isInBounds(const int localX, const int y, const int localZ)
 {
-    return localX >= 0 && localX < kSize && y >= 0 && y < kHeight && localZ >= 0 && localZ < kSize;
+    return localX >= 0 && localX < kSize && y >= kWorldMinY && y <= kWorldMaxY
+        && localZ >= 0 && localZ < kSize;
 }
 
 std::size_t Chunk::toIndex(const int localX, const int y, const int localZ)
 {
-    return static_cast<std::size_t>(y * kSize * kSize + localZ * kSize + localX);
+    const int localY = y - kWorldMinY;
+    return static_cast<std::size_t>(localY * kSize * kSize + localZ * kSize + localX);
 }
 
 ChunkCoord worldToChunkCoord(const int worldX, const int worldZ)

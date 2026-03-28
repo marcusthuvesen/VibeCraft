@@ -13,15 +13,15 @@ namespace
 {
 // Scaled from Minecraft 1.18+ ore biases: diamond deepest; iron mid; coal higher; gold sparse low;
 // emerald only in mountain biomes (high surface height here).
-constexpr int kCoalMinY = 8;
+constexpr int kCoalMinY = -16;
 constexpr int kCoalSurfaceBuffer = 6;
-constexpr int kIronMinY = 10;
-constexpr int kIronMaxY = 38;
-constexpr int kGoldMinY = 7;
-constexpr int kGoldMaxY = 22;
+constexpr int kIronMinY = -32;
+constexpr int kIronMaxY = 80;
+constexpr int kGoldMinY = -48;
+constexpr int kGoldMaxY = 32;
 constexpr int kDiamondMinY = kUndergroundStartY;
-constexpr int kDiamondMaxY = 14;
-constexpr int kMountainStoneCapStartY = 44;
+constexpr int kDiamondMaxY = -16;
+constexpr int kMountainStoneCapStartY = 110;
 
 [[nodiscard]] bool hostAllowsOre(const BlockType hostBlockType)
 {
@@ -140,7 +140,7 @@ constexpr int kMountainStoneCapStartY = 44;
         std::cos(static_cast<double>(y) * 0.47) +
         std::sin(static_cast<double>(worldZ) * 0.43);
     const double combinedOreNoise = veinNoise + pocketNoise * 0.35;
-    constexpr int kSeaLevel = 24;
+    constexpr int kSeaLevel = 63;
     const double altitudeBias =
         std::clamp((static_cast<double>(y) - static_cast<double>(kSeaLevel)) / 24.0, -0.35, 0.35);
     const double hostBias = hostBlockType == BlockType::Deepslate ? 0.18 : 0.0;

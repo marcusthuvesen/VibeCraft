@@ -78,6 +78,13 @@ struct FrameDebugData
     std::array<HotbarSlotHud, 9> hotbarSlots{};
     std::array<HotbarSlotHud, kBagHudSlotCount> bagSlots{};
     std::size_t hotbarSelectedIndex = 0;
+    struct WorldPickupHud
+    {
+        vibecraft::world::BlockType blockType = vibecraft::world::BlockType::Air;
+        glm::vec3 worldPosition{0.0f};
+        float spinRadians = 0.0f;
+    };
+    std::vector<WorldPickupHud> worldPickups;
 
     /// When true, the 3D view and in-game HUD are hidden and the title menu is drawn instead.
     bool mainMenuActive = false;
@@ -134,6 +141,17 @@ class Renderer
     void destroySceneMesh(std::uint64_t sceneMeshId);
     void destroySceneMeshes();
     void drawMainMenuLogo();
+    void drawCrosshairOverlay();
+    void drawInventoryItemIcons(
+        const FrameDebugData& frameDebugData,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight,
+        std::uint16_t hotbarRow,
+        std::uint16_t bagRow0,
+        std::uint16_t bagRow1,
+        std::uint16_t bagRow2);
+    void drawAtlasIcon(float centerX, float centerY, float iconSizePx, std::uint8_t tileIndex);
+    void drawWorldPickupSprites(const FrameDebugData& frameDebugData);
 
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
@@ -151,6 +169,11 @@ class Renderer
     std::uint16_t logoSamplerHandle_ = UINT16_MAX;
     std::uint16_t logoWidthPx_ = 0;
     std::uint16_t logoHeightPx_ = 0;
+    std::uint16_t crosshairProgramHandle_ = UINT16_MAX;
+    std::uint16_t crosshairTextureHandle_ = UINT16_MAX;
+    std::uint16_t crosshairSamplerHandle_ = UINT16_MAX;
+    std::uint16_t inventoryUiProgramHandle_ = UINT16_MAX;
+    std::uint16_t inventoryUiSamplerHandle_ = UINT16_MAX;
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };
 }  // namespace vibecraft::render

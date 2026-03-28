@@ -19,7 +19,9 @@ enum class BlockType : std::uint8_t
     GoldOre,
     DiamondOre,
     EmeraldOre,
-    Lava
+    Lava,
+    TreeTrunk,
+    TreeCrown
 };
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)
@@ -39,6 +41,6 @@ enum class BlockType : std::uint8_t
 
 [[nodiscard]] constexpr bool occludesFaces(const BlockType blockType)
 {
-    return blockType != BlockType::Air && !isFluid(blockType);
+    return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::TreeCrown;
 }
 }  // namespace vibecraft::world

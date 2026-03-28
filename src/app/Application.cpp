@@ -8,11 +8,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <optional>
 #include <unordered_set>
 #include <vector>
 
 #include "vibecraft/core/Logger.hpp"
+#include "vibecraft/multiplayer/UdpTransport.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
 namespace vibecraft::app
@@ -65,6 +67,7 @@ constexpr StreamingSettings kStreamingSettings{};
 constexpr InputTuning kInputTuning{};
 constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
+constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
 
 [[nodiscard]] const char* timeOfDayLabel(const game::TimeOfDayPeriod period)
 {
@@ -177,7 +180,7 @@ struct MeshSyncCpuData
     std::unordered_set<std::uint64_t> desiredResidentIds;
     std::vector<render::SceneMeshData> sceneMeshesToUpload;
     std::vector<std::uint64_t> removedMeshIds;
-    std::vector<world::ChunkCoord> residentDirtyCoords;
+    std::vector<world::ChunkMeshUpdate> dirtyResidentMeshUpdates;
 };
 
 [[nodiscard]] MeshSyncCpuData buildMeshSyncCpuData(
@@ -191,7 +194,7 @@ struct MeshSyncCpuData
     MeshSyncCpuData cpuData;
     cpuData.sceneMeshesToUpload.reserve(dirtyCoordSet.size());
     cpuData.removedMeshIds.reserve(dirtyCoordSet.size() + residentChunkMeshIds.size());
-    cpuData.residentDirtyCoords.reserve(dirtyCoordSet.size());
+    cpuData.dirtyResidentMeshUpdates.reserve(dirtyCoordSet.size());
     std::vector<std::pair<world::ChunkCoord, bool>> pendingResidentCoords;
     pendingResidentCoords.reserve(static_cast<std::size_t>(
         (kStreamingSettings.residentChunkRadius * 2 + 1) * (kStreamingSettings.residentChunkRadius * 2 + 1)));
@@ -261,7 +264,10 @@ struct MeshSyncCpuData
             cpuData.removedMeshIds.push_back(meshId);
             if (isDirty)
             {
-                cpuData.residentDirtyCoords.push_back(coord);
+                cpuData.dirtyResidentMeshUpdates.push_back(world::ChunkMeshUpdate{
+                    .coord = coord,
+                    .stats = world::ChunkMeshStats{},
+                });
             }
             ++builtThisFrame;
             continue;
@@ -284,10 +290,18 @@ struct MeshSyncCpuData
         }
 
         buildVertexNormals(sceneMesh);
+        const world::ChunkMeshStats chunkMeshStats{
+            .faceCount = meshData.faceCount,
+            .vertexCount = static_cast<std::uint32_t>(meshData.vertices.size()),
+            .indexCount = static_cast<std::uint32_t>(meshData.indices.size()),
+        };
         cpuData.sceneMeshesToUpload.push_back(std::move(sceneMesh));
         if (isDirty)
         {
-            cpuData.residentDirtyCoords.push_back(coord);
+            cpuData.dirtyResidentMeshUpdates.push_back(world::ChunkMeshUpdate{
+                .coord = coord,
+                .stats = chunkMeshStats,
+            });
         }
         ++builtThisFrame;
     }
@@ -529,6 +543,16 @@ void applyMeshSyncGpuData(
     return "clear";
 }
 
+[[nodiscard]] std::string resolveJoinAddressFromEnvironment()
+{
+    if (const char* const address = std::getenv("VIBECRAFT_JOIN_ADDRESS"); address != nullptr
+        && address[0] != '\0')
+    {
+        return std::string(address);
+    }
+    return "127.0.0.1";
+}
+
 }
 
 bool Application::initialize()
@@ -551,6 +575,8 @@ bool Application::initialize()
         world_.generateRadius(terrainGenerator_, kStreamingSettings.bootstrapChunkRadius);
     }
 
+    multiplayerAddress_ = resolveJoinAddressFromEnvironment();
+
     if (!renderer_.initialize(window_.nativeWindowHandle(), window_.width(), window_.height()))
     {
         core::logError("Failed to initialize bgfx.");
@@ -563,7 +589,7 @@ bool Application::initialize()
     const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
     playerFeetPosition_ = findInitialSpawnFeetPosition(world_, terrainGenerator_, camera_.position(), spawnHeight);
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
-    camera_.addYawPitch(90.0f, 35.0f);
+    camera_.addYawPitch(90.0f, 0.0f);
     spawnFeetPosition_ = playerFeetPosition_;
     accumulatedFallDistance_ = 0.0f;
     playerVitals_.reset();
@@ -578,7 +604,8 @@ bool Application::initialize()
 
     syncWorldData();
 
-    gameScreen_ = GameScreen::Playing;
+    gameScreen_ = GameScreen::MainMenu;
+    mainMenuNotice_ = "Press Multiplayer, then H to host or J to join " + multiplayerAddress_ + ".";
     return true;
 }
 
@@ -600,6 +627,7 @@ int Application::run()
         ++runFrameIndex_;
     }
 
+    stopMultiplayerSessions();
     renderer_.shutdown();
     return 0;
 }
@@ -639,6 +667,8 @@ void Application::update(const float deltaTimeSeconds)
         mainMenuTimeSeconds_ += deltaTimeSeconds;
     }
 
+    updateMultiplayer(deltaTimeSeconds);
+
     if (inputState_.windowSizeChanged && window_.width() != 0 && window_.height() != 0)
     {
         renderer_.resize(window_.width(), window_.height());
@@ -647,6 +677,8 @@ void Application::update(const float deltaTimeSeconds)
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
         syncWorldData();
+        const float currentEyeHeight = std::max(0.0f, camera_.position().y - playerFeetPosition_.y);
+        updateDroppedItems(deltaTimeSeconds, currentEyeHeight);
     }
 
     std::optional<world::RaycastHit> raycastHit;
@@ -669,7 +701,7 @@ void Application::update(const float deltaTimeSeconds)
     const int cycleMinutesComponent = cycleSeconds / 60;
     const int cycleSecondsComponent = cycleSeconds % 60;
     frameDebugData.statusLine = fmt::format(
-        "HP: {:.0f}/{:.0f}  Air: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Frame: {:.2f} ms ({:.1f} fps){}",
+        "HP: {:.0f}/{:.0f}  Air: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Net: {}  Peers: {}  Frame: {:.2f} ms ({:.1f} fps){}",
         playerVitals_.health(),
         playerVitals_.maxHealth(),
         playerVitals_.air(),
@@ -682,6 +714,8 @@ void Application::update(const float deltaTimeSeconds)
         cycleSecondsComponent,
         weatherLabel(weatherSample.type),
         savePath_.generic_string(),
+        multiplayerStatusLine_.empty() ? "offline" : multiplayerStatusLine_,
+        remotePlayers_.size(),
         safeFrameTimeMs,
         smoothedFps,
         respawnNotice_.empty() ? "" : fmt::format("  {}", respawnNotice_));
@@ -695,6 +729,16 @@ void Application::update(const float deltaTimeSeconds)
     {
         frameDebugData.bagSlots[i].blockType = bagSlots_[i].blockType;
         frameDebugData.bagSlots[i].count = bagSlots_[i].count;
+    }
+    frameDebugData.worldPickups.reserve(droppedItems_.size());
+    for (const DroppedItem& droppedItem : droppedItems_)
+    {
+        const float bobOffset = 0.14f + std::sin(droppedItem.ageSeconds * 6.0f) * 0.08f;
+        frameDebugData.worldPickups.push_back(render::FrameDebugData::WorldPickupHud{
+            .blockType = droppedItem.blockType,
+            .worldPosition = droppedItem.worldPosition + glm::vec3(0.0f, bobOffset, 0.0f),
+            .spinRadians = droppedItem.spinRadians,
+        });
     }
 
     if (raycastHit.has_value())
@@ -807,6 +851,7 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (gameScreen_ == GameScreen::MainMenu)
     {
+        handleMainMenuMultiplayerShortcuts();
         const bgfx::Stats* const stats = bgfx::getStats();
         const std::uint16_t textWidth =
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
@@ -826,6 +871,7 @@ void Application::processInput(const float deltaTimeSeconds)
             switch (hit)
             {
             case 0:
+                stopMultiplayerSessions();
                 gameScreen_ = GameScreen::Playing;
                 mouseCaptured_ = true;
                 window_.setRelativeMouseMode(true);
@@ -833,7 +879,11 @@ void Application::processInput(const float deltaTimeSeconds)
                 inputState_.clearMouseMotion();
                 break;
             case 1:
-                mainMenuNotice_ = "Multiplayer is not available yet.";
+                mainMenuNotice_ = fmt::format(
+                    "Press H to host on {} or J to join {}:{}.",
+                    multiplayerPort_,
+                    multiplayerAddress_,
+                    multiplayerPort_);
                 break;
             case 2:
                 mainMenuNotice_ = "VibeCraft Realms is not available yet.";
@@ -886,6 +936,7 @@ void Application::processInput(const float deltaTimeSeconds)
                 pauseMenuNotice_ = "Options are not available yet.";
                 break;
             case 2:
+                stopMultiplayerSessions();
                 gameScreen_ = GameScreen::MainMenu;
                 mouseCaptured_ = false;
                 window_.setRelativeMouseMode(false);
@@ -1089,14 +1140,37 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (inputState_.leftMousePressed)
     {
-        if (world_.applyEditCommand(world::WorldEditCommand{
+        const world::WorldEditCommand command{
             .action = world::WorldEditAction::Remove,
             .position = raycastHit->solidBlock,
             .blockType = world::BlockType::Air,
-        }))
+        };
+        if (world_.applyEditCommand(command))
         {
-            static_cast<void>(
-                addBlockToInventory(hotbarSlots_, bagSlots_, raycastHit->blockType, selectedHotbarIndex_));
+            spawnDroppedItem(raycastHit->blockType, raycastHit->solidBlock);
+            if (hostSession_ != nullptr && hostSession_->running())
+            {
+                hostSession_->broadcastBlockEdit({
+                    .authorClientId = localClientId_,
+                    .action = command.action,
+                    .x = command.position.x,
+                    .y = command.position.y,
+                    .z = command.position.z,
+                    .blockType = command.blockType,
+                });
+            }
+            if (clientSession_ != nullptr && clientSession_->connected())
+            {
+                clientSession_->sendInput(
+                    {
+                        .clientId = clientSession_->clientId(),
+                        .breakBlock = true,
+                        .targetX = command.position.x,
+                        .targetY = command.position.y,
+                        .targetZ = command.position.z,
+                    },
+                    networkServerTick_);
+            }
         }
     }
 
@@ -1108,14 +1182,123 @@ void Application::processInput(const float deltaTimeSeconds)
             return;
         }
 
-        if (world_.applyEditCommand(world::WorldEditCommand{
+        const world::WorldEditCommand command{
             .action = world::WorldEditAction::Place,
             .position = raycastHit->buildTarget,
             .blockType = selectedSlot.blockType,
-        }))
+        };
+        if (world_.applyEditCommand(command))
         {
             consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+            if (hostSession_ != nullptr && hostSession_->running())
+            {
+                hostSession_->broadcastBlockEdit({
+                    .authorClientId = localClientId_,
+                    .action = command.action,
+                    .x = command.position.x,
+                    .y = command.position.y,
+                    .z = command.position.z,
+                    .blockType = command.blockType,
+                });
+            }
+            if (clientSession_ != nullptr && clientSession_->connected())
+            {
+                clientSession_->sendInput(
+                    {
+                        .clientId = clientSession_->clientId(),
+                        .placeBlock = true,
+                        .targetX = command.position.x,
+                        .targetY = command.position.y,
+                        .targetZ = command.position.z,
+                        .selectedHotbarIndex = static_cast<std::uint8_t>(selectedHotbarIndex_),
+                        .placeBlockType = command.blockType,
+                    },
+                    networkServerTick_);
+            }
         }
+    }
+}
+
+void Application::spawnDroppedItem(
+    const world::BlockType blockType,
+    const glm::ivec3& blockPosition)
+{
+    if (blockType == world::BlockType::Air || blockType == world::BlockType::Water
+        || blockType == world::BlockType::Lava)
+    {
+        return;
+    }
+
+    droppedItems_.push_back(DroppedItem{
+        .blockType = blockType,
+        .worldPosition = glm::vec3(
+            static_cast<float>(blockPosition.x) + 0.5f,
+            static_cast<float>(blockPosition.y) + 0.2f,
+            static_cast<float>(blockPosition.z) + 0.5f),
+        .velocity = glm::vec3(
+            std::sin(static_cast<float>(blockPosition.x + blockPosition.z) * 0.73f) * 1.05f,
+            2.0f,
+            std::cos(static_cast<float>(blockPosition.x - blockPosition.z) * 0.61f) * 1.05f),
+        .ageSeconds = 0.0f,
+        .pickupDelaySeconds = 0.25f,
+        .spinRadians = 0.0f,
+    });
+}
+
+void Application::updateDroppedItems(const float deltaTimeSeconds, const float eyeHeight)
+{
+    const glm::vec3 pickupCenter = playerFeetPosition_ + glm::vec3(0.0f, eyeHeight * 0.6f, 0.0f);
+    constexpr float kPickupRadius = 1.25f;
+    constexpr float kPickupRadiusSq = kPickupRadius * kPickupRadius;
+    constexpr float kMagnetRadius = 3.8f;
+    constexpr float kMagnetRadiusSq = kMagnetRadius * kMagnetRadius;
+    constexpr float kGravity = 16.0f;
+    constexpr float kTau = 6.28318530718f;
+
+    std::size_t itemIndex = 0;
+    while (itemIndex < droppedItems_.size())
+    {
+        DroppedItem& droppedItem = droppedItems_[itemIndex];
+        droppedItem.ageSeconds += deltaTimeSeconds;
+        droppedItem.pickupDelaySeconds =
+            std::max(0.0f, droppedItem.pickupDelaySeconds - deltaTimeSeconds);
+        droppedItem.spinRadians = std::fmod(
+            droppedItem.spinRadians + deltaTimeSeconds * 4.2f,
+            kTau);
+
+        droppedItem.velocity.y -= kGravity * deltaTimeSeconds;
+        droppedItem.velocity *= std::pow(0.96f, deltaTimeSeconds * 60.0f);
+
+        const glm::vec3 toPlayer = pickupCenter - droppedItem.worldPosition;
+        const float distanceToPlayerSq = glm::dot(toPlayer, toPlayer);
+        if (droppedItem.pickupDelaySeconds <= 0.0f && distanceToPlayerSq <= kMagnetRadiusSq)
+        {
+            const float distanceToPlayer = std::sqrt(std::max(distanceToPlayerSq, 0.0001f));
+            const glm::vec3 pullDirection = toPlayer / distanceToPlayer;
+            const float pullStrength = 8.0f + (1.0f - distanceToPlayer / kMagnetRadius) * 18.0f;
+            droppedItem.velocity += pullDirection * pullStrength * deltaTimeSeconds;
+        }
+
+        droppedItem.worldPosition += droppedItem.velocity * deltaTimeSeconds;
+
+        const int belowX = static_cast<int>(std::floor(droppedItem.worldPosition.x));
+        const int belowY = static_cast<int>(std::floor(droppedItem.worldPosition.y - 0.36f));
+        const int belowZ = static_cast<int>(std::floor(droppedItem.worldPosition.z));
+        if (world::isSolid(world_.blockAt(belowX, belowY, belowZ)) && droppedItem.velocity.y < 0.0f)
+        {
+            droppedItem.worldPosition.y = static_cast<float>(belowY + 1) + 0.36f;
+            droppedItem.velocity.y = 0.0f;
+        }
+
+        const glm::vec3 delta = droppedItem.worldPosition - pickupCenter;
+        if (droppedItem.pickupDelaySeconds <= 0.0f && glm::dot(delta, delta) <= kPickupRadiusSq
+            && addBlockToInventory(hotbarSlots_, bagSlots_, droppedItem.blockType, selectedHotbarIndex_))
+        {
+            droppedItems_.erase(droppedItems_.begin() + static_cast<std::ptrdiff_t>(itemIndex));
+            continue;
+        }
+
+        ++itemIndex;
     }
 }
 
@@ -1134,6 +1317,354 @@ void Application::respawnPlayer()
         kPlayerMovementSettings.standingColliderHeight,
         kPlayerMovementSettings.standingEyeHeight);
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+}
+
+bool Application::startHostSession()
+{
+    stopMultiplayerSessions();
+
+    auto hostSession = std::make_unique<multiplayer::HostSession>(std::make_unique<multiplayer::UdpTransport>());
+    if (!hostSession->start(multiplayerPort_))
+    {
+        multiplayerStatusLine_ = "host failed: " + hostSession->lastError();
+        return false;
+    }
+
+    hostSession_ = std::move(hostSession);
+    multiplayerMode_ = MultiplayerRuntimeMode::Host;
+    localClientId_ = 0;
+    worldSyncSentClients_.clear();
+    remotePlayers_.clear();
+    multiplayerStatusLine_ = fmt::format("hosting on :{}", multiplayerPort_);
+    return true;
+}
+
+bool Application::startClientSession(const std::string& address)
+{
+    stopMultiplayerSessions();
+
+    auto clientSession = std::make_unique<multiplayer::ClientSession>(std::make_unique<multiplayer::UdpTransport>());
+    if (!clientSession->connect(address, multiplayerPort_, "Player"))
+    {
+        multiplayerStatusLine_ = "join failed: " + clientSession->lastError();
+        return false;
+    }
+
+    clientSession_ = std::move(clientSession);
+    multiplayerMode_ = MultiplayerRuntimeMode::Client;
+    localClientId_ = 0;
+    remotePlayers_.clear();
+    multiplayerStatusLine_ = fmt::format("connecting {}:{}", address, multiplayerPort_);
+    return true;
+}
+
+void Application::stopMultiplayerSessions()
+{
+    if (clientSession_ != nullptr)
+    {
+        clientSession_->disconnect();
+        clientSession_.reset();
+    }
+    if (hostSession_ != nullptr)
+    {
+        hostSession_->shutdown();
+        hostSession_.reset();
+    }
+    multiplayerMode_ = MultiplayerRuntimeMode::SinglePlayer;
+    localClientId_ = 0;
+    remotePlayers_.clear();
+    worldSyncSentClients_.clear();
+}
+
+void Application::handleMainMenuMultiplayerShortcuts()
+{
+    const bool hostHeld = inputState_.isKeyDown(SDL_SCANCODE_H);
+    if (hostHeld && !hostShortcutLatch_)
+    {
+        if (startHostSession())
+        {
+            gameScreen_ = GameScreen::Playing;
+            mouseCaptured_ = true;
+            window_.setRelativeMouseMode(true);
+            mainMenuNotice_ = "Hosting session started.";
+        }
+        else
+        {
+            mainMenuNotice_ = "Failed to start host session.";
+        }
+    }
+    hostShortcutLatch_ = hostHeld;
+
+    const bool joinHeld = inputState_.isKeyDown(SDL_SCANCODE_J);
+    if (joinHeld && !joinShortcutLatch_)
+    {
+        multiplayerAddress_ = resolveJoinAddressFromEnvironment();
+        if (startClientSession(multiplayerAddress_))
+        {
+            gameScreen_ = GameScreen::Playing;
+            mouseCaptured_ = true;
+            window_.setRelativeMouseMode(true);
+            mainMenuNotice_ = "Joining remote host.";
+        }
+        else
+        {
+            mainMenuNotice_ = "Failed to start client session.";
+        }
+    }
+    joinShortcutLatch_ = joinHeld;
+}
+
+void Application::sendInitialWorldToClient(const std::uint16_t clientId)
+{
+    if (hostSession_ == nullptr)
+    {
+        return;
+    }
+
+    for (const auto& [coord, chunk] : world_.chunks())
+    {
+        multiplayer::protocol::ChunkSnapshotMessage snapshot{
+            .coord = coord,
+        };
+        const auto& blockStorage = chunk.blockStorage();
+        for (std::size_t i = 0; i < blockStorage.size(); ++i)
+        {
+            snapshot.blocks[i] = static_cast<std::uint8_t>(blockStorage[i]);
+        }
+        hostSession_->sendChunkSnapshot(clientId, snapshot);
+    }
+}
+
+void Application::applyChunkSnapshot(const multiplayer::protocol::ChunkSnapshotMessage& chunkMessage)
+{
+    world::World::ChunkMap chunks = world_.chunks();
+    world::Chunk chunk(chunkMessage.coord);
+    auto& storage = chunk.mutableBlockStorage();
+    for (std::size_t i = 0; i < storage.size(); ++i)
+    {
+        storage[i] = static_cast<world::BlockType>(chunkMessage.blocks[i]);
+    }
+    chunks[chunkMessage.coord] = std::move(chunk);
+    world_.replaceChunks(std::move(chunks));
+}
+
+void Application::applyRemoteBlockEdit(const multiplayer::protocol::BlockEditEventMessage& editMessage)
+{
+    static_cast<void>(world_.applyEditCommand({
+        .action = editMessage.action,
+        .position = {editMessage.x, editMessage.y, editMessage.z},
+        .blockType = editMessage.blockType,
+    }));
+}
+
+std::vector<multiplayer::protocol::PlayerSnapshotMessage> Application::buildServerSnapshots() const
+{
+    std::vector<multiplayer::protocol::PlayerSnapshotMessage> snapshots;
+    snapshots.reserve(remotePlayers_.size() + 1);
+    snapshots.push_back(multiplayer::protocol::PlayerSnapshotMessage{
+        .clientId = localClientId_,
+        .posX = playerFeetPosition_.x,
+        .posY = playerFeetPosition_.y,
+        .posZ = playerFeetPosition_.z,
+        .yawDegrees = camera_.yawDegrees(),
+        .pitchDegrees = camera_.pitchDegrees(),
+        .health = playerVitals_.health(),
+        .air = playerVitals_.air(),
+    });
+    for (const RemotePlayerState& remote : remotePlayers_)
+    {
+        snapshots.push_back(multiplayer::protocol::PlayerSnapshotMessage{
+            .clientId = remote.clientId,
+            .posX = remote.position.x,
+            .posY = remote.position.y,
+            .posZ = remote.position.z,
+            .yawDegrees = remote.yawDegrees,
+            .pitchDegrees = remote.pitchDegrees,
+            .health = remote.health,
+            .air = remote.air,
+        });
+    }
+    return snapshots;
+}
+
+void Application::updateMultiplayer(const float deltaTimeSeconds)
+{
+    networkTickAccumulatorSeconds_ += deltaTimeSeconds;
+
+    if (hostSession_ != nullptr && hostSession_->running())
+    {
+        hostSession_->poll();
+        for (const multiplayer::ConnectedClient& client : hostSession_->clients())
+        {
+            if (!worldSyncSentClients_.contains(client.clientId))
+            {
+                sendInitialWorldToClient(client.clientId);
+                worldSyncSentClients_.insert(client.clientId);
+            }
+        }
+
+        const std::vector<multiplayer::protocol::ClientInputMessage> inputs = hostSession_->takePendingInputs();
+        for (const multiplayer::protocol::ClientInputMessage& input : inputs)
+        {
+            auto remotePlayerIt = std::find_if(
+                remotePlayers_.begin(),
+                remotePlayers_.end(),
+                [&input](const RemotePlayerState& state)
+                {
+                    return state.clientId == input.clientId;
+                });
+            if (remotePlayerIt == remotePlayers_.end())
+            {
+                remotePlayers_.push_back(RemotePlayerState{
+                    .clientId = input.clientId,
+                    .position = {input.positionX, input.positionY, input.positionZ},
+                    .yawDegrees = input.yawDelta,
+                    .pitchDegrees = input.pitchDelta,
+                    .health = input.health,
+                    .air = input.air,
+                });
+            }
+            else
+            {
+                remotePlayerIt->position = {input.positionX, input.positionY, input.positionZ};
+                remotePlayerIt->yawDegrees = input.yawDelta;
+                remotePlayerIt->pitchDegrees = input.pitchDelta;
+                remotePlayerIt->health = input.health;
+                remotePlayerIt->air = input.air;
+            }
+
+            if (input.breakBlock)
+            {
+                const glm::vec3 playerPosition{input.positionX, input.positionY, input.positionZ};
+                const glm::vec3 targetPosition{
+                    static_cast<float>(input.targetX) + 0.5f,
+                    static_cast<float>(input.targetY) + 0.5f,
+                    static_cast<float>(input.targetZ) + 0.5f};
+                if (glm::distance(playerPosition, targetPosition) > (kInputTuning.reachDistance + 1.0f))
+                {
+                    continue;
+                }
+                const multiplayer::protocol::BlockEditEventMessage edit{
+                    .authorClientId = input.clientId,
+                    .action = world::WorldEditAction::Remove,
+                    .x = input.targetX,
+                    .y = input.targetY,
+                    .z = input.targetZ,
+                    .blockType = world::BlockType::Air,
+                };
+                applyRemoteBlockEdit(edit);
+                hostSession_->broadcastBlockEdit(edit);
+            }
+            else if (input.placeBlock)
+            {
+                const glm::vec3 playerPosition{input.positionX, input.positionY, input.positionZ};
+                const glm::vec3 targetPosition{
+                    static_cast<float>(input.targetX) + 0.5f,
+                    static_cast<float>(input.targetY) + 0.5f,
+                    static_cast<float>(input.targetZ) + 0.5f};
+                if (glm::distance(playerPosition, targetPosition) > (kInputTuning.reachDistance + 1.0f))
+                {
+                    continue;
+                }
+                const multiplayer::protocol::BlockEditEventMessage edit{
+                    .authorClientId = input.clientId,
+                    .action = world::WorldEditAction::Place,
+                    .x = input.targetX,
+                    .y = input.targetY,
+                    .z = input.targetZ,
+                    .blockType = input.placeBlockType,
+                };
+                applyRemoteBlockEdit(edit);
+                hostSession_->broadcastBlockEdit(edit);
+            }
+        }
+
+        while (networkTickAccumulatorSeconds_ >= kNetworkTickSeconds)
+        {
+            networkTickAccumulatorSeconds_ -= kNetworkTickSeconds;
+            ++networkServerTick_;
+            hostSession_->broadcastSnapshot(
+                networkServerTick_,
+                dayNightCycle_.elapsedSeconds(),
+                weatherSystem_.elapsedSeconds(),
+                buildServerSnapshots());
+        }
+
+        multiplayerStatusLine_ =
+            fmt::format("host {} client(s) @{}", hostSession_->clients().size(), multiplayerPort_);
+    }
+
+    if (clientSession_ != nullptr)
+    {
+        clientSession_->poll();
+        if (const std::optional<multiplayer::protocol::JoinAcceptMessage> accepted = clientSession_->takeJoinAccept();
+            accepted.has_value())
+        {
+            localClientId_ = accepted->clientId;
+            dayNightCycle_.setElapsedSeconds(accepted->dayNightElapsedSeconds);
+            weatherSystem_.setElapsedSeconds(accepted->weatherElapsedSeconds);
+        }
+
+        for (const multiplayer::protocol::ChunkSnapshotMessage& chunk : clientSession_->takeChunkSnapshots())
+        {
+            applyChunkSnapshot(chunk);
+        }
+
+        for (const multiplayer::protocol::BlockEditEventMessage& edit : clientSession_->takeBlockEdits())
+        {
+            applyRemoteBlockEdit(edit);
+        }
+
+        const std::vector<multiplayer::protocol::ServerSnapshotMessage> snapshots = clientSession_->takeSnapshots();
+        if (!snapshots.empty())
+        {
+            const multiplayer::protocol::ServerSnapshotMessage& latest = snapshots.back();
+            dayNightCycle_.setElapsedSeconds(latest.dayNightElapsedSeconds);
+            weatherSystem_.setElapsedSeconds(latest.weatherElapsedSeconds);
+            remotePlayers_.clear();
+            for (const multiplayer::protocol::PlayerSnapshotMessage& player : latest.players)
+            {
+                if (player.clientId == localClientId_)
+                {
+                    continue;
+                }
+                remotePlayers_.push_back(RemotePlayerState{
+                    .clientId = player.clientId,
+                    .position = {player.posX, player.posY, player.posZ},
+                    .yawDegrees = player.yawDegrees,
+                    .pitchDegrees = player.pitchDegrees,
+                    .health = player.health,
+                    .air = player.air,
+                });
+            }
+        }
+
+        if (clientSession_->connected())
+        {
+            clientSession_->sendInput(
+                {
+                    .clientId = localClientId_,
+                    .dtSeconds = deltaTimeSeconds,
+                    .positionX = playerFeetPosition_.x,
+                    .positionY = playerFeetPosition_.y,
+                    .positionZ = playerFeetPosition_.z,
+                    .yawDelta = camera_.yawDegrees(),
+                    .pitchDelta = camera_.pitchDegrees(),
+                    .health = playerVitals_.health(),
+                    .air = playerVitals_.air(),
+                },
+                networkServerTick_);
+            multiplayerStatusLine_ = fmt::format("client id {} -> {}:{}", localClientId_, multiplayerAddress_, multiplayerPort_);
+        }
+        else if (clientSession_->connecting())
+        {
+            multiplayerStatusLine_ = fmt::format("connecting {}:{}...", multiplayerAddress_, multiplayerPort_);
+        }
+        else if (!clientSession_->lastError().empty())
+        {
+            multiplayerStatusLine_ = "client error: " + clientSession_->lastError();
+        }
+    }
 }
 
 void Application::syncWorldData()
@@ -1182,9 +1713,9 @@ void Application::syncWorldData()
         kStreamingSettings.meshBuildBudgetPerFrame);
     applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
 
-    if (!cpuData.residentDirtyCoords.empty())
+    if (!cpuData.dirtyResidentMeshUpdates.empty())
     {
-        world_.rebuildDirtyMeshes(chunkMesher_, cpuData.residentDirtyCoords);
+        world_.applyMeshStatsAndClearDirty(cpuData.dirtyResidentMeshUpdates);
     }
 
     std::vector<world::ChunkCoord> offResidentDirtyCoords;

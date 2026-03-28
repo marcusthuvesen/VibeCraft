@@ -14,13 +14,13 @@ namespace vibecraft::world
 {
 namespace
 {
-constexpr int kSeaLevel = 24;
+constexpr int kSeaLevel = 63;
 constexpr int kTopsoilDepth = 3;
-constexpr int kDeepslateFullStartY = 14;
-constexpr int kDeepslateTransitionEndY = 22;
-constexpr int kSandSurfaceMaxHeight = 26;
+constexpr int kDeepslateFullStartY = -8;
+constexpr int kDeepslateTransitionEndY = 8;
+constexpr int kSandSurfaceMaxHeight = 68;
 constexpr int kBeachMaxHeightAboveSea = 1;
-constexpr int kMountainStoneCapStartY = 44;
+constexpr int kMountainStoneCapStartY = 110;
 constexpr int kMountainStoneCapThickness = 2;
 constexpr int kLowlandPondMaxHeightAboveSea = 3;
 constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
@@ -130,12 +130,12 @@ int TerrainGenerator::surfaceHeightAt(const int worldX, const int worldZ) const
     const double detail = noise::fbmNoise2d(worldXd, worldZd, 28.0, 3, 0x7a0f3e19U) * 2.0 - 1.0;
 
     const double terrainHeight = static_cast<double>(kSeaLevel)
-        - 5.0
-        + continents * 14.0
-        + ridges * 8.0
-        + hills * 7.0
-        + detail * 3.0;
-    return std::clamp(static_cast<int>(std::round(terrainHeight)), 6, 56);
+        - 8.0
+        + continents * 34.0
+        + ridges * 18.0
+        + hills * 12.0
+        + detail * 6.0;
+    return std::clamp(static_cast<int>(std::round(terrainHeight)), -20, 190);
 }
 
 BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int worldZ) const

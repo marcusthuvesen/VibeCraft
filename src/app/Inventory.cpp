@@ -111,6 +111,10 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Emerald";
     case vibecraft::world::BlockType::Lava:
         return "Lava";
+    case vibecraft::world::BlockType::TreeTrunk:
+        return "Tree Trunk";
+    case vibecraft::world::BlockType::TreeCrown:
+        return "Tree Crown";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

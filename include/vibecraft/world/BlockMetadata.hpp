@@ -29,7 +29,7 @@ struct BlockMetadata
 };
 
 // Vertex color multiplies the atlas sample; white shows materials as authored in assets/textures/materials.
-// Tile indices follow scripts/build_chunk_atlas.sh row-major order on a 4x4 atlas.
+// Tile indices follow scripts/build_chunk_atlas.sh row-major order on a 5x4 atlas.
 [[nodiscard]] constexpr BlockMetadata blockMetadata(const BlockType blockType)
 {
     switch (blockType)
@@ -124,6 +124,20 @@ struct BlockMetadata
             .textureTiles = {.top = 13, .bottom = 13, .side = 13},
             .hardness = 1000.0f,
             .breakable = false,
+        };
+    case BlockType::TreeTrunk:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 14, .bottom = 14, .side = 15},
+            .hardness = 1.6f,
+            .breakable = true,
+        };
+    case BlockType::TreeCrown:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 16, .bottom = 16, .side = 16},
+            .hardness = 0.2f,
+            .breakable = true,
         };
     case BlockType::Air:
     default:

@@ -75,7 +75,7 @@ ChunkMeshData ChunkMesher::buildMesh(
     {
         for (int localX = 0; localX < vibecraft::world::Chunk::kSize; ++localX)
         {
-            for (int y = 0; y < vibecraft::world::Chunk::kHeight; ++y)
+            for (int y = vibecraft::world::kWorldMinY; y <= vibecraft::world::kWorldMaxY; ++y)
             {
                 const int worldX = coord.x * vibecraft::world::Chunk::kSize + localX;
                 const int worldZ = coord.z * vibecraft::world::Chunk::kSize + localZ;

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "vibecraft/world/Block.hpp"
+#include "vibecraft/world/WorldVerticalScale.hpp"
 
 namespace vibecraft::world
 {
@@ -27,7 +28,7 @@ class Chunk
 {
   public:
     static constexpr int kSize = 16;
-    static constexpr int kHeight = 64;
+    static constexpr int kHeight = kWorldHeight;
     static constexpr int kBlockCount = kSize * kSize * kHeight;
 
     explicit Chunk(ChunkCoord coord = {});

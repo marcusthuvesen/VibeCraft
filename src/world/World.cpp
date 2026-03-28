@@ -5,18 +5,190 @@
 #include <glm/geometric.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "vibecraft/meshing/ChunkMesher.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
+#include "vibecraft/world/TerrainNoise.hpp"
 #include "vibecraft/world/TerrainGenerator.hpp"
+#include "vibecraft/world/WorldVerticalScale.hpp"
 #include "vibecraft/world/WorldSerializer.hpp"
 
 namespace vibecraft::world
 {
 namespace
 {
+constexpr int kTreeCellSize = 6;
+constexpr int kTreeCrownRadius = 2;
+constexpr int kTreeMinTrunkHeight = 4;
+constexpr int kTreeMaxTrunkHeight = 6;
+constexpr int kTreeMinSurfaceY = 27;
+constexpr std::uint32_t kTreeSeed = 0x0ea52f4dU;
+constexpr std::uint32_t kTreeChanceSeed = 0x6f4a31deU;
+constexpr std::uint32_t kTreeOffsetXSeed = 0x34b6f0e1U;
+constexpr std::uint32_t kTreeOffsetZSeed = 0x5cd2a907U;
+constexpr std::uint32_t kTreeShapeSeed = 0x72f1a4b3U;
+
+[[nodiscard]] int floorDiv(const int value, const int divisor)
+{
+    return value >= 0 ? value / divisor : (value - (divisor - 1)) / divisor;
+}
+
+[[nodiscard]] bool canGrowTreeAt(
+    const TerrainGenerator& terrainGenerator,
+    const int worldX,
+    const int worldZ,
+    const int surfaceY,
+    const int trunkHeight)
+{
+    if (surfaceY < kTreeMinSurfaceY)
+    {
+        return false;
+    }
+    if (terrainGenerator.blockTypeAt(worldX, surfaceY, worldZ) != BlockType::Grass)
+    {
+        return false;
+    }
+
+    const int canopyTopY = surfaceY + trunkHeight + 2;
+    if (canopyTopY > kWorldMaxY)
+    {
+        return false;
+    }
+
+    for (int y = surfaceY + 1; y <= canopyTopY; ++y)
+    {
+        if (terrainGenerator.blockTypeAt(worldX, y, worldZ) != BlockType::Air)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void placeBlockIfInsideChunk(
+    Chunk& chunk,
+    const ChunkCoord& coord,
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const BlockType blockType)
+{
+    if (y < kWorldMinY || y > kWorldMaxY)
+    {
+        return;
+    }
+
+    const int minWorldX = coord.x * Chunk::kSize;
+    const int minWorldZ = coord.z * Chunk::kSize;
+    const int maxWorldX = minWorldX + Chunk::kSize - 1;
+    const int maxWorldZ = minWorldZ + Chunk::kSize - 1;
+    if (worldX < minWorldX || worldX > maxWorldX || worldZ < minWorldZ || worldZ > maxWorldZ)
+    {
+        return;
+    }
+
+    const int localX = worldToLocalCoord(worldX);
+    const int localZ = worldToLocalCoord(worldZ);
+    if (chunk.blockAt(localX, y, localZ) != BlockType::Air)
+    {
+        return;
+    }
+
+    chunk.setBlock(localX, y, localZ, blockType);
+}
+
+void placeTreeForColumn(
+    Chunk& chunk,
+    const ChunkCoord& coord,
+    const TerrainGenerator& terrainGenerator,
+    const int treeX,
+    const int treeZ)
+{
+    const int surfaceY = terrainGenerator.surfaceHeightAt(treeX, treeZ);
+    const std::uint32_t treeHash = noise::hashCoordinates(treeX, treeZ, kTreeSeed);
+    const int trunkHeight = kTreeMinTrunkHeight
+        + static_cast<int>(treeHash % static_cast<std::uint32_t>(kTreeMaxTrunkHeight - kTreeMinTrunkHeight + 1));
+    if (!canGrowTreeAt(terrainGenerator, treeX, treeZ, surfaceY, trunkHeight))
+    {
+        return;
+    }
+
+    for (int y = surfaceY + 1; y <= surfaceY + trunkHeight; ++y)
+    {
+        placeBlockIfInsideChunk(chunk, coord, treeX, y, treeZ, BlockType::TreeTrunk);
+    }
+
+    const int crownCenterY = surfaceY + trunkHeight;
+    for (int dy = -2; dy <= 1; ++dy)
+    {
+        const int radius = dy <= -1 ? 2 : 1;
+        for (int dz = -radius; dz <= radius; ++dz)
+        {
+            for (int dx = -radius; dx <= radius; ++dx)
+            {
+                if (dx == 0 && dz == 0)
+                {
+                    continue;
+                }
+
+                const int crownX = treeX + dx;
+                const int crownY = crownCenterY + dy;
+                const int crownZ = treeZ + dz;
+                const bool outerCorner = std::abs(dx) == radius && std::abs(dz) == radius;
+                if (outerCorner
+                    && noise::random01(crownX, crownZ, kTreeShapeSeed + static_cast<std::uint32_t>(crownY)) > 0.4)
+                {
+                    continue;
+                }
+                placeBlockIfInsideChunk(chunk, coord, crownX, crownY, crownZ, BlockType::TreeCrown);
+            }
+        }
+    }
+
+    placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 2, treeZ, BlockType::TreeCrown);
+}
+
+void populateTreesForChunk(
+    Chunk& chunk,
+    const ChunkCoord& coord,
+    const TerrainGenerator& terrainGenerator)
+{
+    const int chunkWorldMinX = coord.x * Chunk::kSize;
+    const int chunkWorldMinZ = coord.z * Chunk::kSize;
+    const int sampleMinX = chunkWorldMinX - kTreeCrownRadius;
+    const int sampleMinZ = chunkWorldMinZ - kTreeCrownRadius;
+    const int sampleMaxX = chunkWorldMinX + Chunk::kSize - 1 + kTreeCrownRadius;
+    const int sampleMaxZ = chunkWorldMinZ + Chunk::kSize - 1 + kTreeCrownRadius;
+
+    const int minCellX = floorDiv(sampleMinX, kTreeCellSize);
+    const int maxCellX = floorDiv(sampleMaxX, kTreeCellSize);
+    const int minCellZ = floorDiv(sampleMinZ, kTreeCellSize);
+    const int maxCellZ = floorDiv(sampleMaxZ, kTreeCellSize);
+
+    for (int cellZ = minCellZ; cellZ <= maxCellZ; ++cellZ)
+    {
+        for (int cellX = minCellX; cellX <= maxCellX; ++cellX)
+        {
+            if (noise::random01(cellX, cellZ, kTreeChanceSeed) > 0.28)
+            {
+                continue;
+            }
+
+            const int treeX = cellX * kTreeCellSize
+                + static_cast<int>(noise::hashCoordinates(cellX, cellZ, kTreeOffsetXSeed)
+                                    % static_cast<std::uint32_t>(kTreeCellSize));
+            const int treeZ = cellZ * kTreeCellSize
+                + static_cast<int>(noise::hashCoordinates(cellX, cellZ, kTreeOffsetZSeed)
+                                    % static_cast<std::uint32_t>(kTreeCellSize));
+            placeTreeForColumn(chunk, coord, terrainGenerator, treeX, treeZ);
+        }
+    }
+}
+
 void populateChunkFromTerrain(
     Chunk& chunk,
     const ChunkCoord& coord,
@@ -29,12 +201,14 @@ void populateChunkFromTerrain(
             const int worldX = coord.x * Chunk::kSize + localX;
             const int worldZ = coord.z * Chunk::kSize + localZ;
 
-            for (int y = 0; y < Chunk::kHeight; ++y)
+            for (int y = kWorldMinY; y <= kWorldMaxY; ++y)
             {
                 chunk.setBlock(localX, y, localZ, terrainGenerator.blockTypeAt(worldX, y, worldZ));
             }
         }
     }
+
+    populateTreesForChunk(chunk, coord, terrainGenerator);
 }
 }  // namespace
 
@@ -108,7 +282,7 @@ void World::generateMissingChunksAround(
 
 bool World::applyEditCommand(const WorldEditCommand& command)
 {
-    if (command.position.y < 0 || command.position.y >= Chunk::kHeight)
+    if (command.position.y < kWorldMinY || command.position.y > kWorldMaxY)
     {
         return false;
     }
@@ -152,12 +326,13 @@ bool World::load(const std::filesystem::path& inputPath)
 
 BlockType World::blockAt(const int worldX, const int y, const int worldZ) const
 {
-    // Below the chunk column, behave like an unbroken bedrock floor so physics never hits "void".
-    if (y < 0)
+    // Below the supported world depth, behave like an unbroken bedrock floor so physics
+    // never drops into a void.
+    if (y < kWorldMinY)
     {
         return BlockType::Bedrock;
     }
-    if (y >= Chunk::kHeight)
+    if (y > kWorldMaxY)
     {
         return BlockType::Air;
     }
@@ -269,6 +444,22 @@ void World::rebuildDirtyMeshes(
             .indexCount = static_cast<std::uint32_t>(meshData.indices.size()),
         };
         dirtyChunks_.erase(coord);
+    }
+}
+
+void World::applyMeshStatsAndClearDirty(const std::span<const ChunkMeshUpdate> updates)
+{
+    for (const ChunkMeshUpdate& update : updates)
+    {
+        if (chunks_.find(update.coord) == chunks_.end())
+        {
+            dirtyChunks_.erase(update.coord);
+            meshStats_.erase(update.coord);
+            continue;
+        }
+
+        meshStats_[update.coord] = update.stats;
+        dirtyChunks_.erase(update.coord);
     }
 }
 

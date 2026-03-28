@@ -11,9 +11,9 @@ namespace vibecraft::world::underground
 namespace
 {
 constexpr int kCaveRoofBuffer = 5;
-constexpr int kSeaLevel = 24;
-constexpr int kLavaPoolMinY = 6;
-constexpr int kLavaPoolMaxY = 14;
+constexpr int kSeaLevel = 63;
+constexpr int kLavaPoolMinY = -54;
+constexpr int kLavaPoolMaxY = -20;
 constexpr std::uint32_t kLavaNoiseSeed = 0x8d3b2917U;
 }  // namespace
 

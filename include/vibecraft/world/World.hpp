@@ -36,6 +36,12 @@ struct ChunkMeshStats
     std::uint32_t indexCount = 0;
 };
 
+struct ChunkMeshUpdate
+{
+    ChunkCoord coord{};
+    ChunkMeshStats stats{};
+};
+
 class World
 {
   public:
@@ -68,6 +74,7 @@ class World
     void rebuildDirtyMeshes(
         const vibecraft::meshing::ChunkMesher& chunkMesher,
         std::span<const ChunkCoord> chunkCoords);
+    void applyMeshStatsAndClearDirty(std::span<const ChunkMeshUpdate> updates);
     void replaceChunks(ChunkMap chunks);
 
   private:

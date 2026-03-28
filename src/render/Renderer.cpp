@@ -25,13 +25,17 @@
 #include "debugdraw.h"
 
 #include "vibecraft/ChunkAtlasLayout.hpp"
+#include "vibecraft/world/BlockMetadata.hpp"
 
 namespace vibecraft::render
 {
 namespace
 {
 constexpr bgfx::ViewId kMainView = 0;
+constexpr bgfx::ViewId kUiView = 1;
 constexpr std::uint32_t kDefaultResetFlags = BGFX_RESET_VSYNC;
+/// Dusk sky tint (RGBA8 for bgfx clear: 0xRRGGBBAA).
+constexpr std::uint32_t kMainMenuClearColor = 0xff6a4fff;
 constexpr std::uint64_t kChunkRenderState =
     BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
 constexpr std::uint16_t kChunkAtlasWidth = vibecraft::kChunkAtlasWidthPx;
@@ -41,41 +45,16 @@ constexpr std::uint16_t kChunkAtlasHeight = vibecraft::kChunkAtlasHeightPx;
 namespace MainMenuLayout
 {
 constexpr int kStackOuterWidth = 38;
+/// Primary menu buttons (3 rows each; leave a blank row between stacks).
+constexpr int kRowSubtitle = 13;
+constexpr int kRowRule = 15;
+constexpr int kRowStack0 = 17;
+constexpr int kRowStack1 = 21;
+constexpr int kRowStack2 = 25;
+constexpr int kRowBottomPair = 29;
+/// Middle row of the bottom pair (for language / Realms icons).
+constexpr int kRowIconHints = 30;
 constexpr int kBottomBlockHalfWidth = 15;
-
-struct Geometry
-{
-    int centerCol = 0;
-    int subtitleRow = 0;
-    int ruleRow = 0;
-    int stack0Row = 0;
-    int stack1Row = 0;
-    int stack2Row = 0;
-    int bottomPairRow = 0;
-    int iconRow = 0;
-    int splashRow = 0;
-};
-
-[[nodiscard]] Geometry computeGeometry(const int textWidth, const int textHeight)
-{
-    Geometry geometry;
-    geometry.centerCol = std::max(0, (textWidth - kStackOuterWidth) / 2);
-
-    const int minTopRow = 14;
-    const int maxTopRow = std::max(minTopRow, textHeight - 14);
-    geometry.stack0Row = std::clamp(textHeight / 2 + 1, minTopRow, maxTopRow);
-    geometry.stack1Row = geometry.stack0Row + 4;
-    geometry.stack2Row = geometry.stack0Row + 8;
-    geometry.bottomPairRow = geometry.stack0Row + 11;
-    geometry.iconRow = geometry.bottomPairRow + 1;
-    geometry.ruleRow = std::max(8, geometry.stack0Row - 4);
-    geometry.subtitleRow = std::max(6, geometry.ruleRow - 2);
-    geometry.splashRow = std::clamp(
-        std::max(textHeight - 5, geometry.iconRow + 2),
-        0,
-        std::max(0, textHeight - 3));
-    return geometry;
-}
 }  // namespace MainMenuLayout
 
 struct ChunkVertex
@@ -199,6 +178,49 @@ void setVec4Uniform(
     return static_cast<float>(hashUint32(a, b, c) & 0x00ffffffU) / static_cast<float>(0x01000000U);
 }
 
+[[nodiscard]] float bilerp(
+    const float v00,
+    const float v10,
+    const float v01,
+    const float v11,
+    const float tx,
+    const float tz)
+{
+    const float vx0 = v00 + (v10 - v00) * tx;
+    const float vx1 = v01 + (v11 - v01) * tx;
+    return vx0 + (vx1 - vx0) * tz;
+}
+
+[[nodiscard]] float smoothValueNoise2d(
+    const float sampleX,
+    const float sampleZ,
+    const std::int32_t seed)
+{
+    const std::int32_t x0 = static_cast<std::int32_t>(std::floor(sampleX));
+    const std::int32_t z0 = static_cast<std::int32_t>(std::floor(sampleZ));
+    const std::int32_t x1 = x0 + 1;
+    const std::int32_t z1 = z0 + 1;
+    const float fracX = sampleX - static_cast<float>(x0);
+    const float fracZ = sampleZ - static_cast<float>(z0);
+    const float tx = fracX * fracX * (3.0f - 2.0f * fracX);
+    const float tz = fracZ * fracZ * (3.0f - 2.0f * fracZ);
+
+    const float v00 = hashUnitFloat(x0, z0, seed);
+    const float v10 = hashUnitFloat(x1, z0, seed);
+    const float v01 = hashUnitFloat(x0, z1, seed);
+    const float v11 = hashUnitFloat(x1, z1, seed);
+    return bilerp(v00, v10, v01, v11, tx, tz);
+}
+
+[[nodiscard]] float cloudPatchDensity(const float sampleX, const float sampleZ)
+{
+    // Blend multiple low-frequency bands to get larger "patches" instead of isolated blobs.
+    const float broad = smoothValueNoise2d(sampleX * 0.24f, sampleZ * 0.24f, 901);
+    const float medium = smoothValueNoise2d(sampleX * 0.53f, sampleZ * 0.53f, 902);
+    const float detail = smoothValueNoise2d(sampleX * 1.05f, sampleZ * 1.05f, 903);
+    return broad * 0.56f + medium * 0.31f + detail * 0.13f;
+}
+
 [[nodiscard]] glm::vec2 normalizeOrFallback(const glm::vec2& vector, const glm::vec2& fallback)
 {
     const float lengthSquared = glm::dot(vector, vector);
@@ -215,11 +237,12 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
     const glm::vec2 windDirection =
         normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
     const glm::vec2 windOffset = windDirection * cameraFrameData.weatherTimeSeconds * cameraFrameData.weatherWindSpeed;
-    constexpr float kCloudCellSize = 34.0f;
-    constexpr int kCloudRadiusInCells = 4;
-    const float cloudHeight = glm::max(72.0f, cameraFrameData.position.y + 40.0f);
+    constexpr float kCloudCellSize = 30.0f;
+    constexpr int kCloudRadiusInCells = 5;
+    const float cloudHeight = glm::max(78.0f, cameraFrameData.position.y + 38.0f);
     const int baseCellX = static_cast<int>(std::floor((cameraFrameData.position.x + windOffset.x) / kCloudCellSize));
     const int baseCellZ = static_cast<int>(std::floor((cameraFrameData.position.z + windOffset.y) / kCloudCellSize));
+    const float densityThreshold = std::clamp(0.86f - cameraFrameData.cloudCoverage * 0.62f, 0.24f, 0.82f);
 
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(true);
@@ -230,12 +253,18 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
         {
             const int gridX = baseCellX + cellX;
             const int gridZ = baseCellZ + cellZ;
-            const float density = hashUnitFloat(gridX, gridZ, 11);
-            if (density > cameraFrameData.cloudCoverage)
+            const float sampleX = static_cast<float>(gridX) + windOffset.x * 0.018f;
+            const float sampleZ = static_cast<float>(gridZ) + windOffset.y * 0.018f;
+            const float density = cloudPatchDensity(sampleX, sampleZ);
+            if (density < densityThreshold)
             {
                 continue;
             }
 
+            const float patchStrength = std::clamp(
+                (density - densityThreshold) / std::max(0.001f, 1.0f - densityThreshold),
+                0.0f,
+                1.0f);
             const float centerX =
                 static_cast<float>(gridX) * kCloudCellSize
                 - windOffset.x
@@ -245,12 +274,15 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
                 - windOffset.y
                 + (hashUnitFloat(gridX, gridZ, 31) - 0.5f) * 14.0f;
             const float y = cloudHeight + (hashUnitFloat(gridX, gridZ, 41) - 0.5f) * 4.0f;
-            const float baseSize = 20.0f + hashUnitFloat(gridX, gridZ, 51) * 20.0f;
+            const float baseSize = 18.0f + patchStrength * 28.0f + hashUnitFloat(gridX, gridZ, 51) * 12.0f;
             const float stretch = 0.8f + hashUnitFloat(gridX, gridZ, 61) * 0.7f;
             const float secondaryOffset = 6.0f + hashUnitFloat(gridX, gridZ, 71) * 8.0f;
-            const glm::vec3 primaryTint =
-                glm::mix(cameraFrameData.cloudTint, cameraFrameData.horizonTint, 0.15f + density * 0.15f);
-            const glm::vec3 secondaryTint = glm::mix(primaryTint, cameraFrameData.skyTint, 0.18f);
+            const glm::vec3 brightCloudWhite(0.97f, 0.98f, 1.0f);
+            const glm::vec3 primaryTint = glm::mix(
+                cameraFrameData.cloudTint,
+                brightCloudWhite,
+                0.72f + patchStrength * 0.24f);
+            const glm::vec3 secondaryTint = glm::mix(primaryTint, cameraFrameData.skyTint, 0.12f);
 
             debugDrawEncoder.setColor(packAbgr8(primaryTint, 1.0f));
             debugDrawEncoder.drawQuad(
@@ -352,43 +384,6 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
     return true;
 }
 
-[[nodiscard]] char hotbarGlyphForBlock(const vibecraft::world::BlockType blockType)
-{
-    using vibecraft::world::BlockType;
-    switch (blockType)
-    {
-    case BlockType::Grass:
-        return 'G';
-    case BlockType::Dirt:
-        return 'D';
-    case BlockType::Stone:
-        return 'S';
-    case BlockType::Deepslate:
-        return 'd';
-    case BlockType::CoalOre:
-        return 'C';
-    case BlockType::Sand:
-        return 's';
-    case BlockType::Bedrock:
-        return 'B';
-    case BlockType::Water:
-        return 'W';
-    case BlockType::IronOre:
-        return 'I';
-    case BlockType::GoldOre:
-        return 'g';
-    case BlockType::DiamondOre:
-        return '*';
-    case BlockType::EmeraldOre:
-        return 'E';
-    case BlockType::Lava:
-        return 'L';
-    case BlockType::Air:
-    default:
-        return '?';
-    }
-}
-
 [[nodiscard]] std::string formatHotbarCell(const FrameDebugData::HotbarSlotHud& slot)
 {
     if (slot.count == 0)
@@ -396,9 +391,8 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
         return std::string("[   ]");
     }
 
-    const char glyph = hotbarGlyphForBlock(slot.blockType);
     const std::uint32_t displayCount = std::min(slot.count, 99u);
-    return fmt::format("[{}{:02}]", glyph, displayCount);
+    return fmt::format("[{:02}]", displayCount);
 }
 
 /// Wider padded cells so the bag reads larger than the hotbar (same glyph + count).
@@ -409,9 +403,8 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
         return std::string(" [---] ");
     }
 
-    const char glyph = hotbarGlyphForBlock(slot.blockType);
     const std::uint32_t displayCount = std::min(slot.count, 99u);
-    return fmt::format(" [{}{:02}] ", glyph, displayCount);
+    return fmt::format(" [{:02}] ", displayCount);
 }
 
 void dbgTextPrintfCenteredRow(
@@ -665,22 +658,22 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
     using namespace MainMenuLayout;
     const int tw = static_cast<int>(textWidth);
     const int th = static_cast<int>(textHeight);
-    const Geometry geometry = computeGeometry(tw, th);
+    const int centerCol = std::max(0, (tw - kStackOuterWidth) / 2);
 
-    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(geometry.subtitleRow), 0x0e, "DESKTOP EDITION");
+    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(kRowSubtitle), 0x0e, "DESKTOP EDITION");
 
     const int ruleWidth = std::clamp(tw - 8, 24, 48);
     const std::string ruleLine(static_cast<std::size_t>(ruleWidth), '-');
-    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(geometry.ruleRow), 0x08, ruleLine);
+    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(kRowRule), 0x08, ruleLine);
 
     const int hovered = frameDebugData.mainMenuHoveredButton;
-    drawFramedButton3(geometry.stack0Row, geometry.centerCol, kStackOuterWidth, "Singleplayer", hovered == 0);
-    drawFramedButton3(geometry.stack1Row, geometry.centerCol, kStackOuterWidth, "Multiplayer", hovered == 1);
-    drawFramedButton3(geometry.stack2Row, geometry.centerCol, kStackOuterWidth, "VibeCraft Realms  * !", hovered == 2);
+    drawFramedButton3(kRowStack0, centerCol, kStackOuterWidth, "Singleplayer", hovered == 0);
+    drawFramedButton3(kRowStack1, centerCol, kStackOuterWidth, "Multiplayer", hovered == 1);
+    drawFramedButton3(kRowStack2, centerCol, kStackOuterWidth, "VibeCraft Realms  * !", hovered == 2);
 
     drawBottomButtonPair(
-        geometry.bottomPairRow,
-        geometry.centerCol,
+        kRowBottomPair,
+        centerCol,
         "Options...",
         "Quit game",
         hovered == 3,
@@ -688,17 +681,17 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
 
     const std::uint16_t iconAttrG = hovered == 5 ? 0x1f : 0x0b;
     const std::uint16_t iconAttrA = hovered == 6 ? 0x1f : 0x0b;
-    if (geometry.centerCol >= 7)
+    if (centerCol >= 7)
     {
         bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(geometry.centerCol - 6),
-            static_cast<std::uint16_t>(geometry.iconRow),
+            static_cast<std::uint16_t>(centerCol - 6),
+            static_cast<std::uint16_t>(kRowIconHints),
             iconAttrG,
             "[G]");
     }
     bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(geometry.centerCol + 36),
-        static_cast<std::uint16_t>(geometry.iconRow),
+        static_cast<std::uint16_t>(centerCol + 36),
+        static_cast<std::uint16_t>(kRowIconHints),
         iconAttrA,
         "[A]");
 
@@ -706,13 +699,10 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
         static_cast<int>(frameDebugData.mainMenuTimeSeconds * 3.0f) % 2 == 0;
     const std::uint16_t splashAttr = splashBright ? 0x0e : 0x06;
     const std::string splash = "Also try building!";
+    const int splashRow =
+        std::clamp(std::max(th - 5, kRowBottomPair + 4), 0, std::max(0, th - 3));
     const int splashCol = std::max(0, tw - static_cast<int>(splash.size()) - 2);
-    bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(splashCol),
-        static_cast<std::uint16_t>(geometry.splashRow),
-        splashAttr,
-        "%s",
-        splash.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(splashCol), static_cast<std::uint16_t>(splashRow), splashAttr, "%s", splash.c_str());
 
     const std::uint16_t footerRow =
         textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
@@ -941,55 +931,129 @@ void drawPauseMenuOverlay(
     std::uint16_t& outWidth,
     std::uint16_t& outHeight)
 {
+    static_cast<void>(allocator);
     outWidth = 0;
     outHeight = 0;
-    const std::filesystem::path path = runtimeAssetPath("textures/ui/vibecraft_logo.png");
-    if (!std::filesystem::exists(path))
+    return BGFX_INVALID_HANDLE;
+}
+
+[[nodiscard]] bgfx::TextureHandle createMinecraftStyleCrosshairTexture()
+{
+    constexpr int kCrosshairSize = 15;
+    constexpr int kCenter = kCrosshairSize / 2;
+    constexpr int kArmLength = 5;
+    constexpr int kPixelCount = kCrosshairSize * kCrosshairSize;
+
+    std::array<bool, kPixelCount> whiteMask{};
+    std::array<bool, kPixelCount> blackMask{};
+
+    const auto inBounds = [](const int x, const int y)
     {
-        return BGFX_INVALID_HANDLE;
+        return x >= 0 && x < kCrosshairSize && y >= 0 && y < kCrosshairSize;
+    };
+    const auto indexFor = [](const int x, const int y)
+    {
+        return y * kCrosshairSize + x;
+    };
+
+    for (int d = -kArmLength; d <= kArmLength; ++d)
+    {
+        if (d == 0)
+        {
+            continue;
+        }
+
+        const int x = kCenter + d;
+        const int y = kCenter;
+        if (inBounds(x, y))
+        {
+            whiteMask[static_cast<std::size_t>(indexFor(x, y))] = true;
+        }
     }
 
-    std::ifstream stream(path, std::ios::binary | std::ios::ate);
-    if (!stream)
+    for (int d = -kArmLength; d <= kArmLength; ++d)
     {
-        return BGFX_INVALID_HANDLE;
-    }
-    const std::streamsize fileSize = stream.tellg();
-    if (fileSize <= 0)
-    {
-        return BGFX_INVALID_HANDLE;
-    }
-    stream.seekg(0, std::ios::beg);
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(fileSize));
-    stream.read(reinterpret_cast<char*>(bytes.data()), fileSize);
-    if (!stream)
-    {
-        return BGFX_INVALID_HANDLE;
+        if (d == 0)
+        {
+            continue;
+        }
+
+        const int x = kCenter;
+        const int y = kCenter + d;
+        if (inBounds(x, y))
+        {
+            whiteMask[static_cast<std::size_t>(indexFor(x, y))] = true;
+        }
     }
 
-    bimg::ImageContainer* image = bimg::imageParse(
-        &allocator,
-        bytes.data(),
-        static_cast<std::uint32_t>(bytes.size()),
-        bimg::TextureFormat::RGBA8);
-    if (image == nullptr)
+    for (int y = 0; y < kCrosshairSize; ++y)
     {
-        return BGFX_INVALID_HANDLE;
+        for (int x = 0; x < kCrosshairSize; ++x)
+        {
+            const std::size_t sourceIndex = static_cast<std::size_t>(indexFor(x, y));
+            if (!whiteMask[sourceIndex])
+            {
+                continue;
+            }
+
+            for (int offsetY = -1; offsetY <= 1; ++offsetY)
+            {
+                for (int offsetX = -1; offsetX <= 1; ++offsetX)
+                {
+                    const int outlineX = x + offsetX;
+                    const int outlineY = y + offsetY;
+                    if (!inBounds(outlineX, outlineY))
+                    {
+                        continue;
+                    }
+
+                    const std::size_t outlineIndex = static_cast<std::size_t>(indexFor(outlineX, outlineY));
+                    if (!whiteMask[outlineIndex])
+                    {
+                        blackMask[outlineIndex] = true;
+                    }
+                }
+            }
+        }
     }
 
-    outWidth = static_cast<std::uint16_t>(image->m_width);
-    outHeight = static_cast<std::uint16_t>(image->m_height);
-    const bgfx::Memory* const memory = bgfx::copy(image->m_data, image->m_size);
-    bimg::imageFree(image);
+    std::array<std::uint8_t, static_cast<std::size_t>(kPixelCount * 4)> pixels{};
+    for (int y = 0; y < kCrosshairSize; ++y)
+    {
+        for (int x = 0; x < kCrosshairSize; ++x)
+        {
+            const std::size_t maskIndex = static_cast<std::size_t>(indexFor(x, y));
+            const std::size_t pixelOffset = static_cast<std::size_t>((y * kCrosshairSize + x) * 4);
 
+            if (whiteMask[maskIndex])
+            {
+                pixels[pixelOffset + 0] = 0xff;  // B
+                pixels[pixelOffset + 1] = 0xff;  // G
+                pixels[pixelOffset + 2] = 0xff;  // R
+                pixels[pixelOffset + 3] = 0xff;  // A
+                continue;
+            }
+
+            if (blackMask[maskIndex])
+            {
+                pixels[pixelOffset + 0] = 0x00;  // B
+                pixels[pixelOffset + 1] = 0x00;  // G
+                pixels[pixelOffset + 2] = 0x00;  // R
+                pixels[pixelOffset + 3] = 0xff;  // A
+            }
+        }
+    }
+
+    const bgfx::Memory* const crosshairMemory =
+        bgfx::copy(pixels.data(), static_cast<std::uint32_t>(pixels.size()));
     return bgfx::createTexture2D(
-        outWidth,
-        outHeight,
+        static_cast<std::uint16_t>(kCrosshairSize),
+        static_cast<std::uint16_t>(kCrosshairSize),
         false,
         1,
-        bgfx::TextureFormat::RGBA8,
-        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT,
-        memory);
+        bgfx::TextureFormat::BGRA8,
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        crosshairMemory);
 }
 }
 
@@ -1013,42 +1077,42 @@ int Renderer::hitTestMainMenu(
     const int clampedRow = std::clamp(row, 0, static_cast<int>(textHeight) - 1);
 
     using namespace MainMenuLayout;
-    const Geometry geometry = computeGeometry(tw, static_cast<int>(textHeight));
+    const int centerCol = std::max(0, (tw - kStackOuterWidth) / 2);
 
     for (int buttonIndex = 0; buttonIndex < 3; ++buttonIndex)
     {
-        const int row0 = geometry.stack0Row + buttonIndex * 4;
-        if (clampedRow >= row0 && clampedRow <= row0 + 2 && clampedCol >= geometry.centerCol
-            && clampedCol <= geometry.centerCol + kStackOuterWidth - 1)
+        const int row0 = kRowStack0 + buttonIndex * 4;
+        if (clampedRow >= row0 && clampedRow <= row0 + 2 && clampedCol >= centerCol
+            && clampedCol <= centerCol + kStackOuterWidth - 1)
         {
             return buttonIndex;
         }
     }
 
-    if (clampedRow >= geometry.bottomPairRow && clampedRow <= geometry.bottomPairRow + 2)
+    if (clampedRow >= kRowBottomPair && clampedRow <= kRowBottomPair + 2)
     {
-        if (clampedCol >= geometry.centerCol && clampedCol <= geometry.centerCol + kBottomBlockHalfWidth - 1)
+        if (clampedCol >= centerCol && clampedCol <= centerCol + kBottomBlockHalfWidth - 1)
         {
             return 3;
         }
-        if (clampedCol >= geometry.centerCol + kBottomBlockHalfWidth + 1
-            && clampedCol <= geometry.centerCol + kBottomBlockHalfWidth + 1 + kBottomBlockHalfWidth - 1)
+        if (clampedCol >= centerCol + kBottomBlockHalfWidth + 1
+            && clampedCol <= centerCol + kBottomBlockHalfWidth + 1 + kBottomBlockHalfWidth - 1)
         {
             return 4;
         }
     }
 
-    if (clampedRow == geometry.iconRow && geometry.centerCol >= 7)
+    if (clampedRow == kRowIconHints && centerCol >= 7)
     {
-        if (clampedCol >= geometry.centerCol - 6 && clampedCol <= geometry.centerCol - 4)
+        if (clampedCol >= centerCol - 6 && clampedCol <= centerCol - 4)
         {
             return 5;
         }
     }
 
-    if (clampedRow == geometry.iconRow)
+    if (clampedRow == kRowIconHints)
     {
-        if (clampedCol >= geometry.centerCol + 36 && clampedCol <= geometry.centerCol + 38)
+        if (clampedCol >= centerCol + 36 && clampedCol <= centerCol + 38)
         {
             return 6;
         }
@@ -1116,6 +1180,7 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     initialized_ = true;
     bgfx::setDebug(BGFX_DEBUG_TEXT);
     bgfx::setViewClear(kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x263238ff, 1.0f, 0);
+    bgfx::setViewClear(kUiView, BGFX_CLEAR_NONE, 0, 1.0f, 0);
     ddInit();
 
     const bgfx::ProgramHandle chunkProgram = loadProgram("vs_chunk", "fs_chunk");
@@ -1199,6 +1264,50 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     chunkMoonLightColorUniformHandle_ = chunkMoonLightColor.idx;
     chunkAmbientLightUniformHandle_ = chunkAmbientLight.idx;
 
+    const bgfx::TextureHandle crosshairTexture = createMinecraftStyleCrosshairTexture();
+    if (bgfx::isValid(crosshairTexture))
+    {
+        crosshairTextureHandle_ = crosshairTexture.idx;
+        const bgfx::UniformHandle crosshairSampler = bgfx::createUniform("s_logo", bgfx::UniformType::Sampler);
+        if (bgfx::isValid(crosshairSampler))
+        {
+            crosshairSamplerHandle_ = crosshairSampler.idx;
+            const bgfx::ProgramHandle crosshairProgram = loadProgram("vs_chunk", "fs_logo");
+            if (bgfx::isValid(crosshairProgram))
+            {
+                crosshairProgramHandle_ = crosshairProgram.idx;
+            }
+            else
+            {
+                bgfx::destroy(crosshairSampler);
+                bgfx::destroy(crosshairTexture);
+                crosshairSamplerHandle_ = UINT16_MAX;
+                crosshairTextureHandle_ = UINT16_MAX;
+            }
+        }
+        else
+        {
+            bgfx::destroy(crosshairTexture);
+            crosshairTextureHandle_ = UINT16_MAX;
+        }
+    }
+
+    const bgfx::UniformHandle inventoryUiSampler = bgfx::createUniform("s_uiAtlas", bgfx::UniformType::Sampler);
+    if (bgfx::isValid(inventoryUiSampler))
+    {
+        inventoryUiSamplerHandle_ = inventoryUiSampler.idx;
+        const bgfx::ProgramHandle inventoryUiProgram = loadProgram("vs_chunk", "fs_ui");
+        if (bgfx::isValid(inventoryUiProgram))
+        {
+            inventoryUiProgramHandle_ = inventoryUiProgram.idx;
+        }
+        else
+        {
+            bgfx::destroy(inventoryUiSampler);
+            inventoryUiSamplerHandle_ = UINT16_MAX;
+        }
+    }
+
     bx::DefaultAllocator logoAllocator;
     const bgfx::TextureHandle logoTexture =
         createLogoTextureFromPng(logoAllocator, logoWidthPx_, logoHeightPx_);
@@ -1257,6 +1366,31 @@ void Renderer::shutdown()
     {
         bgfx::destroy(toUniformHandle(logoSamplerHandle_));
         logoSamplerHandle_ = UINT16_MAX;
+    }
+    if (crosshairProgramHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toProgramHandle(crosshairProgramHandle_));
+        crosshairProgramHandle_ = UINT16_MAX;
+    }
+    if (crosshairTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toTextureHandle(crosshairTextureHandle_));
+        crosshairTextureHandle_ = UINT16_MAX;
+    }
+    if (crosshairSamplerHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(crosshairSamplerHandle_));
+        crosshairSamplerHandle_ = UINT16_MAX;
+    }
+    if (inventoryUiProgramHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toProgramHandle(inventoryUiProgramHandle_));
+        inventoryUiProgramHandle_ = UINT16_MAX;
+    }
+    if (inventoryUiSamplerHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(inventoryUiSamplerHandle_));
+        inventoryUiSamplerHandle_ = UINT16_MAX;
     }
     logoWidthPx_ = 0;
     logoHeightPx_ = 0;
@@ -1384,6 +1518,24 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         return;
     }
 
+    if (frameDebugData.mainMenuActive)
+    {
+        bgfx::setViewClear(kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, kMainMenuClearColor, 1.0f, 0);
+        bgfx::setViewRect(kMainView, 0, 0, static_cast<std::uint16_t>(width_), static_cast<std::uint16_t>(height_));
+        bgfx::setViewRect(kUiView, 0, 0, static_cast<std::uint16_t>(width_), static_cast<std::uint16_t>(height_));
+        bgfx::touch(kMainView);
+        bgfx::touch(kUiView);
+        drawMainMenuLogo();
+        bgfx::dbgTextClear();
+        const bgfx::Stats* const menuStats = bgfx::getStats();
+        const std::uint16_t menuTextHeight = menuStats != nullptr ? menuStats->textHeight : 30;
+        const std::uint16_t menuTextWidth =
+            menuStats != nullptr && menuStats->textWidth > 0 ? menuStats->textWidth : 100;
+        drawMainMenuOverlay(frameDebugData, menuTextWidth, menuTextHeight);
+        bgfx::frame();
+        return;
+    }
+
     bgfx::setViewClear(kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x263238ff, 1.0f, 0);
 
     const bx::Vec3 eye(cameraFrameData.position.x, cameraFrameData.position.y, cameraFrameData.position.z);
@@ -1407,8 +1559,10 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     const std::uint32_t clearColor = packRgba8(cameraFrameData.skyTint);
     bgfx::setViewClear(kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, clearColor, 1.0f, 0);
     bgfx::setViewRect(kMainView, 0, 0, static_cast<std::uint16_t>(width_), static_cast<std::uint16_t>(height_));
+    bgfx::setViewRect(kUiView, 0, 0, static_cast<std::uint16_t>(width_), static_cast<std::uint16_t>(height_));
     bgfx::setViewTransform(kMainView, view, projection);
     bgfx::touch(kMainView);
+    bgfx::touch(kUiView);
 
     const glm::vec3 ambientLight = glm::clamp(
         cameraFrameData.skyTint * 0.45f
@@ -1480,6 +1634,8 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         }
     }
 
+    drawWorldPickupSprites(frameDebugData);
+
     DebugDrawEncoder debugDrawEncoder;
     debugDrawEncoder.begin(kMainView);
     drawWeatherClouds(debugDrawEncoder, cameraFrameData);
@@ -1524,14 +1680,11 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     }
     debugDrawEncoder.pop();
     drawWeatherRain(debugDrawEncoder, cameraFrameData);
-    if (!frameDebugData.mainMenuActive)
-    {
-        debugDrawEncoder.setColor(0xff455a64);
-        debugDrawEncoder.drawGrid(Axis::Y, bx::Vec3(0.0f, 0.0f, 0.0f), 48, 1.0f);
-        debugDrawEncoder.drawAxis(0.0f, 0.0f, 0.0f, 2.0f);
-    }
+    debugDrawEncoder.setColor(0xff455a64);
+    debugDrawEncoder.drawGrid(Axis::Y, bx::Vec3(0.0f, 0.0f, 0.0f), 48, 1.0f);
+    debugDrawEncoder.drawAxis(0.0f, 0.0f, 0.0f, 2.0f);
 
-    if (frameDebugData.hasTarget && !frameDebugData.mainMenuActive)
+    if (frameDebugData.hasTarget)
     {
         const bx::Aabb targetAabb{
             bx::Vec3(
@@ -1558,14 +1711,6 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     const std::uint16_t textWidthForHud =
         bgfxStats != nullptr && bgfxStats->textWidth > 0 ? bgfxStats->textWidth : 100;
 
-    if (frameDebugData.mainMenuActive)
-    {
-        drawMainMenuLogo();
-        drawMainMenuOverlay(frameDebugData, textWidthForHud, textHeight);
-        bgfx::frame();
-        return;
-    }
-
     if (frameDebugData.pauseMenuActive)
     {
         drawPauseMenuOverlay(frameDebugData, textWidthForHud, textHeight);
@@ -1574,6 +1719,8 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         bgfx::frame();
         return;
     }
+
+    drawCrosshairOverlay();
 
     const std::uint16_t hotbarRow = textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
     const std::uint16_t hotbarKeyRow = textHeight > 1 ? static_cast<std::uint16_t>(textHeight - 2) : 0;
@@ -1585,6 +1732,8 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     const std::uint16_t bagTitleRow = textHeight > 7 ? static_cast<std::uint16_t>(textHeight - 8) : 0;
     const std::uint16_t controlsRow1 = textHeight > 8 ? static_cast<std::uint16_t>(textHeight - 9) : 0;
     const std::uint16_t controlsRow0 = textHeight > 9 ? static_cast<std::uint16_t>(textHeight - 10) : 0;
+
+    drawInventoryItemIcons(frameDebugData, textWidthForHud, textHeight, hotbarRow, bagRow0, bagRow1, bagRow2);
 
     bgfx::dbgTextPrintf(0, 1, 0x0f, "VibeCraft foundation slice");
     bgfx::dbgTextPrintf(0, 3, 0x0a, "%s", frameDebugData.statusLine.c_str());
@@ -1702,6 +1851,270 @@ void Renderer::destroySceneMesh(const std::uint64_t sceneMeshId)
     sceneMeshes_.erase(sceneMeshIt);
 }
 
+void Renderer::drawInventoryItemIcons(
+    const FrameDebugData& frameDebugData,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight,
+    const std::uint16_t hotbarRow,
+    const std::uint16_t bagRow0,
+    const std::uint16_t bagRow1,
+    const std::uint16_t bagRow2)
+{
+    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
+        || chunkAtlasTextureHandle_ == UINT16_MAX || textWidth == 0 || textHeight == 0)
+    {
+        return;
+    }
+
+    const float charWidthPx = static_cast<float>(width_) / static_cast<float>(textWidth);
+    const float charHeightPx = static_cast<float>(height_) / static_cast<float>(textHeight);
+
+    float view[16];
+    bx::mtxIdentity(view);
+    float proj[16];
+    bx::mtxOrtho(
+        proj,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        0.0f,
+        0.0f,
+        1000.0f,
+        0.0f,
+        bgfx::getCaps()->homogeneousDepth);
+    bgfx::setViewTransform(kUiView, view, proj);
+
+    constexpr float kHotbarIconSizePx = 13.0f;
+    const int hotbarStartCol = computeCenteredHotbarStartColumn();
+    for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
+    {
+        const FrameDebugData::HotbarSlotHud& slot = frameDebugData.hotbarSlots[slotIndex];
+        if (slot.count == 0)
+        {
+            continue;
+        }
+        const float cellCol = static_cast<float>(hotbarStartCol + static_cast<int>(slotIndex) * 6);
+        const float centerX = (cellCol + 2.0f) * charWidthPx;
+        const float centerY = static_cast<float>(hotbarRow) * charHeightPx + charHeightPx * 0.40f;
+        const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
+            slot.blockType,
+            vibecraft::world::BlockFace::Side);
+        const float iconSize =
+            slotIndex == frameDebugData.hotbarSelectedIndex ? kHotbarIconSizePx + 1.0f : kHotbarIconSizePx;
+        drawAtlasIcon(centerX, centerY, iconSize, tileIndex);
+    }
+
+    constexpr float kBagIconSizePx = 12.0f;
+    const std::array<std::uint16_t, 3> bagRows = {bagRow0, bagRow1, bagRow2};
+    const int bagStartCol = computeCenteredColumnStart(computeBagGridWidthChars());
+    for (int rowIndex = 0; rowIndex < 3; ++rowIndex)
+    {
+        for (int colIndex = 0; colIndex < 9; ++colIndex)
+        {
+            const std::size_t slotIndex = static_cast<std::size_t>(rowIndex * 9 + colIndex);
+            const FrameDebugData::HotbarSlotHud& slot = frameDebugData.bagSlots[slotIndex];
+            if (slot.count == 0)
+            {
+                continue;
+            }
+            const float centerX =
+                static_cast<float>(bagStartCol + colIndex * 8) * charWidthPx + charWidthPx * 3.0f;
+            const float centerY = static_cast<float>(bagRows[static_cast<std::size_t>(rowIndex)]) * charHeightPx
+                + charHeightPx * 0.40f;
+            const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
+                slot.blockType,
+                vibecraft::world::BlockFace::Side);
+            drawAtlasIcon(centerX, centerY, kBagIconSizePx, tileIndex);
+        }
+    }
+}
+
+void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
+{
+    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
+        || chunkAtlasTextureHandle_ == UINT16_MAX)
+    {
+        return;
+    }
+
+    for (const FrameDebugData::WorldPickupHud& pickup : frameDebugData.worldPickups)
+    {
+        if (bgfx::getAvailTransientVertexBuffer(4, ChunkVertex::layout()) < 4)
+        {
+            break;
+        }
+        if (bgfx::getAvailTransientIndexBuffer(6) < 6)
+        {
+            break;
+        }
+
+        const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
+            pickup.blockType,
+            vibecraft::world::BlockFace::Side);
+        const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
+        const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
+        const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
+        const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
+        const float minU = tileX * tileWidth;
+        const float maxU = minU + tileWidth;
+        const float minV = tileY * tileHeight;
+        const float maxV = minV + tileHeight;
+
+        constexpr float kHalfWidth = 0.18f;
+        constexpr float kHalfHeight = 0.18f;
+        const float cosA = std::cos(pickup.spinRadians);
+        const float sinA = std::sin(pickup.spinRadians);
+        const glm::vec3 right(cosA * kHalfWidth, 0.0f, sinA * kHalfWidth);
+        const glm::vec3 up(0.0f, kHalfHeight, 0.0f);
+        const glm::vec3 center = pickup.worldPosition;
+
+        ChunkVertex vertices[4] = {
+            ChunkVertex{
+                .x = center.x - right.x - up.x,
+                .y = center.y - right.y - up.y,
+                .z = center.z - right.z - up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = minU,
+                .v = maxV,
+                .abgr = 0xffffffff},
+            ChunkVertex{
+                .x = center.x + right.x - up.x,
+                .y = center.y + right.y - up.y,
+                .z = center.z + right.z - up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = maxU,
+                .v = maxV,
+                .abgr = 0xffffffff},
+            ChunkVertex{
+                .x = center.x + right.x + up.x,
+                .y = center.y + right.y + up.y,
+                .z = center.z + right.z + up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = maxU,
+                .v = minV,
+                .abgr = 0xffffffff},
+            ChunkVertex{
+                .x = center.x - right.x + up.x,
+                .y = center.y - right.y + up.y,
+                .z = center.z - right.z + up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = minU,
+                .v = minV,
+                .abgr = 0xffffffff},
+        };
+
+        bgfx::TransientVertexBuffer tvb{};
+        bgfx::allocTransientVertexBuffer(&tvb, 4, ChunkVertex::layout());
+        std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+        bgfx::TransientIndexBuffer tib{};
+        bgfx::allocTransientIndexBuffer(&tib, 6);
+        auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+        indices[0] = 0;
+        indices[1] = 1;
+        indices[2] = 2;
+        indices[3] = 0;
+        indices[4] = 2;
+        indices[5] = 3;
+
+        const float identity[16] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f,
+        };
+        bgfx::setTransform(identity);
+        bgfx::setVertexBuffer(0, &tvb);
+        bgfx::setIndexBuffer(&tib);
+        bgfx::setTexture(
+            0,
+            toUniformHandle(inventoryUiSamplerHandle_),
+            toTextureHandle(chunkAtlasTextureHandle_));
+        bgfx::setState(
+            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+            | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS);
+        bgfx::submit(kMainView, toProgramHandle(inventoryUiProgramHandle_));
+    }
+}
+
+void Renderer::drawAtlasIcon(
+    const float centerX,
+    const float centerY,
+    const float iconSizePx,
+    const std::uint8_t tileIndex)
+{
+    if (bgfx::getAvailTransientVertexBuffer(4, ChunkVertex::layout()) < 4)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
+    {
+        return;
+    }
+
+    const float halfSize = iconSizePx * 0.5f;
+    const float x0 = std::floor(centerX - halfSize);
+    const float y0 = std::floor(centerY - halfSize);
+    const float x1 = x0 + iconSizePx;
+    const float y1 = y0 + iconSizePx;
+
+    const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
+    const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
+    const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
+    const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
+    const float minU = tileX * tileWidth;
+    const float maxU = minU + tileWidth;
+    const float minV = tileY * tileHeight;
+    const float maxV = minV + tileHeight;
+
+    const float identity[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    bgfx::setTransform(identity);
+
+    ChunkVertex vertices[4] = {
+        ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = minV, .abgr = 0xffffffff},
+        ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = minV, .abgr = 0xffffffff},
+        ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = maxV, .abgr = 0xffffffff},
+        ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = maxV, .abgr = 0xffffffff},
+    };
+
+    bgfx::TransientVertexBuffer tvb{};
+    bgfx::allocTransientVertexBuffer(&tvb, 4, ChunkVertex::layout());
+    std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+    bgfx::TransientIndexBuffer tib{};
+    bgfx::allocTransientIndexBuffer(&tib, 6);
+    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+    indices[3] = 0;
+    indices[4] = 2;
+    indices[5] = 3;
+
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setIndexBuffer(&tib);
+    bgfx::setTexture(
+        0,
+        toUniformHandle(inventoryUiSamplerHandle_),
+        toTextureHandle(chunkAtlasTextureHandle_));
+    bgfx::setState(
+        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
+    bgfx::submit(kUiView, toProgramHandle(inventoryUiProgramHandle_));
+}
+
 void Renderer::drawMainMenuLogo()
 {
     if (logoProgramHandle_ == UINT16_MAX || logoTextureHandle_ == UINT16_MAX || logoSamplerHandle_ == UINT16_MAX)
@@ -1723,11 +2136,11 @@ void Renderer::drawMainMenuLogo()
 
     const float aspect =
         static_cast<float>(logoWidthPx_) / static_cast<float>(logoHeightPx_);
-    constexpr float kMarginTop = 42.0f;
-    const float maxWidth = std::min(620.0f, static_cast<float>(width_) * 0.78f);
+    constexpr float kMarginTop = 32.0f;
+    const float maxWidth = std::min(640.0f, static_cast<float>(width_) * 0.82f);
     float drawW = maxWidth;
     float drawH = drawW / aspect;
-    const float maxHeight = std::min(static_cast<float>(height_) * 0.15f, 176.0f);
+    const float maxHeight = std::min(static_cast<float>(height_) * 0.17f, 200.0f);
     if (drawH > maxHeight)
     {
         drawH = maxHeight;
@@ -1752,7 +2165,7 @@ void Renderer::drawMainMenuLogo()
         1000.0f,
         0.0f,
         bgfx::getCaps()->homogeneousDepth);
-    bgfx::setViewTransform(kMainView, view, proj);
+    bgfx::setViewTransform(kUiView, view, proj);
 
     const float identity[16] = {
         1.0f, 0.0f, 0.0f, 0.0f,
@@ -1788,6 +2201,88 @@ void Renderer::drawMainMenuLogo()
     bgfx::setTexture(0, toUniformHandle(logoSamplerHandle_), toTextureHandle(logoTextureHandle_));
     bgfx::setState(
         BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
-    bgfx::submit(kMainView, toProgramHandle(logoProgramHandle_));
+    bgfx::submit(kUiView, toProgramHandle(logoProgramHandle_));
+}
+
+void Renderer::drawCrosshairOverlay()
+{
+    if (crosshairProgramHandle_ == UINT16_MAX
+        || crosshairTextureHandle_ == UINT16_MAX
+        || crosshairSamplerHandle_ == UINT16_MAX)
+    {
+        return;
+    }
+    if (width_ == 0 || height_ == 0)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientVertexBuffer(4, ChunkVertex::layout()) < 4)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
+    {
+        return;
+    }
+
+    constexpr float kCrosshairSizePx = 15.0f;
+    const float x0 = std::floor((static_cast<float>(width_) - kCrosshairSizePx) * 0.5f);
+    const float y0 = std::floor((static_cast<float>(height_) - kCrosshairSizePx) * 0.5f);
+    const float x1 = x0 + kCrosshairSizePx;
+    const float y1 = y0 + kCrosshairSizePx;
+
+    float view[16];
+    bx::mtxIdentity(view);
+    float proj[16];
+    bx::mtxOrtho(
+        proj,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        0.0f,
+        0.0f,
+        1000.0f,
+        0.0f,
+        bgfx::getCaps()->homogeneousDepth);
+    bgfx::setViewTransform(kUiView, view, proj);
+
+    const float identity[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    bgfx::setTransform(identity);
+
+    ChunkVertex vertices[4] = {
+        ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 0.0f, .abgr = 0xffffffff},
+        ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 0.0f, .abgr = 0xffffffff},
+        ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 1.0f, .abgr = 0xffffffff},
+        ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 1.0f, .abgr = 0xffffffff},
+    };
+
+    bgfx::TransientVertexBuffer tvb{};
+    bgfx::allocTransientVertexBuffer(&tvb, 4, ChunkVertex::layout());
+    std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+    bgfx::TransientIndexBuffer tib{};
+    bgfx::allocTransientIndexBuffer(&tib, 6);
+    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+    indices[3] = 0;
+    indices[4] = 2;
+    indices[5] = 3;
+
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setIndexBuffer(&tib);
+    bgfx::setTexture(
+        0,
+        toUniformHandle(crosshairSamplerHandle_),
+        toTextureHandle(crosshairTextureHandle_));
+    bgfx::setState(
+        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
+    bgfx::submit(kUiView, toProgramHandle(crosshairProgramHandle_));
 }
 }  // namespace vibecraft::render
