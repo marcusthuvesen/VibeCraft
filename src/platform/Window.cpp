@@ -21,7 +21,7 @@ bool Window::create(const std::string& title, const std::uint32_t width, const s
         title.c_str(),
         static_cast<int>(width),
         static_cast<int>(height),
-        SDL_WINDOW_RESIZABLE);
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 
     if (window_ == nullptr)
     {
@@ -66,6 +66,20 @@ void Window::pollEvents(InputState& inputState)
             {
                 inputState.captureMouseRequested = true;
             }
+            break;
+
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            inputState.windowFocused = false;
+            inputState.releaseMouseRequested = true;
+            break;
+
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            inputState.windowFocused = true;
+            break;
+
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            inputState.windowSizeChanged = true;
             break;
 
         case SDL_EVENT_MOUSE_MOTION:

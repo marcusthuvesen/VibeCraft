@@ -3,6 +3,8 @@
 #include <SDL3/SDL.h>
 #include <fmt/format.h>
 
+#include <vector>
+
 #include "vibecraft/core/Logger.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
@@ -16,6 +18,17 @@ constexpr int kInitialChunkRadius = 2;
 constexpr float kMoveSpeed = 12.0f;
 constexpr float kMouseSensitivity = 0.09f;
 constexpr float kReachDistance = 6.0f;
+
+[[nodiscard]] std::uint64_t chunkMeshId(const world::ChunkCoord& coord)
+{
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(coord.x)) << 32U)
+        | static_cast<std::uint32_t>(coord.z);
+}
+
+[[nodiscard]] std::uint32_t chunkColor(const world::ChunkCoord& coord)
+{
+    return ((coord.x + coord.z) & 1) == 0 ? 0xff81c784 : 0xff66bb6a;
+}
 }
 
 bool Application::initialize()
@@ -71,7 +84,7 @@ void Application::update(const float deltaTimeSeconds)
 {
     static_cast<void>(deltaTimeSeconds);
 
-    if (window_.width() != 0 && window_.height() != 0)
+    if (inputState_.windowSizeChanged && window_.width() != 0 && window_.height() != 0)
     {
         renderer_.resize(window_.width(), window_.height());
     }
@@ -95,7 +108,13 @@ void Application::update(const float deltaTimeSeconds)
         frameDebugData.targetBlock = raycastHit->solidBlock;
     }
 
-    renderer_.renderFrame(frameDebugData);
+    renderer_.renderFrame(
+        frameDebugData,
+        render::CameraFrameData{
+            .position = camera_.position(),
+            .forward = camera_.forward(),
+            .up = camera_.up(),
+        });
 }
 
 void Application::processInput(const float deltaTimeSeconds)
@@ -110,6 +129,16 @@ void Application::processInput(const float deltaTimeSeconds)
     {
         mouseCaptured_ = true;
         window_.setRelativeMouseMode(true);
+    }
+
+    if (!inputState_.windowFocused)
+    {
+        if (mouseCaptured_)
+        {
+            mouseCaptured_ = false;
+            window_.setRelativeMouseMode(false);
+        }
+        return;
     }
 
     if (mouseCaptured_)
@@ -175,6 +204,34 @@ void Application::syncWorldData()
 {
     if (world_.dirtyChunkCount() > 0)
     {
+        std::vector<render::SceneMeshData> sceneMeshes;
+        sceneMeshes.reserve(world_.chunks().size());
+
+        for (const auto& [coord, chunk] : world_.chunks())
+        {
+            static_cast<void>(chunk);
+
+            meshing::ChunkMeshData meshData = chunkMesher_.buildMesh(world_, coord);
+            if (meshData.vertices.empty() || meshData.indices.empty())
+            {
+                continue;
+            }
+
+            render::SceneMeshData sceneMesh;
+            sceneMesh.id = chunkMeshId(coord);
+            sceneMesh.indices = std::move(meshData.indices);
+            sceneMesh.abgr = chunkColor(coord);
+            sceneMesh.positions.reserve(meshData.vertices.size());
+
+            for (const meshing::DebugVertex& vertex : meshData.vertices)
+            {
+                sceneMesh.positions.emplace_back(vertex.x, vertex.y, vertex.z);
+            }
+
+            sceneMeshes.push_back(std::move(sceneMesh));
+        }
+
+        renderer_.replaceSceneMeshes(sceneMeshes);
         world_.rebuildDirtyMeshes(chunkMesher_);
     }
 }

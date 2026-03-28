@@ -14,6 +14,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 include(CTest)
 include(cmake/Dependencies.cmake)
 
+set(BGFX_EXAMPLES_COMMON_DIR "${bgfx_cmake_SOURCE_DIR}/bgfx/examples/common")
+
 set(VIBECRAFT_HEADERS
     include/vibecraft/app/Application.hpp
     include/vibecraft/core/Logger.hpp
@@ -42,6 +44,7 @@ set(VIBECRAFT_SOURCES
     src/world/TerrainGenerator.cpp
     src/world/World.cpp
     src/world/WorldSerializer.cpp
+    ${BGFX_EXAMPLES_COMMON_DIR}/debugdraw/debugdraw.cpp
 )
 
 add_executable(vibecraft
@@ -49,9 +52,17 @@ add_executable(vibecraft
     ${VIBECRAFT_SOURCES}
 )
 
+if(APPLE)
+    set_target_properties(vibecraft PROPERTIES BUILD_RPATH "@loader_path")
+elseif(UNIX)
+    set_target_properties(vibecraft PROPERTIES BUILD_RPATH "$ORIGIN")
+endif()
+
 target_include_directories(vibecraft
     PRIVATE
         include
+        ${BGFX_EXAMPLES_COMMON_DIR}
+        ${BGFX_EXAMPLES_COMMON_DIR}/debugdraw
 )
 
 target_link_libraries(vibecraft
@@ -62,6 +73,14 @@ target_link_libraries(vibecraft
         bimg
         glm
         fmt::fmt
+)
+
+add_custom_command(
+    TARGET vibecraft
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:SDL3::SDL3>
+        $<TARGET_FILE_DIR:vibecraft>
 )
 
 if(MSVC)

@@ -108,17 +108,20 @@ flowchart TD
 - Owns startup and shutdown order.
 - Owns the per-frame update sequence.
 - Pulls input from `platform`, applies it to `game`, updates `world`, then asks `render` to present a frame.
+- Rebuilds and submits prepared scene mesh data to `render` when world data changes.
 
 ### `platform`
 
 - Creates and destroys the SDL window.
 - Polls SDL events and exposes a platform-neutral input snapshot to the app layer.
+- Handles focus-loss and pixel-size-change events for app-facing lifecycle control.
 - Provides the native window handle needed by bgfx.
 
 ### `render`
 
 - Initializes bgfx using the platform window.
 - Owns frame lifecycle and resize handling.
+- Owns renderer-side scene resources created from app-submitted mesh data.
 - Must not own block data, player state, or terrain generation.
 
 ### `game`
@@ -246,7 +249,7 @@ Run these steps for meaningful changes:
 1. `cmake --preset default`
 2. `cmake --build --preset debug`
 3. `ctest --preset debug --output-on-failure`
-4. Launch the built app and verify startup, camera movement, and block editing smoke-test correctly.
+4. Launch `build/default/bin/vibecraft` and verify startup, camera movement, focus-loss mouse release, and block editing smoke-test correctly.
 
 ## Coding Guidelines
 

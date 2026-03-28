@@ -9,6 +9,8 @@ struct InputState
     bool quitRequested = false;
     bool captureMouseRequested = false;
     bool releaseMouseRequested = false;
+    bool windowFocused = true;
+    bool windowSizeChanged = false;
     bool leftMousePressed = false;
     bool rightMousePressed = false;
     float mouseDeltaX = 0.0f;
@@ -18,6 +20,7 @@ struct InputState
     {
         captureMouseRequested = false;
         releaseMouseRequested = false;
+        windowSizeChanged = false;
         leftMousePressed = false;
         rightMousePressed = false;
         mouseDeltaX = 0.0f;
