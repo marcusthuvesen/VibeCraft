@@ -149,6 +149,11 @@ std::size_t World::dirtyChunkCount() const
     return dirtyChunks_.size();
 }
 
+std::vector<ChunkCoord> World::dirtyChunkCoords() const
+{
+    return std::vector<ChunkCoord>(dirtyChunks_.begin(), dirtyChunks_.end());
+}
+
 std::uint32_t World::totalVisibleFaces() const
 {
     std::uint32_t faceCount = 0;

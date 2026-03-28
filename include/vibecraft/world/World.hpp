@@ -55,6 +55,7 @@ class World
     [[nodiscard]] const ChunkMap& chunks() const;
     [[nodiscard]] const std::unordered_map<ChunkCoord, ChunkMeshStats, ChunkCoordHash>& meshStats() const;
     [[nodiscard]] std::size_t dirtyChunkCount() const;
+    [[nodiscard]] std::vector<ChunkCoord> dirtyChunkCoords() const;
     [[nodiscard]] std::uint32_t totalVisibleFaces() const;
 
     void rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher);

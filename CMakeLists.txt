@@ -15,6 +15,67 @@ include(CTest)
 include(cmake/Dependencies.cmake)
 
 set(BGFX_EXAMPLES_COMMON_DIR "${bgfx_cmake_SOURCE_DIR}/bgfx/examples/common")
+set(VIBECRAFT_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders")
+set(VIBECRAFT_SHADER_OUTPUT_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders")
+
+function(vibecraft_compile_shader OUT_VAR INPUT_FILE SHADER_TYPE PLATFORM_NAME PROFILE_NAME OUTPUT_SUBDIR)
+    get_filename_component(SHADER_BASENAME "${INPUT_FILE}" NAME_WE)
+    set(OUTPUT_FILE "${VIBECRAFT_SHADER_OUTPUT_DIR}/${OUTPUT_SUBDIR}/${SHADER_BASENAME}.bin")
+
+    add_custom_command(
+        OUTPUT "${OUTPUT_FILE}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${VIBECRAFT_SHADER_OUTPUT_DIR}/${OUTPUT_SUBDIR}"
+        COMMAND $<TARGET_FILE:bgfx::shaderc>
+            --platform "${PLATFORM_NAME}"
+            --type "${SHADER_TYPE}"
+            -p "${PROFILE_NAME}"
+            -O 0
+            --varyingdef "${VIBECRAFT_SHADER_DIR}/varying.def.sc"
+            -i "${bgfx_cmake_SOURCE_DIR}/bgfx/src"
+            -i "${VIBECRAFT_SHADER_DIR}"
+            -f "${INPUT_FILE}"
+            -o "${OUTPUT_FILE}"
+        MAIN_DEPENDENCY "${INPUT_FILE}"
+        DEPENDS "${VIBECRAFT_SHADER_DIR}/varying.def.sc" bgfx::shaderc
+        VERBATIM
+    )
+
+    set(${OUT_VAR} "${OUTPUT_FILE}" PARENT_SCOPE)
+endfunction()
+
+set(VIBECRAFT_SHADER_OUTPUTS "")
+
+if(APPLE)
+    vibecraft_compile_shader(VS_CHUNK_METAL "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex osx metal metal)
+    vibecraft_compile_shader(FS_CHUNK_METAL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment osx metal metal)
+    list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_METAL}" "${FS_CHUNK_METAL}")
+endif()
+
+if(WIN32)
+    vibecraft_compile_shader(VS_CHUNK_DXBC "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex windows s_5_0 dxbc)
+    vibecraft_compile_shader(FS_CHUNK_DXBC "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment windows s_5_0 dxbc)
+    vibecraft_compile_shader(VS_CHUNK_DXIL "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex windows s_6_0 dxil)
+    vibecraft_compile_shader(FS_CHUNK_DXIL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment windows s_6_0 dxil)
+    list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_DXBC}" "${FS_CHUNK_DXBC}" "${VS_CHUNK_DXIL}" "${FS_CHUNK_DXIL}")
+endif()
+
+if(UNIX AND NOT APPLE)
+    vibecraft_compile_shader(VS_CHUNK_GLSL "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex linux 120 glsl)
+    vibecraft_compile_shader(FS_CHUNK_GLSL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment linux 120 glsl)
+    list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_GLSL}" "${FS_CHUNK_GLSL}")
+endif()
+
+vibecraft_compile_shader(VS_CHUNK_SPIRV "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex linux spirv spirv)
+vibecraft_compile_shader(FS_CHUNK_SPIRV "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment linux spirv spirv)
+vibecraft_compile_shader(VS_CHUNK_WGSL "${VIBECRAFT_SHADER_DIR}/vs_chunk.sc" vertex linux wgsl wgsl)
+vibecraft_compile_shader(FS_CHUNK_WGSL "${VIBECRAFT_SHADER_DIR}/fs_chunk.sc" fragment linux wgsl wgsl)
+list(APPEND VIBECRAFT_SHADER_OUTPUTS "${VS_CHUNK_SPIRV}" "${FS_CHUNK_SPIRV}" "${VS_CHUNK_WGSL}" "${FS_CHUNK_WGSL}")
+
+add_custom_target(
+    vibecraft_shaders
+    DEPENDS
+        ${VIBECRAFT_SHADER_OUTPUTS}
+)
 
 set(VIBECRAFT_HEADERS
     include/vibecraft/app/Application.hpp
@@ -51,6 +112,8 @@ add_executable(vibecraft
     ${VIBECRAFT_HEADERS}
     ${VIBECRAFT_SOURCES}
 )
+
+add_dependencies(vibecraft vibecraft_shaders)
 
 if(APPLE)
     set_target_properties(vibecraft PROPERTIES BUILD_RPATH "@loader_path")

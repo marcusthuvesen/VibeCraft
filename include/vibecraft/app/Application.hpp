@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <unordered_set>
 
 #include "vibecraft/game/Camera.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
@@ -31,6 +32,7 @@ class Application
     vibecraft::world::World world_;
     vibecraft::meshing::ChunkMesher chunkMesher_;
     std::filesystem::path savePath_ = "assets/saves/dev_world.bin";
+    std::unordered_set<std::uint64_t> residentChunkMeshIds_;
     bool mouseCaptured_ = true;
 };
 }  // namespace vibecraft::app

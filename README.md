@@ -78,6 +78,7 @@ flowchart TD
 |-- CMakePresets.json
 |-- README.md
 |-- assets/
+|   |-- shaders/
 |   |-- saves/
 |-- cmake/
 |   |-- Dependencies.cmake
@@ -108,7 +109,8 @@ flowchart TD
 - Owns startup and shutdown order.
 - Owns the per-frame update sequence.
 - Pulls input from `platform`, applies it to `game`, updates `world`, then asks `render` to present a frame.
-- Rebuilds and submits prepared scene mesh data to `render` when world data changes.
+- Rebuilds and submits prepared scene mesh data to `render` only for dirty chunks when world data changes.
+- Maintains a camera-centered active chunk set so only nearby chunk meshes stay resident on the GPU.
 
 ### `platform`
 
@@ -122,6 +124,10 @@ flowchart TD
 - Initializes bgfx using the platform window.
 - Owns frame lifecycle and resize handling.
 - Owns renderer-side scene resources created from app-submitted mesh data.
+- Owns the project shader pipeline under `assets/shaders/`.
+- Updates GPU chunk resources incrementally instead of replacing the full scene on every world edit.
+- Culls chunk draw calls against the camera frustum before submission.
+- Uses a lighting-ready chunk vertex format with normals for basic directional shading.
 - Must not own block data, player state, or terrain generation.
 
 ### `game`
@@ -241,6 +247,41 @@ For the current foundation stage, the safest split is:
 1. Person A handles `platform`, `render`, build tooling, app integration, and the most complex cross-module work.
 2. Person B handles feature implementation inside `world`, `meshing`, and `game` after the interface and ownership boundaries are clear.
 3. Person A keeps ownership of `src/app/Application.cpp` and other architectural hotspot files to reduce merge conflicts and avoid split responsibility in the hardest code.
+
+## Status And Next Steps
+
+This section tracks what is already landed versus what each contributor should prioritize next. Update it when a milestone ships or the plan changes.
+
+### Person A: recently completed
+
+- `bgfx` chunk rendering with compiled shaders under `assets/shaders/` and CMake-driven `shaderc` builds.
+- Incremental GPU chunk resources via `Renderer::updateSceneMeshes` instead of rebuilding the whole scene every edit.
+- Camera-centered resident chunk meshing in `Application` so only nearby chunks stay uploaded.
+- Frustum culling before submitting chunk draws.
+- Chunk vertices with normals and basic directional lighting in the fragment shader; per-vertex normals computed in `Application` before upload.
+- SDL3 focus and pixel-size handling; camera movement and mouse look gated on window focus.
+- `World` exposes `dirtyChunkCoords()` for incremental app-side sync.
+
+### Person B: recently completed
+
+- Procedural underground caves in `TerrainGenerator` using a density test that preserves the surface and shallow subsurface layers.
+- Tests covering solid surface columns, air above terrain, cave presence in a sampled region, and save/load round-trip for edited blocks.
+
+### Person A: suggested next steps
+
+1. Trim redundant per-frame CPU work: today `World::rebuildDirtyMeshes` may run for all dirty chunks after syncing resident meshes; tighten this so off-resident dirty chunks do not pay full mesh rebuild cost unless needed for stats or debugging.
+2. Separate **CPU mesh generation** from **GPU upload** more explicitly in `Application` (queue or staging structs) so future threading or budgeting is straightforward.
+3. Validate the `Windows` CMake preset and fix any platform-specific issues in `platform`, `render`, or runtime library paths.
+4. Extend the renderer with depth-aware passes, textures, or materials when the project is ready for art-driven surfaces.
+5. Add lightweight frame timing or GPU frame stats to the debug overlay for performance work.
+
+### Person B: suggested next steps
+
+1. Expand world content on stable interfaces: additional `BlockType` values, simple ore or stratified underground layers, or biome hooks that stay data-driven.
+2. Gameplay iteration in `game` and `world`: hotbar or block selection for placement, simple survival-adjacent rules, or tools—without pulling renderer APIs into `world`.
+3. Meshing upgrades that stay CPU-side: slopes are out of scope until agreed; focus on greedy meshing, ambient occlusion baking, or per-face tint data if needed.
+4. More tests for new blocks, terrain edge cases, and serializer compatibility as the save format evolves.
+5. Coordinate with Person A before changing shared mesh vertex layouts or adding GPU-only attributes.
 
 ## Validation Checklist
 
