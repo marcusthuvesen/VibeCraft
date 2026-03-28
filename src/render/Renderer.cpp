@@ -10,6 +10,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <cmath>
+#include <utility>
 #include <vector>
 
 #include "debugdraw.h"
@@ -31,6 +33,8 @@ struct ChunkVertex
     float nx = 0.0f;
     float ny = 1.0f;
     float nz = 0.0f;
+    float u = 0.0f;
+    float v = 0.0f;
     std::uint32_t abgr = 0xffffffff;
 
     static bgfx::VertexLayout layout()
@@ -39,6 +43,7 @@ struct ChunkVertex
         vertexLayout.begin()
             .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
             .add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
+            .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
             .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
             .end();
         return vertexLayout;
@@ -58,6 +63,34 @@ struct ChunkVertex
 [[nodiscard]] bgfx::ProgramHandle toProgramHandle(const std::uint16_t handleIndex)
 {
     return bgfx::ProgramHandle{handleIndex};
+}
+
+[[nodiscard]] bgfx::TextureHandle toTextureHandle(const std::uint16_t handleIndex)
+{
+    return bgfx::TextureHandle{handleIndex};
+}
+
+[[nodiscard]] bgfx::UniformHandle toUniformHandle(const std::uint16_t handleIndex)
+{
+    return bgfx::UniformHandle{handleIndex};
+}
+
+[[nodiscard]] std::pair<float, float> planarUvForVertex(const ChunkVertex& vertex)
+{
+    const float absNx = std::abs(vertex.nx);
+    const float absNy = std::abs(vertex.ny);
+    const float absNz = std::abs(vertex.nz);
+    constexpr float kUvScale = 0.25f;
+
+    if (absNy >= absNx && absNy >= absNz)
+    {
+        return {vertex.x * kUvScale, vertex.z * kUvScale};
+    }
+    if (absNx >= absNy && absNx >= absNz)
+    {
+        return {vertex.z * kUvScale, vertex.y * kUvScale};
+    }
+    return {vertex.x * kUvScale, vertex.y * kUvScale};
 }
 
 [[nodiscard]] bool isAabbInsideFrustum(const bx::Plane* const frustumPlanes, const bx::Aabb& aabb)
@@ -160,6 +193,71 @@ struct ChunkVertex
 
     return bgfx::createProgram(vertexShader, fragmentShader, true);
 }
+
+[[nodiscard]] bgfx::TextureHandle createChunkAtlasTexture()
+{
+    constexpr std::uint16_t kAtlasSize = 16;
+    constexpr std::uint16_t kTileSize = 8;
+    std::vector<std::uint8_t> atlasPixels(kAtlasSize * kAtlasSize * 4, 255);
+
+    for (std::uint16_t y = 0; y < kAtlasSize; ++y)
+    {
+        for (std::uint16_t x = 0; x < kAtlasSize; ++x)
+        {
+            const std::size_t pixelOffset = static_cast<std::size_t>((y * kAtlasSize + x) * 4);
+            const int tileX = x / kTileSize;
+            const int tileY = y / kTileSize;
+            const int tileIndex = tileY * 2 + tileX;
+            const bool darkChecker = ((x + y) & 1U) == 0U;
+            const float shade = darkChecker ? 0.86f : 1.0f;
+
+            std::uint8_t r = 90;
+            std::uint8_t g = 160;
+            std::uint8_t b = 90;
+            switch (tileIndex)
+            {
+            case 0:  // grass
+                r = 92;
+                g = 164;
+                b = 86;
+                break;
+            case 1:  // dirt
+                r = 124;
+                g = 90;
+                b = 60;
+                break;
+            case 2:  // stone
+                r = 132;
+                g = 132;
+                b = 132;
+                break;
+            case 3:  // sand
+                r = 188;
+                g = 172;
+                b = 120;
+                break;
+            default:
+                break;
+            }
+
+            atlasPixels[pixelOffset + 0] = static_cast<std::uint8_t>(b * shade);  // BGRA8
+            atlasPixels[pixelOffset + 1] = static_cast<std::uint8_t>(g * shade);
+            atlasPixels[pixelOffset + 2] = static_cast<std::uint8_t>(r * shade);
+            atlasPixels[pixelOffset + 3] = 255;
+        }
+    }
+
+    const bgfx::Memory* const atlasMemory =
+        bgfx::copy(atlasPixels.data(), static_cast<std::uint32_t>(atlasPixels.size()));
+    return bgfx::createTexture2D(
+        kAtlasSize,
+        kAtlasSize,
+        false,
+        1,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_TEXTURE_NONE,
+        atlasMemory);
+}
 }
 
 bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t width, const std::uint32_t height)
@@ -197,7 +295,30 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         return false;
     }
 
+    const bgfx::TextureHandle chunkAtlasTexture = createChunkAtlasTexture();
+    if (!bgfx::isValid(chunkAtlasTexture))
+    {
+        bgfx::destroy(chunkProgram);
+        ddShutdown();
+        bgfx::shutdown();
+        initialized_ = false;
+        return false;
+    }
+
+    const bgfx::UniformHandle chunkAtlasSampler = bgfx::createUniform("s_chunkAtlas", bgfx::UniformType::Sampler);
+    if (!bgfx::isValid(chunkAtlasSampler))
+    {
+        bgfx::destroy(chunkAtlasTexture);
+        bgfx::destroy(chunkProgram);
+        ddShutdown();
+        bgfx::shutdown();
+        initialized_ = false;
+        return false;
+    }
+
     chunkProgramHandle_ = chunkProgram.idx;
+    chunkAtlasTextureHandle_ = chunkAtlasTexture.idx;
+    chunkAtlasSamplerHandle_ = chunkAtlasSampler.idx;
     return true;
 }
 
@@ -213,6 +334,16 @@ void Renderer::shutdown()
     {
         bgfx::destroy(toProgramHandle(chunkProgramHandle_));
         chunkProgramHandle_ = UINT16_MAX;
+    }
+    if (chunkAtlasTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toTextureHandle(chunkAtlasTextureHandle_));
+        chunkAtlasTextureHandle_ = UINT16_MAX;
+    }
+    if (chunkAtlasSamplerHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(chunkAtlasSamplerHandle_));
+        chunkAtlasSamplerHandle_ = UINT16_MAX;
     }
     ddShutdown();
     bgfx::shutdown();
@@ -259,15 +390,21 @@ void Renderer::updateSceneMeshes(
 
         for (const SceneMeshData::Vertex& vertex : sceneMesh.vertices)
         {
-            chunkVertices.push_back(ChunkVertex{
+            ChunkVertex chunkVertex{
                 .x = vertex.position.x,
                 .y = vertex.position.y,
                 .z = vertex.position.z,
                 .nx = vertex.normal.x,
                 .ny = vertex.normal.y,
                 .nz = vertex.normal.z,
+                .u = 0.0f,
+                .v = 0.0f,
                 .abgr = vertex.abgr,
-            });
+            };
+            const auto [u, v] = planarUvForVertex(chunkVertex);
+            chunkVertex.u = u;
+            chunkVertex.v = v;
+            chunkVertices.push_back(chunkVertex);
         }
 
         const bgfx::VertexBufferHandle vertexBuffer = bgfx::createVertexBuffer(
@@ -359,6 +496,13 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
                 toIndexBufferHandle(sceneMesh.indexBufferHandle),
                 0,
                 sceneMesh.indexCount);
+            if (chunkAtlasTextureHandle_ != UINT16_MAX && chunkAtlasSamplerHandle_ != UINT16_MAX)
+            {
+                bgfx::setTexture(
+                    0,
+                    toUniformHandle(chunkAtlasSamplerHandle_),
+                    toTextureHandle(chunkAtlasTextureHandle_));
+            }
             bgfx::setState(kChunkRenderState);
             bgfx::submit(kMainView, toProgramHandle(chunkProgramHandle_));
         }
@@ -451,7 +595,7 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         bgfx::dbgTextPrintf(0, 9, 0x0f, "Target block: none");
     }
 
-    bgfx::dbgTextPrintf(0, 11, 0x0e, "Controls: WASD move, Space/Shift fly, mouse look");
+    bgfx::dbgTextPrintf(0, 11, 0x0e, "Controls: WASD move, Shift sneak, Ctrl sprint, Space jump, mouse look");
     bgfx::dbgTextPrintf(0, 12, 0x0e, "LMB remove, RMB place, Tab capture mouse, Esc release mouse");
 
     bgfx::frame();

@@ -75,6 +75,8 @@ class Renderer
     std::uint32_t height_ = 0;
     bool initialized_ = false;
     std::uint16_t chunkProgramHandle_ = UINT16_MAX;
+    std::uint16_t chunkAtlasTextureHandle_ = UINT16_MAX;
+    std::uint16_t chunkAtlasSamplerHandle_ = UINT16_MAX;
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };
 }  // namespace vibecraft::render

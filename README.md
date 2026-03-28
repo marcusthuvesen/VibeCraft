@@ -267,47 +267,68 @@ This section tracks what is already landed versus what each contributor should p
 - Smoothed frame timing and FPS are now included in the renderer status line for quick performance checks.
 - Added Windows-oriented CMake presets (`windows-debug` for configure/build/test) so Windows bring-up uses the same workflow as macOS.
 - Renderer overlay now includes `bgfx` CPU/GPU frame times and draw/triangle counters for deeper graphics-side profiling.
+- First-pass textured chunk materials: renderer now uses a generated atlas texture with UV-projected sampling in chunk shaders, making terrain read more like block materials than flat color.
+- Grounded player controller in `app` (Minecraft-style): **1.8-block** standing hitbox (1.5 when sneaking), **Shift sneak** / **Ctrl sprint**, ~Java walking speed, gravity + jump, voxel collision, and **auto step-up** onto single-block ledges (no free-fly).
 
 ### Person B: recently completed
 
 - Procedural underground caves in `TerrainGenerator` using a density test that preserves the surface and shallow subsurface layers.
+- Stratified underground content: **Deepslate** vs **Stone** by depth, **coal ore** placement, mesh colors, and tests for these features.
 - Tests covering solid surface columns, air above terrain, cave presence in a sampled region, and save/load round-trip for edited blocks.
 
-### Person A: suggested next steps (Minecraft-like visuals first)
+### Next milestone priorities (agreed split)
 
-Focus here on **visible** upgrades: textures, lighting atmosphere, and solid 3D depth—so the game reads as a block world, not a flat-shaded prototype.
+These are the **next logical tasks** after the current vertical slice. Split keeps ownership clear and avoids merge fights.
 
-1. **Texture atlas + UVs:** add a block texture atlas (or a small set of atlases), pass per-vertex UVs from meshing, and sample in `fs_chunk` with optional mip filtering. Coordinate with Person B on `BlockType` → tile index so art stays data-driven.
-2. **Per-face or per-block materials:** drive different tiles per face (grass top vs side) and block family (stone, dirt, ore) via meshing output and shader, still without pulling gameplay into `render`.
-3. **Sky and depth cues:** simple sky gradient or clear color, horizon fog or distance fog, and a sun direction that matches the directional light in the chunk shader.
-4. **Occlusion and polish:** confirm depth buffer usage for chunk draws; add MSAA or softer edges later if needed. Block outline / selection highlight can live in `render` once `app` exposes a stable target block.
-5. **Windows bring-up:** run the `windows-debug` preset on a Windows host and fix shader output layout, runtime DLL copy, and path issues.
+**Person A should focus on**
+
+1. **Infinite terrain generation (streaming):** extend the camera-centered loop so the world **generates and loads chunks as the player moves**, unloads or stops meshing far chunks within agreed budgets, and keeps GPU uploads stable. Person B defines *what* is in a chunk at `(chunkX, chunkZ)`; Person A owns *when* chunks exist, resident radius, and the `app` → `meshing` → `render` pipeline for scale.
+2. **Inventory “bag” and hotbar (Minecraft-like):** player-facing slots (e.g. hotbar + main inventory), selection of which block type to place, and UI in the overlay or a minimal HUD—implemented in `game` data + `app` wiring + `render` debug/text or simple quads, without bloating `world` with SDL/bgfx.
+3. **Mining → inventory:** when the player **breaks** a block (left click), the **block type removed** is added as an item stack to the bag/hotbar (respecting stack limits later). Optional later: **item entities on the ground** and pickup when **walking onto/near** them; the first step is **direct grant on break** so gameplay is usable without physics drops.
+
+**Person B should focus on**
+
+1. **Sun / time-of-day (data + rules):** define a **sun direction** (and optionally a simple day cycle) as **world or game state** that rendering can read—so chunk lighting and future sky stay consistent. Person A applies it in shaders and debug UI once the value exists.
+2. **Trees:** new block types if needed (e.g. log, leaves), **tree placement rules** in `TerrainGenerator` (or biome hooks), and tests. Meshing stays per-block `ChunkMesher` rules; coordinate with Person A before vertex layout changes.
+
+**How this stays merge-safe:** Person B lands **content APIs** and **generation** (`world/`, `meshing/` data). Person A lands **streaming**, **inventory UI**, and **break → inventory** in `app`/`game`/`render` using `WorldEditCommand` / `blockAt` and agreed item types. Shared `README.md` updates one PR at a time.
+
+### Person A: suggested next steps (Minecraft-like visuals + scale)
+
+Ongoing work in parallel with the milestone above:
+
+1. **Real block-tile mapping handoff:** coordinate with Person B so `ChunkMesher` emits deterministic per-face UVs / tile ids (grass top vs side, dirt, stone, ore) instead of renderer-side planar projection only.
+2. **Sky and depth cues:** sky gradient and distance fog that match **Person B’s sun direction** once exposed.
+3. **Occlusion and polish:** selection outline, optional AA after textures are stable.
+4. **Windows bring-up:** run the `windows-debug` preset on a Windows host and fix shader output layout, runtime DLL copy, and path issues.
 
 **How this stays merge-safe:** Person A owns the **GPU path** (`render/`, `assets/shaders/`, CMake shader build, and any new fields on `SceneMeshData` / renderer-facing structs). Person B owns **what gets meshed** (`meshing/`, block/tile tables in `world/`). For UVs, Person A lands the shader + vertex layout first; Person B fills `ChunkMesher` output to match—same handoff as `README` already describes, not two people editing `Application.cpp` in parallel.
 
 ### Person B: suggested next steps
 
-1. **Content and data (no rendering):** additional `BlockType` values, ore layers, biome hooks, and a small **block → texture tile index** table that Person A’s shader can consume once UVs exist.
-2. **Gameplay and world rules:** hotbar, block selection for placement, survival-style rules—keep `world`/`game` free of bgfx/SDL beyond agreed queries.
-3. **Meshing algorithms (CPU only):** greedy meshing, ambient occlusion baking—optimize triangles without changing renderer ownership; coordinate before changing vertex layout or adding attributes.
+1. **Sun and trees (milestone):** as in **Next milestone priorities** above—world-facing sun direction / day cycle hooks, then tree blocks and generation.
+2. **Content and data:** additional `BlockType` values, biome hooks, and **block → texture tile index** once Person A’s UV contract is fixed.
+3. **Meshing algorithms (CPU only):** greedy meshing, ambient occlusion baking—coordinate before changing vertex layout or adding attributes.
 4. **Tests and saves:** new blocks, terrain edge cases, serializer changes as the world grows.
-5. **Interface discipline:** any change to chunk vertex layout or GPU attributes is coordinated first; Person B does not own `render/` or `app/` integration.
+5. **Interface discipline:** any change to chunk vertex layout or GPU attributes is coordinated first; Person B does not own `render/` or final `app/` integration.
 
 ### Overlap watchlist (intentional touch points, not duplicate work)
 
 | Topic | Person A | Person B |
 | --- | --- | --- |
 | Textures / UVs | Atlas loading, shader sampling, `SceneMeshData` layout, `fs_chunk` | Tile tables, which UVs each face emits in `ChunkMesher` |
-| “Minecraft-like” scale | Resident count, GPU budget, streaming loop in `app` | Generate/load chunks by coordinate, save format |
-| Walking | Camera hookup in `app` if needed | Grounding, collision, movement state in `game`/`world` |
+| Infinite world | Resident radius, budgets, streaming loop in `app`, GPU upload | `TerrainGenerator` / chunk content at coordinates, save format for new chunks |
+| Inventory / mining | Hotbar UI, break → grant item, `app`/`game` wiring | `BlockType` definitions, stack rules data if shared |
+| Sun / sky | Shader sky, fog, sampling B’s sun direction | Sun angle, optional day cycle state |
+| Trees | Rendering new block types once meshed | Log/leaves blocks, placement in terrain |
+| Walking | Grounded controller, step-up, sneak/sprint in `app` (done) | Optional: swim / advanced movement in `game` |
 
 If both need the same file in one sprint, use **two PRs in order**: contract/struct/shader first (A), then mesh/world data (B)—or the reverse if B only adds data and A adapts shaders after.
 
 ### Walking on the ground vs flying (when and who)
 
-- **Flying (current)** is appropriate while iterating on rendering, streaming, and mesh formats—you move freely to inspect chunks and shaders.
-- **Walking** belongs in the gameplay layer once you can answer: *where is the floor?* That needs **grounding**: height under the player (raycast or collision against voxels), optional player AABB vs blocks, and camera height tied to eye position—not noclip. Implement that in **`game`** (and small helpers in **`world`** for queries), with **`app`** applying camera transforms from the agreed interface. Person B typically leads movement rules; Person A integrates camera and input if the contract crosses `app`.
-- Add walking **after** chunk meshing and block types are stable enough that standing on grass/stone is meaningful—often right **after** a first pass of textures, so the world looks worth walking through.
+- **Grounded walking (current)** is implemented in `app` for normal playtesting: Minecraft-like bindings (sneak/sprint), step-up, jump, collisions. Free-fly should only be reintroduced as an optional debug mode if needed.
+- Further movement tuning (swim, elytra-style flight, edge safety while sneaking) can move into **`game`** later; **`world`** stays authoritative for block queries.
 
 ### Infinite map / “Minecraft-like” streaming (who owns what)
 
