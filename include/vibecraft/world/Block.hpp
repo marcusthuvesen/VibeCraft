@@ -14,12 +14,22 @@ enum class BlockType : std::uint8_t
     CoalOre,
     Sand,
     Bedrock,
-    Water
+    Water,
+    IronOre,
+    GoldOre,
+    DiamondOre,
+    EmeraldOre,
+    Lava
 };
+
+[[nodiscard]] constexpr bool isFluid(const BlockType blockType)
+{
+    return blockType == BlockType::Water || blockType == BlockType::Lava;
+}
 
 [[nodiscard]] constexpr bool isSolid(const BlockType blockType)
 {
-    return blockType != BlockType::Air && blockType != BlockType::Water;
+    return blockType != BlockType::Air && !isFluid(blockType);
 }
 
 [[nodiscard]] constexpr bool isRenderable(const BlockType blockType)
@@ -29,6 +39,6 @@ enum class BlockType : std::uint8_t
 
 [[nodiscard]] constexpr bool occludesFaces(const BlockType blockType)
 {
-    return blockType != BlockType::Air && blockType != BlockType::Water;
+    return blockType != BlockType::Air && !isFluid(blockType);
 }
 }  // namespace vibecraft::world

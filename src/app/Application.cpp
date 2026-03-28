@@ -1,13 +1,16 @@
 #include "vibecraft/app/Application.hpp"
 
 #include <SDL3/SDL.h>
+#include <bgfx/bgfx.h>
 #include <fmt/format.h>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "vibecraft/core/Logger.hpp"
@@ -63,6 +66,8 @@ constexpr StreamingSettings kStreamingSettings{};
 constexpr InputTuning kInputTuning{};
 constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
+/// When false, the main menu is not shown and input is ignored there (boot straight into gameplay).
+constexpr bool kTitleScreenEnabled = false;
 
 [[nodiscard]] const char* timeOfDayLabel(const game::TimeOfDayPeriod period)
 {
@@ -430,29 +435,100 @@ void applyMeshSyncGpuData(
     return collidesWithSolidBlock(worldState, playerAabbAt(groundedProbe, colliderHeight));
 }
 
+[[nodiscard]] bool aabbTouchesBlockType(
+    const world::World& worldState,
+    const Aabb& aabb,
+    const world::BlockType blockType)
+{
+    const int minX = static_cast<int>(std::floor(aabb.min.x));
+    const int minY = static_cast<int>(std::floor(aabb.min.y));
+    const int minZ = static_cast<int>(std::floor(aabb.min.z));
+    const int maxX = static_cast<int>(std::floor(aabb.max.x - kFloatEpsilon));
+    const int maxY = static_cast<int>(std::floor(aabb.max.y - kFloatEpsilon));
+    const int maxZ = static_cast<int>(std::floor(aabb.max.z - kFloatEpsilon));
+
+    for (int z = minZ; z <= maxZ; ++z)
+    {
+        for (int y = minY; y <= maxY; ++y)
+        {
+            for (int x = minX; x <= maxX; ++x)
+            {
+                if (worldState.blockAt(x, y, z) == blockType)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+[[nodiscard]] game::EnvironmentalHazards samplePlayerHazards(
+    const world::World& worldState,
+    const glm::vec3& feetPosition,
+    const float colliderHeight,
+    const float eyeHeight)
+{
+    const Aabb playerBody = playerAabbAt(feetPosition, colliderHeight);
+    const glm::vec3 eyeSamplePosition = feetPosition + glm::vec3(0.0f, eyeHeight - 0.1f, 0.0f);
+    const world::BlockType eyeBlock = worldState.blockAt(
+        static_cast<int>(std::floor(eyeSamplePosition.x)),
+        static_cast<int>(std::floor(eyeSamplePosition.y)),
+        static_cast<int>(std::floor(eyeSamplePosition.z)));
+
+    return game::EnvironmentalHazards{
+        .bodyInWater = aabbTouchesBlockType(worldState, playerBody, world::BlockType::Water),
+        .bodyInLava = aabbTouchesBlockType(worldState, playerBody, world::BlockType::Lava),
+        .headSubmergedInWater = eyeBlock == world::BlockType::Water,
+    };
+}
+
+[[nodiscard]] const char* hazardLabel(const game::EnvironmentalHazards& hazards)
+{
+    if (hazards.bodyInLava)
+    {
+        return "lava";
+    }
+    if (hazards.headSubmergedInWater)
+    {
+        return "underwater";
+    }
+    if (hazards.bodyInWater)
+    {
+        return "water";
+    }
+    return "clear";
+}
+
 }
 
 bool Application::initialize()
 {
     core::initializeLogger();
 
+    if (!kTitleScreenEnabled)
+    {
+        gameScreen_ = GameScreen::Playing;
+    }
+
     if (!window_.create("VibeCraft", kWindowSettings.width, kWindowSettings.height))
     {
         return false;
     }
 
+    // Fresh world every launch (no save load). Generate before bgfx so the render thread does not
+    // race heap-allocated chunk maps during startup.
+    {
+        vibecraft::world::World::ChunkMap emptyChunks;
+        world_.replaceChunks(std::move(emptyChunks));
+    }
+    world_.generateRadius(terrainGenerator_, kStreamingSettings.bootstrapChunkRadius);
+
     if (!renderer_.initialize(window_.nativeWindowHandle(), window_.width(), window_.height()))
     {
         core::logError("Failed to initialize bgfx.");
         return false;
-    }
-
-    window_.setRelativeMouseMode(true);
-
-    if (!world_.load(savePath_))
-    {
-        world_.generateRadius(terrainGenerator_, kStreamingSettings.bootstrapChunkRadius);
-        world_.save(savePath_);
     }
 
     playerFeetPosition_ = camera_.position() - glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f);
@@ -469,12 +545,26 @@ bool Application::initialize()
         }
     }
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
+    spawnFeetPosition_ = playerFeetPosition_;
+    accumulatedFallDistance_ = 0.0f;
+    playerVitals_.reset();
+    playerHazards_ = samplePlayerHazards(
+        world_,
+        playerFeetPosition_,
+        kPlayerMovementSettings.standingColliderHeight,
+        kPlayerMovementSettings.standingEyeHeight);
     camera_.addYawPitch(90.0f, 35.0f);
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
     dayNightCycle_.setElapsedSeconds(70.0f);
     weatherSystem_.setElapsedSeconds(0.0f);
 
     syncWorldData();
+
+    gameScreen_ = GameScreen::Playing;
+    mouseCaptured_ = true;
+    window_.setRelativeMouseMode(true);
+    mainMenuNotice_.clear();
+    inputState_.clearMouseMotion();
     return true;
 }
 
@@ -493,6 +583,7 @@ int Application::run()
         window_.pollEvents(inputState_);
         processInput(deltaTimeSeconds);
         update(deltaTimeSeconds);
+        ++runFrameIndex_;
     }
 
     world_.save(savePath_);
@@ -530,28 +621,47 @@ void Application::update(const float deltaTimeSeconds)
             smoothedFrameTimeMs_ + (frameTimeMs - smoothedFrameTimeMs_) * kFrameTimeSmoothingAlpha;
     }
 
+    if (kTitleScreenEnabled && gameScreen_ == GameScreen::MainMenu)
+    {
+        mainMenuTimeSeconds_ += deltaTimeSeconds;
+    }
+
     if (inputState_.windowSizeChanged && window_.width() != 0 && window_.height() != 0)
     {
         renderer_.resize(window_.width(), window_.height());
     }
 
-    syncWorldData();
+    if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
+    {
+        syncWorldData();
+    }
 
-    const auto raycastHit =
-        world_.raycast(camera_.position(), camera_.forward(), kInputTuning.reachDistance);
+    std::optional<world::RaycastHit> raycastHit;
+    if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
+    {
+        raycastHit = world_.raycast(camera_.position(), camera_.forward(), kInputTuning.reachDistance);
+    }
+
     render::FrameDebugData frameDebugData;
     frameDebugData.chunkCount = static_cast<std::uint32_t>(world_.chunks().size());
     frameDebugData.dirtyChunkCount = static_cast<std::uint32_t>(world_.dirtyChunkCount());
     frameDebugData.totalFaces = world_.totalVisibleFaces();
     frameDebugData.residentChunkCount = static_cast<std::uint32_t>(residentChunkMeshIds_.size());
     frameDebugData.cameraPosition = camera_.position();
+    frameDebugData.health = playerVitals_.health();
+    frameDebugData.maxHealth = playerVitals_.maxHealth();
     const float safeFrameTimeMs = std::max(smoothedFrameTimeMs_, 0.001f);
     const float smoothedFps = 1000.0f / safeFrameTimeMs;
     const int cycleSeconds = static_cast<int>(std::floor(dayNightSample.elapsedSeconds));
     const int cycleMinutesComponent = cycleSeconds / 60;
     const int cycleSecondsComponent = cycleSeconds % 60;
     frameDebugData.statusLine = fmt::format(
-        "Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Frame: {:.2f} ms ({:.1f} fps)",
+        "HP: {:.0f}/{:.0f}  Air: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Frame: {:.2f} ms ({:.1f} fps){}",
+        playerVitals_.health(),
+        playerVitals_.maxHealth(),
+        playerVitals_.air(),
+        playerVitals_.maxAir(),
+        hazardLabel(playerHazards_),
         mouseCaptured_ ? "captured" : "released",
         isGrounded_ ? "yes" : "no",
         timeOfDayLabel(dayNightSample.period),
@@ -560,19 +670,59 @@ void Application::update(const float deltaTimeSeconds)
         weatherLabel(weatherSample.type),
         savePath_.generic_string(),
         safeFrameTimeMs,
-        smoothedFps);
+        smoothedFps,
+        respawnNotice_.empty() ? "" : fmt::format("  {}", respawnNotice_));
     for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
     {
         frameDebugData.hotbarSlots[slotIndex].blockType = hotbarSlots_[slotIndex].blockType;
         frameDebugData.hotbarSlots[slotIndex].count = hotbarSlots_[slotIndex].count;
     }
     frameDebugData.hotbarSelectedIndex = selectedHotbarIndex_;
-    frameDebugData.bagLine = formatBagLine(bagSlots_);
+    for (std::size_t i = 0; i < frameDebugData.bagSlots.size(); ++i)
+    {
+        frameDebugData.bagSlots[i].blockType = bagSlots_[i].blockType;
+        frameDebugData.bagSlots[i].count = bagSlots_[i].count;
+    }
 
     if (raycastHit.has_value())
     {
         frameDebugData.hasTarget = true;
         frameDebugData.targetBlock = raycastHit->solidBlock;
+    }
+
+    if (kTitleScreenEnabled && gameScreen_ == GameScreen::MainMenu)
+    {
+        frameDebugData.mainMenuActive = true;
+        frameDebugData.mainMenuTimeSeconds = mainMenuTimeSeconds_;
+        frameDebugData.mainMenuNotice = mainMenuNotice_;
+        const bgfx::Stats* const stats = bgfx::getStats();
+        const std::uint16_t textWidth =
+            stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
+        const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
+        frameDebugData.mainMenuHoveredButton = render::Renderer::hitTestMainMenu(
+            inputState_.mouseWindowX,
+            inputState_.mouseWindowY,
+            window_.width(),
+            window_.height(),
+            textWidth,
+            textHeight);
+    }
+
+    if (gameScreen_ == GameScreen::Paused)
+    {
+        frameDebugData.pauseMenuActive = true;
+        frameDebugData.pauseMenuNotice = pauseMenuNotice_;
+        const bgfx::Stats* const pauseStats = bgfx::getStats();
+        const std::uint16_t pauseTextWidth =
+            pauseStats != nullptr && pauseStats->textWidth > 0 ? pauseStats->textWidth : 100;
+        const std::uint16_t pauseTextHeight = pauseStats != nullptr ? pauseStats->textHeight : 30;
+        frameDebugData.pauseMenuHoveredButton = render::Renderer::hitTestPauseMenu(
+            inputState_.mouseWindowX,
+            inputState_.mouseWindowY,
+            window_.width(),
+            window_.height(),
+            pauseTextWidth,
+            pauseTextHeight);
     }
 
     renderer_.renderFrame(
@@ -600,18 +750,6 @@ void Application::update(const float deltaTimeSeconds)
 
 void Application::processInput(const float deltaTimeSeconds)
 {
-    if (inputState_.releaseMouseRequested)
-    {
-        mouseCaptured_ = false;
-        window_.setRelativeMouseMode(false);
-    }
-
-    if (inputState_.captureMouseRequested)
-    {
-        mouseCaptured_ = true;
-        window_.setRelativeMouseMode(true);
-    }
-
     if (!inputState_.windowFocused)
     {
         if (mouseCaptured_)
@@ -619,6 +757,128 @@ void Application::processInput(const float deltaTimeSeconds)
             mouseCaptured_ = false;
             window_.setRelativeMouseMode(false);
         }
+        return;
+    }
+
+    if (inputState_.escapePressed)
+    {
+        if (gameScreen_ == GameScreen::Playing)
+        {
+            gameScreen_ = GameScreen::Paused;
+            mouseCaptured_ = false;
+            window_.setRelativeMouseMode(false);
+            pauseMenuNotice_.clear();
+        }
+        else if (gameScreen_ == GameScreen::Paused)
+        {
+            gameScreen_ = GameScreen::Playing;
+            mouseCaptured_ = true;
+            window_.setRelativeMouseMode(true);
+            pauseMenuNotice_.clear();
+            inputState_.clearMouseMotion();
+        }
+    }
+
+    if (inputState_.releaseMouseRequested)
+    {
+        mouseCaptured_ = false;
+        window_.setRelativeMouseMode(false);
+    }
+
+    if (inputState_.captureMouseRequested && gameScreen_ == GameScreen::Playing)
+    {
+        mouseCaptured_ = true;
+        window_.setRelativeMouseMode(true);
+        inputState_.clearMouseMotion();
+    }
+
+    if (kTitleScreenEnabled && gameScreen_ == GameScreen::MainMenu)
+    {
+        const bgfx::Stats* const stats = bgfx::getStats();
+        const std::uint16_t textWidth =
+            stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
+        const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
+
+        // First frame often receives a stray mouse-down (e.g. focus / window activation) that maps
+        // onto "Singleplayer" and skips the title screen.
+        if (inputState_.leftMousePressed && runFrameIndex_ > 0)
+        {
+            const int hit = render::Renderer::hitTestMainMenu(
+                inputState_.mouseWindowX,
+                inputState_.mouseWindowY,
+                window_.width(),
+                window_.height(),
+                textWidth,
+                textHeight);
+            if (hit == 0)
+            {
+                gameScreen_ = GameScreen::Playing;
+                mouseCaptured_ = true;
+                window_.setRelativeMouseMode(true);
+                mainMenuNotice_.clear();
+                inputState_.clearMouseMotion();
+            }
+        }
+        return;
+    }
+
+    if (gameScreen_ == GameScreen::Paused)
+    {
+        const bgfx::Stats* const stats = bgfx::getStats();
+        const std::uint16_t textWidth =
+            stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
+        const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
+
+        if (inputState_.leftMousePressed)
+        {
+            const int hit = render::Renderer::hitTestPauseMenu(
+                inputState_.mouseWindowX,
+                inputState_.mouseWindowY,
+                window_.width(),
+                window_.height(),
+                textWidth,
+                textHeight);
+            switch (hit)
+            {
+            case 0:
+                gameScreen_ = GameScreen::Playing;
+                mouseCaptured_ = true;
+                window_.setRelativeMouseMode(true);
+                pauseMenuNotice_.clear();
+                inputState_.clearMouseMotion();
+                break;
+            case 1:
+                pauseMenuNotice_ = "Options are not available yet.";
+                break;
+            case 2:
+                if (kTitleScreenEnabled)
+                {
+                    gameScreen_ = GameScreen::MainMenu;
+                    mouseCaptured_ = false;
+                    window_.setRelativeMouseMode(false);
+                    mainMenuNotice_ = "Singleplayer starts a fresh world.";
+                }
+                else
+                {
+                    gameScreen_ = GameScreen::Playing;
+                    mouseCaptured_ = true;
+                    window_.setRelativeMouseMode(true);
+                    inputState_.clearMouseMotion();
+                }
+                pauseMenuNotice_.clear();
+                break;
+            case 3:
+                inputState_.quitRequested = true;
+                break;
+            default:
+                break;
+            }
+        }
+        return;
+    }
+
+    if (gameScreen_ != GameScreen::Playing)
+    {
         return;
     }
 
@@ -672,6 +932,7 @@ void Application::processInput(const float deltaTimeSeconds)
                                           : kPlayerMovementSettings.standingColliderHeight;
     const float eyeHeight = sneaking ? kPlayerMovementSettings.sneakingEyeHeight
                                      : kPlayerMovementSettings.standingEyeHeight;
+    respawnNotice_.clear();
 
     float currentMoveSpeed = kInputTuning.moveSpeed;
     if (sneaking)
@@ -734,6 +995,7 @@ void Application::processInput(const float deltaTimeSeconds)
             world_, playerFeetPosition_, 2, horizontalDisplacement.z, colliderHeight));
     }
 
+    const bool wasGrounded = isGrounded_;
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, colliderHeight);
 
     const bool jumpHeld = inputState_.isKeyDown(SDL_SCANCODE_SPACE);
@@ -747,6 +1009,7 @@ void Application::processInput(const float deltaTimeSeconds)
     verticalVelocity_ -= kPlayerMovementSettings.gravity * deltaTimeSeconds;
     verticalVelocity_ = std::max(verticalVelocity_, -kPlayerMovementSettings.terminalFallVelocity);
 
+    const glm::vec3 verticalStartPosition = playerFeetPosition_;
     const float verticalDisplacement = verticalVelocity_ * deltaTimeSeconds;
     const bool verticalBlocked =
         movePlayerAxisWithCollision(world_, playerFeetPosition_, 1, verticalDisplacement, colliderHeight);
@@ -767,7 +1030,31 @@ void Application::processInput(const float deltaTimeSeconds)
         }
     }
 
+    playerHazards_ = samplePlayerHazards(world_, playerFeetPosition_, colliderHeight, eyeHeight);
+    if (verticalDisplacement < 0.0f && !playerHazards_.bodyInWater)
+    {
+        accumulatedFallDistance_ += std::max(0.0f, verticalStartPosition.y - playerFeetPosition_.y);
+    }
+
+    const bool landedThisFrame = !wasGrounded && isGrounded_;
+    if (landedThisFrame)
+    {
+        static_cast<void>(playerVitals_.applyLandingImpact(accumulatedFallDistance_, playerHazards_.bodyInWater));
+        accumulatedFallDistance_ = 0.0f;
+    }
+    else if (playerHazards_.bodyInWater)
+    {
+        accumulatedFallDistance_ = 0.0f;
+    }
+
+    playerVitals_.tickEnvironment(deltaTimeSeconds, playerHazards_);
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, eyeHeight, 0.0f));
+
+    if (playerVitals_.isDead())
+    {
+        respawnNotice_ = fmt::format("Respawned after {} damage.", game::damageCauseName(playerVitals_.lastDamageCause()));
+        respawnPlayer();
+    }
 
     const auto raycastHit =
         world_.raycast(camera_.position(), camera_.forward(), kInputTuning.reachDistance);
@@ -806,6 +1093,23 @@ void Application::processInput(const float deltaTimeSeconds)
             consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
         }
     }
+}
+
+void Application::respawnPlayer()
+{
+    playerFeetPosition_ = spawnFeetPosition_;
+    verticalVelocity_ = 0.0f;
+    accumulatedFallDistance_ = 0.0f;
+    jumpWasHeld_ = false;
+    isGrounded_ =
+        isGroundedAtFeetPosition(world_, playerFeetPosition_, kPlayerMovementSettings.standingColliderHeight);
+    playerVitals_.reset();
+    playerHazards_ = samplePlayerHazards(
+        world_,
+        playerFeetPosition_,
+        kPlayerMovementSettings.standingColliderHeight,
+        kPlayerMovementSettings.standingEyeHeight);
+    camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
 }
 
 void Application::syncWorldData()

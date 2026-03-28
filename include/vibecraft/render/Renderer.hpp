@@ -63,17 +63,33 @@ struct FrameDebugData
         std::uint32_t count = 0;
     };
 
+    static constexpr std::size_t kBagHudSlotCount = 27;
+
     std::uint32_t chunkCount = 0;
     std::uint32_t dirtyChunkCount = 0;
     std::uint32_t totalFaces = 0;
     std::uint32_t residentChunkCount = 0;
     glm::vec3 cameraPosition{0.0f};
+    float health = 20.0f;
+    float maxHealth = 20.0f;
     bool hasTarget = false;
     glm::ivec3 targetBlock{0, 0, 0};
     std::string statusLine;
-    std::string bagLine;
     std::array<HotbarSlotHud, 9> hotbarSlots{};
+    std::array<HotbarSlotHud, kBagHudSlotCount> bagSlots{};
     std::size_t hotbarSelectedIndex = 0;
+
+    /// When true, the 3D view and in-game HUD are hidden and the title menu is drawn instead.
+    bool mainMenuActive = false;
+    /// Index of the menu control under the cursor, or -1 (ids match hitTestMainMenu).
+    int mainMenuHoveredButton = -1;
+    float mainMenuTimeSeconds = 0.0f;
+    std::string mainMenuNotice;
+
+    /// In-game pause overlay (world still rendered underneath).
+    bool pauseMenuActive = false;
+    int pauseMenuHoveredButton = -1;
+    std::string pauseMenuNotice;
 };
 
 class Renderer
@@ -87,6 +103,24 @@ class Renderer
         const std::vector<std::uint64_t>& removedMeshIds);
     void renderFrame(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
 
+    /// Returns a button id for the main menu hit test, or -1. Layout must match drawMainMenuOverlay().
+    [[nodiscard]] static int hitTestMainMenu(
+        float mouseX,
+        float mouseY,
+        std::uint32_t windowWidth,
+        std::uint32_t windowHeight,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight);
+
+    /// Pause menu buttons: 0 Resume, 1 Options, 2 Quit to title, 3 Quit game. Layout matches drawPauseMenuOverlay().
+    [[nodiscard]] static int hitTestPauseMenu(
+        float mouseX,
+        float mouseY,
+        std::uint32_t windowWidth,
+        std::uint32_t windowHeight,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight);
+
   private:
     struct SceneGpuMesh
     {
@@ -99,6 +133,7 @@ class Renderer
 
     void destroySceneMesh(std::uint64_t sceneMeshId);
     void destroySceneMeshes();
+    void drawMainMenuLogo();
 
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
@@ -111,6 +146,11 @@ class Renderer
     std::uint16_t chunkMoonDirectionUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkMoonLightColorUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkAmbientLightUniformHandle_ = UINT16_MAX;
+    std::uint16_t logoProgramHandle_ = UINT16_MAX;
+    std::uint16_t logoTextureHandle_ = UINT16_MAX;
+    std::uint16_t logoSamplerHandle_ = UINT16_MAX;
+    std::uint16_t logoWidthPx_ = 0;
+    std::uint16_t logoHeightPx_ = 0;
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };
 }  // namespace vibecraft::render

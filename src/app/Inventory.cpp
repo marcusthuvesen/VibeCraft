@@ -1,7 +1,6 @@
 #include "vibecraft/app/Inventory.hpp"
 
 #include <algorithm>
-#include <fmt/format.h>
 
 namespace vibecraft::app
 {
@@ -96,8 +95,22 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Deepslate";
     case vibecraft::world::BlockType::CoalOre:
         return "Coal";
+    case vibecraft::world::BlockType::Sand:
+        return "Sand";
+    case vibecraft::world::BlockType::Bedrock:
+        return "Bedrock";
     case vibecraft::world::BlockType::Water:
         return "Water";
+    case vibecraft::world::BlockType::IronOre:
+        return "Iron";
+    case vibecraft::world::BlockType::GoldOre:
+        return "Gold";
+    case vibecraft::world::BlockType::DiamondOre:
+        return "Diamond";
+    case vibecraft::world::BlockType::EmeraldOre:
+        return "Emerald";
+    case vibecraft::world::BlockType::Lava:
+        return "Lava";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";
@@ -110,7 +123,8 @@ bool addBlockToInventory(
     const vibecraft::world::BlockType blockType,
     std::size_t& selectedHotbarIndex)
 {
-    if (blockType == vibecraft::world::BlockType::Air || blockType == vibecraft::world::BlockType::Water)
+    if (blockType == vibecraft::world::BlockType::Air || blockType == vibecraft::world::BlockType::Water
+        || blockType == vibecraft::world::BlockType::Lava)
     {
         return false;
     }
@@ -140,52 +154,4 @@ void consumeSelectedHotbarSlot(HotbarSlots& hotbarSlots, BagSlots& bagSlots, con
     }
 }
 
-std::string formatBagLine(const BagSlots& bagSlots)
-{
-    std::uint32_t usedSlots = 0;
-    std::uint32_t totalItems = 0;
-
-    for (const InventorySlot& slot : bagSlots)
-    {
-        if (slot.count > 0)
-        {
-            ++usedSlots;
-            totalItems += slot.count;
-        }
-    }
-
-    std::string sampleEntries;
-    std::size_t shown = 0;
-    constexpr std::size_t kSampleLimit = 3;
-    for (const InventorySlot& slot : bagSlots)
-    {
-        if (slot.count == 0)
-        {
-            continue;
-        }
-
-        if (!sampleEntries.empty())
-        {
-            sampleEntries += ", ";
-        }
-        sampleEntries += fmt::format("{}x{}", blockTypeLabel(slot.blockType), slot.count);
-        ++shown;
-        if (shown >= kSampleLimit)
-        {
-            break;
-        }
-    }
-
-    if (sampleEntries.empty())
-    {
-        sampleEntries = "empty";
-    }
-
-    return fmt::format(
-        "Bag {}/{} slots, items:{} ({})",
-        usedSlots,
-        bagSlots.size(),
-        totalItems,
-        sampleEntries);
-}
 }  // namespace vibecraft::app

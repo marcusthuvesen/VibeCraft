@@ -3,16 +3,19 @@
 #include <SDL3/SDL_filesystem.h>
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
+#include <bimg/decode.h>
+#include <bx/allocator.h>
 #include <bx/bounds.h>
 #include <bx/math.h>
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <cmath>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <string>
@@ -20,6 +23,8 @@
 #include <vector>
 
 #include "debugdraw.h"
+
+#include "vibecraft/ChunkAtlasLayout.hpp"
 
 namespace vibecraft::render
 {
@@ -29,8 +34,49 @@ constexpr bgfx::ViewId kMainView = 0;
 constexpr std::uint32_t kDefaultResetFlags = BGFX_RESET_VSYNC;
 constexpr std::uint64_t kChunkRenderState =
     BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
-constexpr std::uint16_t kChunkAtlasWidth = 64;
-constexpr std::uint16_t kChunkAtlasHeight = 32;
+constexpr std::uint16_t kChunkAtlasWidth = vibecraft::kChunkAtlasWidthPx;
+constexpr std::uint16_t kChunkAtlasHeight = vibecraft::kChunkAtlasHeightPx;
+
+/// Main menu debug-text layout (rows/cols). Must stay in sync with `hitTestMainMenu`.
+namespace MainMenuLayout
+{
+constexpr int kStackOuterWidth = 38;
+constexpr int kBottomBlockHalfWidth = 15;
+
+struct Geometry
+{
+    int centerCol = 0;
+    int subtitleRow = 0;
+    int ruleRow = 0;
+    int stack0Row = 0;
+    int stack1Row = 0;
+    int stack2Row = 0;
+    int bottomPairRow = 0;
+    int iconRow = 0;
+    int splashRow = 0;
+};
+
+[[nodiscard]] Geometry computeGeometry(const int textWidth, const int textHeight)
+{
+    Geometry geometry;
+    geometry.centerCol = std::max(0, (textWidth - kStackOuterWidth) / 2);
+
+    const int minTopRow = 14;
+    const int maxTopRow = std::max(minTopRow, textHeight - 14);
+    geometry.stack0Row = std::clamp(textHeight / 2 + 1, minTopRow, maxTopRow);
+    geometry.stack1Row = geometry.stack0Row + 4;
+    geometry.stack2Row = geometry.stack0Row + 8;
+    geometry.bottomPairRow = geometry.stack0Row + 11;
+    geometry.iconRow = geometry.bottomPairRow + 1;
+    geometry.ruleRow = std::max(8, geometry.stack0Row - 4);
+    geometry.subtitleRow = std::max(6, geometry.ruleRow - 2);
+    geometry.splashRow = std::clamp(
+        std::max(textHeight - 5, geometry.iconRow + 2),
+        0,
+        std::max(0, textHeight - 3));
+    return geometry;
+}
+}  // namespace MainMenuLayout
 
 struct ChunkVertex
 {
@@ -327,6 +373,16 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
         return 'B';
     case BlockType::Water:
         return 'W';
+    case BlockType::IronOre:
+        return 'I';
+    case BlockType::GoldOre:
+        return 'g';
+    case BlockType::DiamondOre:
+        return '*';
+    case BlockType::EmeraldOre:
+        return 'E';
+    case BlockType::Lava:
+        return 'L';
     case BlockType::Air:
     default:
         return '?';
@@ -345,6 +401,19 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
     return fmt::format("[{}{:02}]", glyph, displayCount);
 }
 
+/// Wider padded cells so the bag reads larger than the hotbar (same glyph + count).
+[[nodiscard]] std::string formatBagSlotCell(const FrameDebugData::HotbarSlotHud& slot)
+{
+    if (slot.count == 0)
+    {
+        return std::string(" [---] ");
+    }
+
+    const char glyph = hotbarGlyphForBlock(slot.blockType);
+    const std::uint32_t displayCount = std::min(slot.count, 99u);
+    return fmt::format(" [{}{:02}] ", glyph, displayCount);
+}
+
 void dbgTextPrintfCenteredRow(
     const std::uint16_t row,
     const std::uint16_t attr,
@@ -358,17 +427,70 @@ void dbgTextPrintfCenteredRow(
     bgfx::dbgTextPrintf(static_cast<std::uint16_t>(clampedCol), row, attr, "%s", text.c_str());
 }
 
-[[nodiscard]] int computeCenteredHotbarStartColumn()
+[[nodiscard]] int computeCenteredColumnStart(const int totalChars)
 {
-    constexpr int kCellChars = 5;
-    constexpr int kGap = 1;
-    constexpr int kSlotCount = 9;
-    const int totalChars = kSlotCount * kCellChars + (kSlotCount - 1) * kGap;
-
     const bgfx::Stats* stats = bgfx::getStats();
     const std::uint16_t textWidth = stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
     const int startCol = (static_cast<int>(textWidth) - totalChars) / 2;
     return std::max(0, startCol);
+}
+
+[[nodiscard]] int computeHotbarGridWidthChars()
+{
+    constexpr int kCellChars = 5;
+    constexpr int kGap = 1;
+    constexpr int kSlotCount = 9;
+    return kSlotCount * kCellChars + (kSlotCount - 1) * kGap;
+}
+
+[[nodiscard]] int computeBagGridWidthChars()
+{
+    constexpr int kCellChars = 7;
+    constexpr int kGap = 1;
+    constexpr int kSlotCount = 9;
+    return kSlotCount * kCellChars + (kSlotCount - 1) * kGap;
+}
+
+[[nodiscard]] int computeCenteredHotbarStartColumn()
+{
+    return computeCenteredColumnStart(computeHotbarGridWidthChars());
+}
+
+[[nodiscard]] int computeHealthHudWidthChars(const int heartCount)
+{
+    constexpr int kCellChars = 2;
+    constexpr int kGap = 1;
+    return std::max(0, heartCount * kCellChars + std::max(0, heartCount - 1) * kGap);
+}
+
+void drawHealthHud(const std::uint16_t row, const FrameDebugData& frameDebugData)
+{
+    const float clampedMaxHealth = std::max(0.0f, frameDebugData.maxHealth);
+    const float clampedHealth = std::clamp(frameDebugData.health, 0.0f, clampedMaxHealth);
+    const int heartCount = std::max(1, static_cast<int>(std::ceil(clampedMaxHealth * 0.5f)));
+    constexpr int kCellChars = 2;
+    constexpr int kGap = 1;
+    int col = computeCenteredColumnStart(computeHealthHudWidthChars(heartCount));
+
+    for (int heartIndex = 0; heartIndex < heartCount; ++heartIndex)
+    {
+        const float heartHealth = clampedHealth - static_cast<float>(heartIndex * 2);
+        const char* glyph = "..";
+        std::uint16_t attr = 0x08;
+        if (heartHealth >= 2.0f)
+        {
+            glyph = "<3";
+            attr = 0x0c;
+        }
+        else if (heartHealth >= 1.0f)
+        {
+            glyph = "</";
+            attr = 0x0e;
+        }
+
+        bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), row, attr, "%s", glyph);
+        col += kCellChars + kGap;
+    }
 }
 
 void drawHotbarHud(const std::uint16_t row, const FrameDebugData& frameDebugData)
@@ -397,6 +519,237 @@ void drawHotbarKeyHintsRow(const std::uint16_t row)
         bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col + 2), row, 0x06, "%d", keyIndex);
         col += kCellChars + kGap;
     }
+}
+
+void drawBagRow(
+    const std::uint16_t row,
+    const std::size_t slotOffset,
+    const FrameDebugData& frameDebugData)
+{
+    constexpr int kCellChars = 7;
+    constexpr int kGap = 1;
+    int col = computeCenteredColumnStart(computeBagGridWidthChars());
+    for (int i = 0; i < 9; ++i)
+    {
+        const FrameDebugData::HotbarSlotHud& slot = frameDebugData.bagSlots[slotOffset + static_cast<std::size_t>(i)];
+        const bool empty = slot.count == 0;
+        const std::uint16_t attr = empty ? 0x08 : 0x0b;
+        const std::string cell = formatBagSlotCell(slot);
+        bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), row, attr, "%s", cell.c_str());
+        col += kCellChars + kGap;
+    }
+}
+
+void drawBagHud(
+    const std::uint16_t titleRow,
+    const std::uint16_t separatorRow,
+    const std::uint16_t row0,
+    const std::uint16_t row1,
+    const std::uint16_t row2,
+    const FrameDebugData& frameDebugData)
+{
+    std::uint32_t usedSlots = 0;
+    std::uint32_t totalItems = 0;
+    for (const FrameDebugData::HotbarSlotHud& slot : frameDebugData.bagSlots)
+    {
+        if (slot.count > 0)
+        {
+            ++usedSlots;
+            totalItems += slot.count;
+        }
+    }
+
+    const std::string title = fmt::format(
+        "  INVENTORY   {}/{} slots   {} item{}  ",
+        usedSlots,
+        FrameDebugData::kBagHudSlotCount,
+        totalItems,
+        totalItems == 1 ? "" : "s");
+    dbgTextPrintfCenteredRow(titleRow, 0x0e, title);
+
+    const int gridWidth = computeBagGridWidthChars();
+    const std::string sep =
+        std::string("+") + std::string(static_cast<std::size_t>(std::max(0, gridWidth - 2)), '-') + std::string("+");
+    dbgTextPrintfCenteredRow(separatorRow, 0x08, sep);
+
+    drawBagRow(row0, 0, frameDebugData);
+    drawBagRow(row1, 9, frameDebugData);
+    drawBagRow(row2, 18, frameDebugData);
+}
+
+[[nodiscard]] std::string padLabelToInnerWidth(const std::string& text, const int innerWidth)
+{
+    if (innerWidth <= 0)
+    {
+        return {};
+    }
+    if (static_cast<int>(text.size()) >= innerWidth)
+    {
+        return text.substr(0, static_cast<std::size_t>(innerWidth));
+    }
+    const int totalPad = innerWidth - static_cast<int>(text.size());
+    const int leftPad = totalPad / 2;
+    const int rightPad = totalPad - leftPad;
+    return std::string(static_cast<std::size_t>(leftPad), ' ') + text
+        + std::string(static_cast<std::size_t>(rightPad), ' ');
+}
+
+void drawFramedButton3(
+    const int row,
+    const int col,
+    const int outerWidth,
+    const std::string& label,
+    const bool hovered)
+{
+    const std::uint16_t borderAttr = hovered ? 0x1f : 0x08;
+    const std::uint16_t midAttr = hovered ? 0x1f : 0x0b;
+    const int inner = outerWidth - 2;
+    const std::string border = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
+    const std::string mid = "|" + padLabelToInnerWidth(label, inner) + "|";
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), borderAttr, "%s", border.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 1), midAttr, "%s", mid.c_str());
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 2), borderAttr, "%s", border.c_str());
+}
+
+void drawBottomButtonPair(
+    const int row,
+    const int centerCol,
+    const std::string& leftLabel,
+    const std::string& rightLabel,
+    const bool hoverLeft,
+    const bool hoverRight)
+{
+    constexpr int kInner = 13;
+    constexpr int kOuter = 15;
+    const std::string border = "+" + std::string(static_cast<std::size_t>(kInner), '-') + "+";
+    const std::string midL = "|" + padLabelToInnerWidth(leftLabel, kInner) + "|";
+    const std::string midR = "|" + padLabelToInnerWidth(rightLabel, kInner) + "|";
+
+    const std::uint16_t borderAttrL = hoverLeft ? 0x1f : 0x08;
+    const std::uint16_t midAttrL = hoverLeft ? 0x1f : 0x0b;
+    const std::uint16_t borderAttrR = hoverRight ? 0x1f : 0x08;
+    const std::uint16_t midAttrR = hoverRight ? 0x1f : 0x0b;
+
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(centerCol), static_cast<std::uint16_t>(row), borderAttrL, "%s", border.c_str());
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(centerCol + kOuter + 1),
+        static_cast<std::uint16_t>(row),
+        borderAttrR,
+        "%s",
+        border.c_str());
+
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(centerCol), static_cast<std::uint16_t>(row + 1), midAttrL, "%s", midL.c_str());
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(centerCol + kOuter + 1),
+        static_cast<std::uint16_t>(row + 1),
+        midAttrR,
+        "%s",
+        midR.c_str());
+
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(centerCol), static_cast<std::uint16_t>(row + 2), borderAttrL, "%s", border.c_str());
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(centerCol + kOuter + 1),
+        static_cast<std::uint16_t>(row + 2),
+        borderAttrR,
+        "%s",
+        border.c_str());
+}
+
+void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16_t textWidth, const std::uint16_t textHeight)
+{
+    using namespace MainMenuLayout;
+    const int tw = static_cast<int>(textWidth);
+    const int th = static_cast<int>(textHeight);
+    const Geometry geometry = computeGeometry(tw, th);
+
+    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(geometry.subtitleRow), 0x0e, "DESKTOP EDITION");
+
+    const int ruleWidth = std::clamp(tw - 8, 24, 48);
+    const std::string ruleLine(static_cast<std::size_t>(ruleWidth), '-');
+    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(geometry.ruleRow), 0x08, ruleLine);
+
+    const int hovered = frameDebugData.mainMenuHoveredButton;
+    drawFramedButton3(geometry.stack0Row, geometry.centerCol, kStackOuterWidth, "Singleplayer", hovered == 0);
+    drawFramedButton3(geometry.stack1Row, geometry.centerCol, kStackOuterWidth, "Multiplayer", hovered == 1);
+    drawFramedButton3(geometry.stack2Row, geometry.centerCol, kStackOuterWidth, "VibeCraft Realms  * !", hovered == 2);
+
+    drawBottomButtonPair(
+        geometry.bottomPairRow,
+        geometry.centerCol,
+        "Options...",
+        "Quit game",
+        hovered == 3,
+        hovered == 4);
+
+    const std::uint16_t iconAttrG = hovered == 5 ? 0x1f : 0x0b;
+    const std::uint16_t iconAttrA = hovered == 6 ? 0x1f : 0x0b;
+    if (geometry.centerCol >= 7)
+    {
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(geometry.centerCol - 6),
+            static_cast<std::uint16_t>(geometry.iconRow),
+            iconAttrG,
+            "[G]");
+    }
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(geometry.centerCol + 36),
+        static_cast<std::uint16_t>(geometry.iconRow),
+        iconAttrA,
+        "[A]");
+
+    const bool splashBright =
+        static_cast<int>(frameDebugData.mainMenuTimeSeconds * 3.0f) % 2 == 0;
+    const std::uint16_t splashAttr = splashBright ? 0x0e : 0x06;
+    const std::string splash = "Also try building!";
+    const int splashCol = std::max(0, tw - static_cast<int>(splash.size()) - 2);
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(splashCol),
+        static_cast<std::uint16_t>(geometry.splashRow),
+        splashAttr,
+        "%s",
+        splash.c_str());
+
+    const std::uint16_t footerRow =
+        textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
+    if (!frameDebugData.mainMenuNotice.empty() && footerRow >= 3)
+    {
+        const std::uint16_t noticeRow =
+            footerRow >= 26 ? static_cast<std::uint16_t>(footerRow - 2) : static_cast<std::uint16_t>(0);
+        dbgTextPrintfCenteredRow(noticeRow, 0x0b, frameDebugData.mainMenuNotice);
+    }
+
+    dbgTextPrintfCenteredRow(footerRow, 0x06, "Tab: capture mouse   Esc: pause menu");
+}
+
+void drawPauseMenuOverlay(
+    const FrameDebugData& frameDebugData,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    constexpr int kWide = 32;
+    const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+    dbgTextPrintfCenteredRow(5, 0x0f, "GAME MENU");
+
+    const int hovered = frameDebugData.pauseMenuHoveredButton;
+    drawFramedButton3(9, centerCol, kWide, "Back to game", hovered == 0);
+    drawFramedButton3(13, centerCol, kWide, "Options...", hovered == 1);
+    drawFramedButton3(17, centerCol, kWide, "Quit to title", hovered == 2);
+    drawFramedButton3(21, centerCol, kWide, "Quit game", hovered == 3);
+
+    const std::uint16_t footerRow =
+        textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
+    if (!frameDebugData.pauseMenuNotice.empty() && footerRow >= 3)
+    {
+        const std::uint16_t noticeRow =
+            footerRow >= 26 ? static_cast<std::uint16_t>(footerRow - 2) : static_cast<std::uint16_t>(0);
+        dbgTextPrintfCenteredRow(noticeRow, 0x0b, frameDebugData.pauseMenuNotice);
+    }
+    dbgTextPrintfCenteredRow(footerRow, 0x06, "Esc: back to game   Click: choose");
 }
 
 [[nodiscard]] const char* shaderProfileDirectory(const bgfx::RendererType::Enum rendererType)
@@ -582,6 +935,161 @@ void drawHotbarKeyHintsRow(const std::uint16_t row)
         BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
         atlasMemory);
 }
+
+[[nodiscard]] bgfx::TextureHandle createLogoTextureFromPng(
+    bx::AllocatorI& allocator,
+    std::uint16_t& outWidth,
+    std::uint16_t& outHeight)
+{
+    outWidth = 0;
+    outHeight = 0;
+    const std::filesystem::path path = runtimeAssetPath("textures/ui/vibecraft_logo.png");
+    if (!std::filesystem::exists(path))
+    {
+        return BGFX_INVALID_HANDLE;
+    }
+
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+    if (!stream)
+    {
+        return BGFX_INVALID_HANDLE;
+    }
+    const std::streamsize fileSize = stream.tellg();
+    if (fileSize <= 0)
+    {
+        return BGFX_INVALID_HANDLE;
+    }
+    stream.seekg(0, std::ios::beg);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(fileSize));
+    stream.read(reinterpret_cast<char*>(bytes.data()), fileSize);
+    if (!stream)
+    {
+        return BGFX_INVALID_HANDLE;
+    }
+
+    bimg::ImageContainer* image = bimg::imageParse(
+        &allocator,
+        bytes.data(),
+        static_cast<std::uint32_t>(bytes.size()),
+        bimg::TextureFormat::RGBA8);
+    if (image == nullptr)
+    {
+        return BGFX_INVALID_HANDLE;
+    }
+
+    outWidth = static_cast<std::uint16_t>(image->m_width);
+    outHeight = static_cast<std::uint16_t>(image->m_height);
+    const bgfx::Memory* const memory = bgfx::copy(image->m_data, image->m_size);
+    bimg::imageFree(image);
+
+    return bgfx::createTexture2D(
+        outWidth,
+        outHeight,
+        false,
+        1,
+        bgfx::TextureFormat::RGBA8,
+        BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP | BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT,
+        memory);
+}
+}
+
+int Renderer::hitTestMainMenu(
+    const float mouseX,
+    const float mouseY,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
+    {
+        return -1;
+    }
+
+    const int col = static_cast<int>(mouseX * static_cast<float>(textWidth) / static_cast<float>(windowWidth));
+    const int row = static_cast<int>(mouseY * static_cast<float>(textHeight) / static_cast<float>(windowHeight));
+    const int tw = static_cast<int>(textWidth);
+    const int clampedCol = std::clamp(col, 0, tw - 1);
+    const int clampedRow = std::clamp(row, 0, static_cast<int>(textHeight) - 1);
+
+    using namespace MainMenuLayout;
+    const Geometry geometry = computeGeometry(tw, static_cast<int>(textHeight));
+
+    for (int buttonIndex = 0; buttonIndex < 3; ++buttonIndex)
+    {
+        const int row0 = geometry.stack0Row + buttonIndex * 4;
+        if (clampedRow >= row0 && clampedRow <= row0 + 2 && clampedCol >= geometry.centerCol
+            && clampedCol <= geometry.centerCol + kStackOuterWidth - 1)
+        {
+            return buttonIndex;
+        }
+    }
+
+    if (clampedRow >= geometry.bottomPairRow && clampedRow <= geometry.bottomPairRow + 2)
+    {
+        if (clampedCol >= geometry.centerCol && clampedCol <= geometry.centerCol + kBottomBlockHalfWidth - 1)
+        {
+            return 3;
+        }
+        if (clampedCol >= geometry.centerCol + kBottomBlockHalfWidth + 1
+            && clampedCol <= geometry.centerCol + kBottomBlockHalfWidth + 1 + kBottomBlockHalfWidth - 1)
+        {
+            return 4;
+        }
+    }
+
+    if (clampedRow == geometry.iconRow && geometry.centerCol >= 7)
+    {
+        if (clampedCol >= geometry.centerCol - 6 && clampedCol <= geometry.centerCol - 4)
+        {
+            return 5;
+        }
+    }
+
+    if (clampedRow == geometry.iconRow)
+    {
+        if (clampedCol >= geometry.centerCol + 36 && clampedCol <= geometry.centerCol + 38)
+        {
+            return 6;
+        }
+    }
+
+    return -1;
+}
+
+int Renderer::hitTestPauseMenu(
+    const float mouseX,
+    const float mouseY,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
+    {
+        return -1;
+    }
+
+    const int col = static_cast<int>(mouseX * static_cast<float>(textWidth) / static_cast<float>(windowWidth));
+    const int row = static_cast<int>(mouseY * static_cast<float>(textHeight) / static_cast<float>(windowHeight));
+    const int tw = static_cast<int>(textWidth);
+    const int th = static_cast<int>(textHeight);
+    const int clampedCol = std::clamp(col, 0, tw - 1);
+    const int clampedRow = std::clamp(row, 0, th - 1);
+
+    constexpr int kWide = 32;
+    const int centerCol = std::max(0, (tw - kWide) / 2);
+
+    for (int buttonIndex = 0; buttonIndex < 4; ++buttonIndex)
+    {
+        const int row0 = 9 + buttonIndex * 4;
+        if (clampedRow >= row0 && clampedRow <= row0 + 2 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+        {
+            return buttonIndex;
+        }
+    }
+
+    return -1;
 }
 
 bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t width, const std::uint32_t height)
@@ -690,6 +1198,40 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     chunkMoonDirectionUniformHandle_ = chunkMoonDirection.idx;
     chunkMoonLightColorUniformHandle_ = chunkMoonLightColor.idx;
     chunkAmbientLightUniformHandle_ = chunkAmbientLight.idx;
+
+    bx::DefaultAllocator logoAllocator;
+    const bgfx::TextureHandle logoTexture =
+        createLogoTextureFromPng(logoAllocator, logoWidthPx_, logoHeightPx_);
+    if (bgfx::isValid(logoTexture))
+    {
+        logoTextureHandle_ = logoTexture.idx;
+        const bgfx::UniformHandle logoSampler = bgfx::createUniform("s_logo", bgfx::UniformType::Sampler);
+        if (!bgfx::isValid(logoSampler))
+        {
+            bgfx::destroy(logoTexture);
+            logoTextureHandle_ = UINT16_MAX;
+            logoWidthPx_ = 0;
+            logoHeightPx_ = 0;
+        }
+        else
+        {
+            logoSamplerHandle_ = logoSampler.idx;
+            const bgfx::ProgramHandle logoProgram = loadProgram("vs_chunk", "fs_logo");
+            if (!bgfx::isValid(logoProgram))
+            {
+                bgfx::destroy(logoSampler);
+                bgfx::destroy(logoTexture);
+                logoSamplerHandle_ = UINT16_MAX;
+                logoTextureHandle_ = UINT16_MAX;
+                logoWidthPx_ = 0;
+                logoHeightPx_ = 0;
+            }
+            else
+            {
+                logoProgramHandle_ = logoProgram.idx;
+            }
+        }
+    }
     return true;
 }
 
@@ -701,6 +1243,23 @@ void Renderer::shutdown()
     }
 
     destroySceneMeshes();
+    if (logoProgramHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toProgramHandle(logoProgramHandle_));
+        logoProgramHandle_ = UINT16_MAX;
+    }
+    if (logoTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toTextureHandle(logoTextureHandle_));
+        logoTextureHandle_ = UINT16_MAX;
+    }
+    if (logoSamplerHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(toUniformHandle(logoSamplerHandle_));
+        logoSamplerHandle_ = UINT16_MAX;
+    }
+    logoWidthPx_ = 0;
+    logoHeightPx_ = 0;
     if (chunkProgramHandle_ != UINT16_MAX)
     {
         bgfx::destroy(toProgramHandle(chunkProgramHandle_));
@@ -824,6 +1383,8 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     {
         return;
     }
+
+    bgfx::setViewClear(kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x263238ff, 1.0f, 0);
 
     const bx::Vec3 eye(cameraFrameData.position.x, cameraFrameData.position.y, cameraFrameData.position.z);
     const bx::Vec3 at(
@@ -963,11 +1524,14 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     }
     debugDrawEncoder.pop();
     drawWeatherRain(debugDrawEncoder, cameraFrameData);
-    debugDrawEncoder.setColor(0xff455a64);
-    debugDrawEncoder.drawGrid(Axis::Y, bx::Vec3(0.0f, 0.0f, 0.0f), 48, 1.0f);
-    debugDrawEncoder.drawAxis(0.0f, 0.0f, 0.0f, 2.0f);
+    if (!frameDebugData.mainMenuActive)
+    {
+        debugDrawEncoder.setColor(0xff455a64);
+        debugDrawEncoder.drawGrid(Axis::Y, bx::Vec3(0.0f, 0.0f, 0.0f), 48, 1.0f);
+        debugDrawEncoder.drawAxis(0.0f, 0.0f, 0.0f, 2.0f);
+    }
 
-    if (frameDebugData.hasTarget)
+    if (frameDebugData.hasTarget && !frameDebugData.mainMenuActive)
     {
         const bx::Aabb targetAabb{
             bx::Vec3(
@@ -991,11 +1555,36 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     bgfx::dbgTextClear();
     const bgfx::Stats* const bgfxStats = bgfx::getStats();
     const std::uint16_t textHeight = bgfxStats != nullptr ? bgfxStats->textHeight : 30;
+    const std::uint16_t textWidthForHud =
+        bgfxStats != nullptr && bgfxStats->textWidth > 0 ? bgfxStats->textWidth : 100;
+
+    if (frameDebugData.mainMenuActive)
+    {
+        drawMainMenuLogo();
+        drawMainMenuOverlay(frameDebugData, textWidthForHud, textHeight);
+        bgfx::frame();
+        return;
+    }
+
+    if (frameDebugData.pauseMenuActive)
+    {
+        drawPauseMenuOverlay(frameDebugData, textWidthForHud, textHeight);
+        const std::uint16_t pauseHealthRow = textHeight > 2 ? static_cast<std::uint16_t>(textHeight - 3) : 0;
+        drawHealthHud(pauseHealthRow, frameDebugData);
+        bgfx::frame();
+        return;
+    }
+
     const std::uint16_t hotbarRow = textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
     const std::uint16_t hotbarKeyRow = textHeight > 1 ? static_cast<std::uint16_t>(textHeight - 2) : 0;
-    const std::uint16_t bagHudRow = textHeight > 2 ? static_cast<std::uint16_t>(textHeight - 3) : 0;
-    const std::uint16_t controlsRow0 = textHeight > 3 ? static_cast<std::uint16_t>(textHeight - 4) : 0;
-    const std::uint16_t controlsRow1 = textHeight > 4 ? static_cast<std::uint16_t>(textHeight - 5) : 0;
+    const std::uint16_t healthRow = textHeight > 2 ? static_cast<std::uint16_t>(textHeight - 3) : 0;
+    const std::uint16_t bagRow2 = textHeight > 3 ? static_cast<std::uint16_t>(textHeight - 4) : 0;
+    const std::uint16_t bagRow1 = textHeight > 4 ? static_cast<std::uint16_t>(textHeight - 5) : 0;
+    const std::uint16_t bagRow0 = textHeight > 5 ? static_cast<std::uint16_t>(textHeight - 6) : 0;
+    const std::uint16_t bagSepRow = textHeight > 6 ? static_cast<std::uint16_t>(textHeight - 7) : 0;
+    const std::uint16_t bagTitleRow = textHeight > 7 ? static_cast<std::uint16_t>(textHeight - 8) : 0;
+    const std::uint16_t controlsRow1 = textHeight > 8 ? static_cast<std::uint16_t>(textHeight - 9) : 0;
+    const std::uint16_t controlsRow0 = textHeight > 9 ? static_cast<std::uint16_t>(textHeight - 10) : 0;
 
     bgfx::dbgTextPrintf(0, 1, 0x0f, "VibeCraft foundation slice");
     bgfx::dbgTextPrintf(0, 3, 0x0a, "%s", frameDebugData.statusLine.c_str());
@@ -1057,7 +1646,17 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
 
     drawHotbarHud(hotbarRow, frameDebugData);
     drawHotbarKeyHintsRow(hotbarKeyRow);
-    dbgTextPrintfCenteredRow(bagHudRow, 0x0a, frameDebugData.bagLine);
+    drawHealthHud(healthRow, frameDebugData);
+    if (textHeight >= 10)
+    {
+        drawBagHud(
+            bagTitleRow,
+            bagSepRow,
+            bagRow0,
+            bagRow1,
+            bagRow2,
+            frameDebugData);
+    }
     bgfx::dbgTextPrintf(
         0,
         controlsRow0,
@@ -1067,7 +1666,7 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         0,
         controlsRow1,
         0x0e,
-        "LMB mine, RMB place, 1-9 select hotbar, Tab capture, Esc release");
+        "LMB mine, RMB place, 1-9 select hotbar, Tab capture, Esc pause menu");
 
     bgfx::frame();
 }
@@ -1101,5 +1700,94 @@ void Renderer::destroySceneMesh(const std::uint64_t sceneMeshId)
     bgfx::destroy(toVertexBufferHandle(sceneMeshIt->second.vertexBufferHandle));
     bgfx::destroy(toIndexBufferHandle(sceneMeshIt->second.indexBufferHandle));
     sceneMeshes_.erase(sceneMeshIt);
+}
+
+void Renderer::drawMainMenuLogo()
+{
+    if (logoProgramHandle_ == UINT16_MAX || logoTextureHandle_ == UINT16_MAX || logoSamplerHandle_ == UINT16_MAX)
+    {
+        return;
+    }
+    if (logoWidthPx_ == 0 || logoHeightPx_ == 0 || width_ == 0 || height_ == 0)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientVertexBuffer(4, ChunkVertex::layout()) < 4)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
+    {
+        return;
+    }
+
+    const float aspect =
+        static_cast<float>(logoWidthPx_) / static_cast<float>(logoHeightPx_);
+    constexpr float kMarginTop = 42.0f;
+    const float maxWidth = std::min(620.0f, static_cast<float>(width_) * 0.78f);
+    float drawW = maxWidth;
+    float drawH = drawW / aspect;
+    const float maxHeight = std::min(static_cast<float>(height_) * 0.15f, 176.0f);
+    if (drawH > maxHeight)
+    {
+        drawH = maxHeight;
+        drawW = drawH * aspect;
+    }
+
+    const float x0 = (static_cast<float>(width_) - drawW) * 0.5f;
+    const float y0 = kMarginTop;
+    const float x1 = x0 + drawW;
+    const float y1 = y0 + drawH;
+
+    float view[16];
+    bx::mtxIdentity(view);
+    float proj[16];
+    bx::mtxOrtho(
+        proj,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        0.0f,
+        0.0f,
+        1000.0f,
+        0.0f,
+        bgfx::getCaps()->homogeneousDepth);
+    bgfx::setViewTransform(kMainView, view, proj);
+
+    const float identity[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    bgfx::setTransform(identity);
+
+    ChunkVertex vertices[4] = {
+        ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 0.0f, .abgr = 0xffffffff},
+        ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 0.0f, .abgr = 0xffffffff},
+        ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 1.0f, .abgr = 0xffffffff},
+        ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 1.0f, .abgr = 0xffffffff},
+    };
+
+    bgfx::TransientVertexBuffer tvb{};
+    bgfx::allocTransientVertexBuffer(&tvb, 4, ChunkVertex::layout());
+    std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+    bgfx::TransientIndexBuffer tib{};
+    bgfx::allocTransientIndexBuffer(&tib, 6);
+    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+    indices[3] = 0;
+    indices[4] = 2;
+    indices[5] = 3;
+
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setIndexBuffer(&tib);
+    bgfx::setTexture(0, toUniformHandle(logoSamplerHandle_), toTextureHandle(logoTextureHandle_));
+    bgfx::setState(
+        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
+    bgfx::submit(kMainView, toProgramHandle(logoProgramHandle_));
 }
 }  // namespace vibecraft::render

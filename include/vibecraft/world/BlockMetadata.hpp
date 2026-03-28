@@ -28,63 +28,100 @@ struct BlockMetadata
     bool breakable = false;
 };
 
+// Vertex color multiplies the atlas sample; white shows materials as authored in assets/textures/materials.
+// Tile indices follow scripts/build_chunk_atlas.sh row-major order on a 4x4 atlas.
 [[nodiscard]] constexpr BlockMetadata blockMetadata(const BlockType blockType)
 {
     switch (blockType)
     {
     case BlockType::Grass:
         return {
-            .debugColor = 0xff4caf50,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 0, .bottom = 2, .side = 1},
             .hardness = 0.6f,
             .breakable = true,
         };
     case BlockType::Dirt:
         return {
-            .debugColor = 0xff795548,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 2, .bottom = 2, .side = 2},
             .hardness = 0.5f,
             .breakable = true,
         };
     case BlockType::Stone:
         return {
-            .debugColor = 0xff9e9e9e,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 3, .bottom = 3, .side = 3},
             .hardness = 1.5f,
             .breakable = true,
         };
     case BlockType::Deepslate:
         return {
-            .debugColor = 0xff455a64,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 4, .bottom = 4, .side = 4},
             .hardness = 3.0f,
             .breakable = true,
         };
     case BlockType::CoalOre:
         return {
-            .debugColor = 0xff607d8b,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 5, .bottom = 5, .side = 5},
             .hardness = 2.0f,
             .breakable = true,
         };
     case BlockType::Sand:
         return {
-            .debugColor = 0xffd7b985,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 7, .bottom = 7, .side = 7},
             .hardness = 0.5f,
             .breakable = true,
         };
     case BlockType::Bedrock:
         return {
-            .debugColor = 0xff202124,
-            .textureTiles = {.top = 4, .bottom = 4, .side = 4},
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 8, .bottom = 8, .side = 8},
             .hardness = 999.0f,
             .breakable = false,
         };
     case BlockType::Water:
         return {
-            .debugColor = 0xff1e88e5,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 6, .bottom = 6, .side = 6},
+            .hardness = 1000.0f,
+            .breakable = false,
+        };
+    case BlockType::IronOre:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 9, .bottom = 9, .side = 9},
+            .hardness = 3.0f,
+            .breakable = true,
+        };
+    case BlockType::GoldOre:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 10, .bottom = 10, .side = 10},
+            .hardness = 3.0f,
+            .breakable = true,
+        };
+    case BlockType::DiamondOre:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 11, .bottom = 11, .side = 11},
+            .hardness = 3.0f,
+            .breakable = true,
+        };
+    case BlockType::EmeraldOre:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 12, .bottom = 12, .side = 12},
+            .hardness = 3.0f,
+            .breakable = true,
+        };
+    case BlockType::Lava:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 13, .bottom = 13, .side = 13},
             .hardness = 1000.0f,
             .breakable = false,
         };

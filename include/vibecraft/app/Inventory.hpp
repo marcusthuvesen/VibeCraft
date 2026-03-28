@@ -29,5 +29,4 @@ using BagSlots = std::array<InventorySlot, kBagSlotCount>;
     vibecraft::world::BlockType blockType,
     std::size_t& selectedHotbarIndex);
 void consumeSelectedHotbarSlot(HotbarSlots& hotbarSlots, BagSlots& bagSlots, std::size_t selectedHotbarIndex);
-[[nodiscard]] std::string formatBagLine(const BagSlots& bagSlots);
 }  // namespace vibecraft::app

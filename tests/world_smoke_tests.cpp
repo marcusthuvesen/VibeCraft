@@ -8,10 +8,29 @@
 
 #include "vibecraft/game/DayNightCycle.hpp"
 #include "vibecraft/game/WeatherSystem.hpp"
+#include "vibecraft/game/PlayerVitals.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/TerrainGenerator.hpp"
 #include "vibecraft/world/World.hpp"
+#include "vibecraft/world/WorldVerticalScale.hpp"
+
+TEST_CASE("bedrock floor uses five layers like Minecraft Java 1.18+ overworld bottom")
+{
+    CHECK(vibecraft::world::kMinecraftOverworldBedrockLayerCount == 5);
+    CHECK(
+        vibecraft::world::kBedrockFloorMaxY - vibecraft::world::kBedrockFloorMinY + 1
+        == vibecraft::world::kMinecraftOverworldBedrockLayerCount);
+}
+
+TEST_CASE("lava and water are fluids for collision and face culling")
+{
+    using vibecraft::world::BlockType;
+    CHECK(vibecraft::world::isFluid(BlockType::Water));
+    CHECK(vibecraft::world::isFluid(BlockType::Lava));
+    CHECK_FALSE(vibecraft::world::isSolid(BlockType::Lava));
+    CHECK_FALSE(vibecraft::world::occludesFaces(BlockType::Lava));
+}
 
 TEST_CASE("single block creates six exposed faces")
 {
@@ -55,7 +74,7 @@ TEST_CASE("terrain generator carves underground non-solid cave space without bre
             CHECK(vibecraft::world::isSolid(terrainGenerator.blockTypeAt(worldX, surface, worldZ)));
             CHECK(vibecraft::world::isSolid(terrainGenerator.blockTypeAt(worldX, surface - 1, worldZ)));
 
-            for (int y = 4; y <= surface - 5; ++y)
+            for (int y = 5; y <= surface - 5; ++y)
             {
                 if (!vibecraft::world::isSolid(terrainGenerator.blockTypeAt(worldX, y, worldZ)))
                 {
@@ -133,7 +152,7 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     CHECK(vibecraft::world::textureTileIndex(BlockType::Stone, BlockFace::Top) == 3);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Sand, BlockFace::Side) == 7);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Water, BlockFace::Side) == 6);
-    CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xff607d8b);
+    CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xffffffff);
 }
 
 TEST_CASE("deeper block families are harder and bedrock is unbreakable")
@@ -297,6 +316,45 @@ TEST_CASE("world save and load round-trips edited blocks")
     std::filesystem::remove(tempPath, errorCode);
 }
 
+TEST_CASE("world queries below y=0 return bedrock for collision")
+{
+    vibecraft::world::World world;
+    world.generateRadius(vibecraft::world::TerrainGenerator{}, 0);
+    CHECK(world.blockAt(0, -1, 0) == vibecraft::world::BlockType::Bedrock);
+    CHECK(world.blockAt(0, -50, 0) == vibecraft::world::BlockType::Bedrock);
+}
+
+TEST_CASE("loading a legacy save restores the bedrock floor")
+{
+    using vibecraft::world::BlockType;
+    using vibecraft::world::Chunk;
+    using vibecraft::world::ChunkCoord;
+
+    vibecraft::world::World legacyWorld;
+    vibecraft::world::World::ChunkMap legacyChunks;
+    Chunk legacyChunk(ChunkCoord{0, 0});
+    legacyChunk.mutableBlockStorage().fill(BlockType::Air);
+    legacyChunks.emplace(ChunkCoord{0, 0}, legacyChunk);
+    legacyWorld.replaceChunks(std::move(legacyChunks));
+
+    const std::filesystem::path tempPath =
+        std::filesystem::temp_directory_path() / "vibecraft_world_bedrock_repair_test.bin";
+
+    REQUIRE(legacyWorld.save(tempPath));
+
+    vibecraft::world::World loadedWorld;
+    REQUIRE(loadedWorld.load(tempPath));
+
+    for (int y = vibecraft::world::kBedrockFloorMinY; y <= vibecraft::world::kBedrockFloorMaxY; ++y)
+    {
+        CHECK(loadedWorld.blockAt(0, y, 0) == BlockType::Bedrock);
+    }
+    CHECK(loadedWorld.blockAt(0, vibecraft::world::kUndergroundStartY, 0) == BlockType::Air);
+
+    std::error_code errorCode;
+    std::filesystem::remove(tempPath, errorCode);
+}
+
 TEST_CASE("world edit commands cannot break bedrock")
 {
     vibecraft::world::World world;
@@ -326,6 +384,71 @@ TEST_CASE("rebuildDirtyMeshes can process a dirty subset")
     world.rebuildDirtyMeshes(mesher, selectedCoords);
 
     CHECK(world.dirtyChunkCount() == initialDirtyChunkCount - 1);
+}
+
+TEST_CASE("player vitals use a Minecraft-style 20 health baseline")
+{
+    vibecraft::game::PlayerVitals vitals;
+    CHECK(vitals.health() == doctest::Approx(20.0f));
+    CHECK(vitals.maxHealth() == doctest::Approx(20.0f));
+    CHECK(vitals.air() == doctest::Approx(10.0f));
+    CHECK(vitals.maxAir() == doctest::Approx(10.0f));
+}
+
+TEST_CASE("player vitals apply fall damage only beyond three blocks")
+{
+    vibecraft::game::PlayerVitals vitals;
+
+    CHECK(vitals.applyLandingImpact(3.0f, false) == doctest::Approx(0.0f));
+    CHECK(vitals.applyLandingImpact(4.0f, false) == doctest::Approx(1.0f));
+    CHECK(vitals.health() == doctest::Approx(19.0f));
+}
+
+TEST_CASE("player vitals ignore fall damage when landing in water")
+{
+    vibecraft::game::PlayerVitals vitals;
+
+    CHECK(vitals.applyLandingImpact(18.0f, true) == doctest::Approx(0.0f));
+    CHECK(vitals.health() == doctest::Approx(vitals.maxHealth()));
+}
+
+TEST_CASE("player vitals lose air underwater and start drowning after air is gone")
+{
+    vibecraft::game::PlayerVitals vitals;
+    const vibecraft::game::EnvironmentalHazards underwater{
+        .bodyInWater = true,
+        .bodyInLava = false,
+        .headSubmergedInWater = true,
+    };
+
+    vitals.tickEnvironment(10.0f, underwater);
+    CHECK(vitals.air() == doctest::Approx(0.0f));
+    CHECK(vitals.health() == doctest::Approx(vitals.maxHealth()));
+
+    vitals.tickEnvironment(1.0f, underwater);
+    CHECK(vitals.health() == doctest::Approx(18.0f));
+    CHECK(vitals.lastDamageCause() == vibecraft::game::DamageCause::Drowning);
+}
+
+TEST_CASE("player vitals take periodic lava damage and support future enemy damage")
+{
+    vibecraft::game::PlayerVitals vitals;
+    const vibecraft::game::EnvironmentalHazards lava{
+        .bodyInWater = false,
+        .bodyInLava = true,
+        .headSubmergedInWater = false,
+    };
+
+    vitals.tickEnvironment(0.5f, lava);
+    CHECK(vitals.health() == doctest::Approx(16.0f));
+    CHECK(vitals.lastDamageCause() == vibecraft::game::DamageCause::Lava);
+
+    CHECK(vitals.applyDamage({
+        .cause = vibecraft::game::DamageCause::EnemyAttack,
+        .amount = 3.0f,
+    }) == doctest::Approx(3.0f));
+    CHECK(vitals.health() == doctest::Approx(13.0f));
+    CHECK(vitals.lastDamageCause() == vibecraft::game::DamageCause::EnemyAttack);
 }
 
 TEST_CASE("generateMissingChunksAround adds only missing chunks near a center")

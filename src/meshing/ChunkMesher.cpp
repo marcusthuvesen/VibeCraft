@@ -2,6 +2,7 @@
 
 #include <array>
 
+#include "vibecraft/ChunkAtlasLayout.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/World.hpp"
 
@@ -42,10 +43,10 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
      {{{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}}}},
 }};
 
-constexpr std::uint16_t kAtlasColumns = 4;
-constexpr std::uint16_t kAtlasRows = 2;
-constexpr float kTileInsetU = 0.5f / 64.0f;
-constexpr float kTileInsetV = 0.5f / 32.0f;
+constexpr std::uint16_t kAtlasColumns = vibecraft::kChunkAtlasTileColumns;
+constexpr std::uint16_t kAtlasRows = vibecraft::kChunkAtlasTileRows;
+constexpr float kTileInsetU = 0.5f / static_cast<float>(vibecraft::kChunkAtlasWidthPx);
+constexpr float kTileInsetV = 0.5f / static_cast<float>(vibecraft::kChunkAtlasHeightPx);
 [[nodiscard]] std::array<float, 2> atlasUvForBlockType(
     const std::uint8_t tileIndex,
     const std::array<float, 2>& faceUv)

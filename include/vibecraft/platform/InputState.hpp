@@ -13,8 +13,13 @@ struct InputState
     bool windowSizeChanged = false;
     bool leftMousePressed = false;
     bool rightMousePressed = false;
+    /// Set on SDL_EVENT_KEY_DOWN for Escape (not key-repeat).
+    bool escapePressed = false;
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
+    /// Window-relative cursor position from the last event pump (SDL_GetMouseState).
+    float mouseWindowX = 0.0f;
+    float mouseWindowY = 0.0f;
 
     void beginFrame()
     {
@@ -23,6 +28,14 @@ struct InputState
         windowSizeChanged = false;
         leftMousePressed = false;
         rightMousePressed = false;
+        escapePressed = false;
+        mouseDeltaX = 0.0f;
+        mouseDeltaY = 0.0f;
+    }
+
+    /// Clears accumulated mouse deltas (e.g. after re-enabling relative mode so menu motion does not steer).
+    void clearMouseMotion()
+    {
         mouseDeltaX = 0.0f;
         mouseDeltaY = 0.0f;
     }

@@ -152,7 +152,12 @@ bool World::load(const std::filesystem::path& inputPath)
 
 BlockType World::blockAt(const int worldX, const int y, const int worldZ) const
 {
-    if (y < 0 || y >= Chunk::kHeight)
+    // Below the chunk column, behave like an unbroken bedrock floor so physics never hits "void".
+    if (y < 0)
+    {
+        return BlockType::Bedrock;
+    }
+    if (y >= Chunk::kHeight)
     {
         return BlockType::Air;
     }

@@ -1,6 +1,7 @@
 #include "vibecraft/world/WorldSerializer.hpp"
 
 #include "vibecraft/world/World.hpp"
+#include "vibecraft/world/WorldVerticalScale.hpp"
 
 #include <fstream>
 
@@ -10,6 +11,22 @@ namespace
 {
 constexpr std::uint32_t kWorldMagic = 0x56494245;
 constexpr std::uint32_t kWorldVersion = 1;
+
+void repairUnbreakableBedrockFloor(Chunk& chunk)
+{
+    auto& storage = chunk.mutableBlockStorage();
+    for (int y = kBedrockFloorMinY; y <= kBedrockFloorMaxY; ++y)
+    {
+        for (int localZ = 0; localZ < Chunk::kSize; ++localZ)
+        {
+            for (int localX = 0; localX < Chunk::kSize; ++localX)
+            {
+                storage[static_cast<std::size_t>(y * Chunk::kSize * Chunk::kSize + localZ * Chunk::kSize + localX)] =
+                    BlockType::Bedrock;
+            }
+        }
+    }
+}
 }
 
 bool WorldSerializer::save(const World& world, const std::filesystem::path& outputPath)
@@ -80,6 +97,9 @@ bool WorldSerializer::load(World& world, const std::filesystem::path& inputPath)
             return false;
         }
 
+        // Older saves may predate the bedrock floor; restore the unbreakable base on load
+        // so mined shafts never open into a visible void at the bottom of the world.
+        repairUnbreakableBedrockFloor(chunk);
         chunks.emplace(coord, chunk);
     }
 

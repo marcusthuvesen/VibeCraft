@@ -58,9 +58,9 @@ void Window::pollEvents(InputState& inputState)
             break;
 
         case SDL_EVENT_KEY_DOWN:
-            if (event.key.scancode == SDL_SCANCODE_ESCAPE)
+            if (event.key.scancode == SDL_SCANCODE_ESCAPE && !event.key.repeat)
             {
-                inputState.releaseMouseRequested = true;
+                inputState.escapePressed = true;
             }
             if (event.key.scancode == SDL_SCANCODE_TAB)
             {
@@ -102,6 +102,26 @@ void Window::pollEvents(InputState& inputState)
             break;
         }
     }
+
+    float mouseX = 0.0f;
+    float mouseY = 0.0f;
+    static_cast<void>(SDL_GetMouseState(&mouseX, &mouseY));
+    if (window_ != nullptr)
+    {
+        int windowWidth = 0;
+        int windowHeight = 0;
+        int pixelWidth = 0;
+        int pixelHeight = 0;
+        SDL_GetWindowSize(window_, &windowWidth, &windowHeight);
+        SDL_GetWindowSizeInPixels(window_, &pixelWidth, &pixelHeight);
+        if (windowWidth > 0 && windowHeight > 0 && pixelWidth > 0 && pixelHeight > 0)
+        {
+            mouseX *= static_cast<float>(pixelWidth) / static_cast<float>(windowWidth);
+            mouseY *= static_cast<float>(pixelHeight) / static_cast<float>(windowHeight);
+        }
+    }
+    inputState.mouseWindowX = mouseX;
+    inputState.mouseWindowY = mouseY;
 }
 
 bool Window::setRelativeMouseMode(const bool enabled) const

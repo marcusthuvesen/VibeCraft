@@ -81,6 +81,8 @@ flowchart TD
 |   |-- shaders/
 |   |-- saves/
 |   |-- textures/
+|-- scripts/
+|   |-- build_chunk_atlas.sh
 |-- cmake/
 |   |-- Dependencies.cmake
 |-- include/
@@ -92,6 +94,7 @@ flowchart TD
 |       |-- platform/
 |       |-- render/
 |       |-- world/
+|           |-- underground/
 |-- src/
 |   |-- app/
 |   |-- core/
@@ -100,6 +103,7 @@ flowchart TD
 |   |-- platform/
 |   |-- render/
 |   |-- world/
+|       |-- underground/
 |-- tests/
 ```
 
@@ -130,6 +134,8 @@ flowchart TD
 - Updates GPU chunk resources incrementally instead of replacing the full scene on every world edit.
 - Culls chunk draw calls against the camera frustum before submission.
 - Uses a lighting-ready chunk vertex format with normals for basic directional shading.
+- Loads `textures/chunk_atlas.bgra` (see `include/vibecraft/ChunkAtlasLayout.hpp`); dimensions must match `ChunkMesher` UV math.
+- Debug HUD: `FrameDebugData` carries a **9×3 bag** slot grid (wider cells than the hotbar) plus a title line and item totals, drawn above the hotbar when the debug text buffer is tall enough.
 - Must not own block data, player state, or terrain generation.
 
 ### `game`
@@ -142,6 +148,7 @@ flowchart TD
 - Owns chunks, block access, terrain generation, world persistence, and world edit commands.
 - Should remain authoritative over world mutations.
 - Must stay independent from renderer APIs.
+- **Vertical scale (Minecraft reference):** `WorldVerticalScale.hpp` documents Java Edition 1.18+ overworld bedrock at **Y=-64..-60** (five layers; see [Bedrock](https://minecraft.wiki/w/Bedrock)) and maps that **layer count** onto VibeCraft’s shorter column (`Y=0..63`), where **`Y=0..4`** is the unbreakable bedrock shell. Generation stays modular: shared 2D noise in `TerrainNoise.hpp`; caves and cave fluids (water tables, rare lava pools) in `underground/CaveRules.*`; depth-biased ore veins (coal, iron, gold, diamond, emerald) in `underground/OreVeinRules.*`; `TerrainGenerator` orchestrates surface strata and delegates underground rules.
 
 ### `meshing`
 
@@ -282,6 +289,7 @@ This section tracks what is already landed versus what each contributor should p
 - Procedural underground caves in `TerrainGenerator` using a density test that preserves the surface and shallow subsurface layers.
 - Stratified underground content: **Deepslate** vs **Stone** by depth, **coal ore** placement, mesh colors, and tests for these features.
 - Tests covering solid surface columns, air above terrain, cave presence in a sampled region, and save/load round-trip for edited blocks.
+- Modular underground pipeline: **Minecraft 1.18+ bedrock layer count** mapped to `Y=0..4`, shared `TerrainNoise`, `underground/CaveRules` (water + rare **lava** pools), `underground/OreVeinRules` (**iron, gold, diamond, emerald** plus coal), new `BlockType` values and metadata tints.
 
 ### Next milestone priorities (agreed split)
 
@@ -290,7 +298,7 @@ These are the **next logical tasks** after the current vertical slice. Split kee
 **Person A should focus on**
 
 1. **Infinite terrain generation (streaming):** extend the camera-centered loop so the world **generates and loads chunks as the player moves**, unloads or stops meshing far chunks within agreed budgets, and keeps GPU uploads stable. Person B defines *what* is in a chunk at `(chunkX, chunkZ)`; Person A owns *when* chunks exist, resident radius, and the `app` → `meshing` → `render` pipeline for scale.
-2. **Inventory UI polish:** current bag/hotbar flow works in debug text; next step is a clearer HUD (slot highlights, compact counts) and interaction polish for transfers/splitting.
+2. **Inventory UI polish:** hotbar plus a large **9×3 bag panel** (title, totals, wide slots) in debug text; optional next step is true textured slots and drag/split interactions.
 3. **Mining → pickup progression:** direct grant-on-break is in; optional later step is **item entities on the ground** and pickup when **walking onto/near** them for a more Minecraft-like feel.
 
 **Person B should focus on**
@@ -347,10 +355,11 @@ If both need the same file in one sprint, use **two PRs in order**: contract/str
 
 Run these steps for meaningful changes:
 
-1. `cmake --preset default`
-2. `cmake --build --preset debug`
-3. `ctest --preset debug --output-on-failure`
-4. Launch `build/default/bin/vibecraft` and verify startup, camera movement, focus-loss mouse release, and block editing smoke-test correctly.
+1. After adding or changing files under `assets/textures/materials/`, rebuild the atlases: `scripts/build_chunk_atlas.sh` (requires ImageMagick `magick`). This keeps `chunk_atlas.png` / `chunk_atlas.bgra` in sync with `BlockMetadata` tile indices.
+2. `cmake --preset default`
+3. `cmake --build --preset debug`
+4. `ctest --preset debug --output-on-failure`
+5. Launch `build/default/bin/vibecraft` and verify startup, camera movement, focus-loss mouse release, and block editing smoke-test correctly.
 
 Windows host validation:
 
