@@ -31,6 +31,10 @@ bool addToMatchingOrEmptySlots(
         InventorySlot& slot = slots[slotIndex];
         if (slot.count == 0)
         {
+            if (slot.equippedItem != EquippedItem::None)
+            {
+                continue;
+            }
             slot.blockType = blockType;
             slot.count = 1;
             if (selectedHotbarIndex != nullptr)
@@ -47,6 +51,10 @@ bool addToMatchingOrEmptySlots(
 void refillHotbarSlotFromBag(HotbarSlots& hotbarSlots, BagSlots& bagSlots, const std::size_t hotbarIndex)
 {
     InventorySlot& hotbarSlot = hotbarSlots[hotbarIndex];
+    if (hotbarSlot.equippedItem != EquippedItem::None)
+    {
+        return;
+    }
 
     for (InventorySlot& bagSlot : bagSlots)
     {
@@ -54,6 +62,7 @@ void refillHotbarSlotFromBag(HotbarSlots& hotbarSlots, BagSlots& bagSlots, const
         {
             const std::uint32_t transferCount = std::min(kMaxStackSize, bagSlot.count);
             hotbarSlot.count = transferCount;
+            hotbarSlot.equippedItem = EquippedItem::None;
             bagSlot.count -= transferCount;
             if (bagSlot.count == 0)
             {
@@ -70,6 +79,7 @@ void refillHotbarSlotFromBag(HotbarSlots& hotbarSlots, BagSlots& bagSlots, const
             const std::uint32_t transferCount = std::min(kMaxStackSize, bagSlot.count);
             hotbarSlot.blockType = bagSlot.blockType;
             hotbarSlot.count = transferCount;
+            hotbarSlot.equippedItem = EquippedItem::None;
             bagSlot.count -= transferCount;
             if (bagSlot.count == 0)
             {
@@ -115,6 +125,14 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Tree Trunk";
     case vibecraft::world::BlockType::TreeCrown:
         return "Tree Crown";
+    case vibecraft::world::BlockType::OakPlanks:
+        return "Oak Planks";
+    case vibecraft::world::BlockType::CraftingTable:
+        return "Crafting Table";
+    case vibecraft::world::BlockType::Cobblestone:
+        return "Cobblestone";
+    case vibecraft::world::BlockType::Sandstone:
+        return "Sandstone";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

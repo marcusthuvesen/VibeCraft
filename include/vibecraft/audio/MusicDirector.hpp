@@ -37,6 +37,7 @@ class MusicDirector
     [[nodiscard]] bool decodeTrack(const MusicTrackDefinition& definition, DecodedTrack& outTrack);
     [[nodiscard]] bool pickAndDecodeNextTrack(MusicContext context);
     void queueSilenceFrames(int frameCount);
+    void queueProceduralFallbackFrames(int frameCount);
     void queueTrackAudioFrames(int frameCount);
     void refillQueue();
     void scheduleGapAfterTrack(MusicContext context);
@@ -54,5 +55,9 @@ class MusicDirector
     int lastTrackIndexByContext_[4] = {-1, -1, -1, -1};
     std::uint32_t rngState_ = 0x91e10da5u;
     float streamGain_ = 0.85f;
+    std::uint64_t proceduralPhase_ = 0;
+    bool loggedMissingMusicAssets_ = false;
+    /// Set when `pickAndDecodeNextTrack` exhausts all files for the current context (avoids re-decoding every refill).
+    bool decodeExhaustedForContext_ = false;
 };
 }  // namespace vibecraft::audio

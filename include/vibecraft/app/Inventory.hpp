@@ -9,14 +9,26 @@
 
 namespace vibecraft::app
 {
+enum class EquippedItem : std::uint8_t
+{
+    None = 0,
+    DiamondSword,
+    RottenFlesh,
+    Leather,
+    RawPorkchop,
+    Mutton,
+    Feather,
+};
+
 struct InventorySlot
 {
     vibecraft::world::BlockType blockType = vibecraft::world::BlockType::Air;
     std::uint32_t count = 0;
+    EquippedItem equippedItem = EquippedItem::None;
 };
 
 constexpr std::size_t kHotbarSlotCount = 9;
-constexpr std::size_t kBagSlotCount = 27;
+constexpr std::size_t kBagSlotCount = 81;
 constexpr std::uint32_t kMaxStackSize = 64;
 
 using HotbarSlots = std::array<InventorySlot, kHotbarSlotCount>;

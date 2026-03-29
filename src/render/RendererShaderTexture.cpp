@@ -4,11 +4,16 @@
 #include <SDL3/SDL_filesystem.h>
 #include <bgfx/bgfx.h>
 #include <bx/allocator.h>
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <vector>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 #include "vibecraft/ChunkAtlasLayout.hpp"
 
@@ -207,6 +212,77 @@ namespace vibecraft::render::detail
         atlasMemory);
 }
 
+[[nodiscard]] bgfx::TextureHandle createTextureFromPng(
+    const std::filesystem::path& relativePath,
+    const std::uint16_t textureFlags,
+    std::uint16_t* const outWidthPx,
+    std::uint16_t* const outHeightPx)
+{
+    if (outWidthPx != nullptr)
+    {
+        *outWidthPx = 0;
+    }
+    if (outHeightPx != nullptr)
+    {
+        *outHeightPx = 0;
+    }
+
+    const std::filesystem::path texturePath = runtimeAssetPath(relativePath);
+    if (!std::filesystem::exists(texturePath))
+    {
+        return BGFX_INVALID_HANDLE;
+    }
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    stbi_uc* const rgbaPixels = stbi_load(texturePath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    if (rgbaPixels == nullptr || width <= 0 || height <= 0)
+    {
+        if (rgbaPixels != nullptr)
+        {
+            stbi_image_free(rgbaPixels);
+        }
+        return BGFX_INVALID_HANDLE;
+    }
+
+    const std::size_t pixelCount = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    std::vector<std::uint8_t> bgraPixels(pixelCount * 4U);
+    for (std::size_t i = 0; i < pixelCount; ++i)
+    {
+        const std::size_t src = i * 4U;
+        const std::size_t dst = src;
+        bgraPixels[dst + 0] = rgbaPixels[src + 2];
+        bgraPixels[dst + 1] = rgbaPixels[src + 1];
+        bgraPixels[dst + 2] = rgbaPixels[src + 0];
+        bgraPixels[dst + 3] = rgbaPixels[src + 3];
+    }
+    stbi_image_free(rgbaPixels);
+
+    const bgfx::Memory* const textureMemory =
+        bgfx::copy(bgraPixels.data(), static_cast<std::uint32_t>(bgraPixels.size()));
+    const bgfx::TextureHandle texture = bgfx::createTexture2D(
+        static_cast<std::uint16_t>(width),
+        static_cast<std::uint16_t>(height),
+        false,
+        1,
+        bgfx::TextureFormat::BGRA8,
+        textureFlags,
+        textureMemory);
+    if (bgfx::isValid(texture))
+    {
+        if (outWidthPx != nullptr)
+        {
+            *outWidthPx = static_cast<std::uint16_t>(std::min(width, 65535));
+        }
+        if (outHeightPx != nullptr)
+        {
+            *outHeightPx = static_cast<std::uint16_t>(std::min(height, 65535));
+        }
+    }
+    return texture;
+}
+
 [[nodiscard]] bgfx::TextureHandle createLogoTextureFromPng(
     bx::AllocatorI& allocator,
     std::uint16_t& outWidth,
@@ -335,5 +411,190 @@ namespace vibecraft::render::detail
         bgfx::TextureFormat::BGRA8,
         BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
         crosshairMemory);
+}
+
+[[nodiscard]] bgfx::TextureHandle createBlockBreakOverlayTexture(const int stage)
+{
+    constexpr int kSize = 32;
+    constexpr int kPixelCount = kSize * kSize;
+    const int clampedStage = std::clamp(stage, 0, 9);
+    std::array<std::uint8_t, static_cast<std::size_t>(kPixelCount * 4)> pixels{};
+
+    const auto indexFor = [](const int x, const int y)
+    {
+        return y * kSize + x;
+    };
+    const auto putPixel = [&pixels, &indexFor](const int x, const int y, const std::uint8_t alpha)
+    {
+        if (x < 0 || y < 0 || x >= kSize || y >= kSize)
+        {
+            return;
+        }
+        const std::size_t offset = static_cast<std::size_t>(indexFor(x, y)) * 4U;
+        const std::uint8_t brightness = 230;
+        pixels[offset + 0] = brightness;
+        pixels[offset + 1] = brightness;
+        pixels[offset + 2] = brightness;
+        pixels[offset + 3] = std::max(pixels[offset + 3], alpha);
+    };
+    const auto drawLine = [&putPixel](int x0, int y0, int x1, int y1, const std::uint8_t alpha)
+    {
+        const int dx = std::abs(x1 - x0);
+        const int sx = x0 < x1 ? 1 : -1;
+        const int dy = -std::abs(y1 - y0);
+        const int sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+
+        while (true)
+        {
+            putPixel(x0, y0, alpha);
+            putPixel(x0 + 1, y0, static_cast<std::uint8_t>(alpha * 0.65f));
+            putPixel(x0 - 1, y0, static_cast<std::uint8_t>(alpha * 0.65f));
+            putPixel(x0, y0 + 1, static_cast<std::uint8_t>(alpha * 0.65f));
+            putPixel(x0, y0 - 1, static_cast<std::uint8_t>(alpha * 0.65f));
+            if (x0 == x1 && y0 == y1)
+            {
+                break;
+            }
+            const int e2 = err * 2;
+            if (e2 >= dy)
+            {
+                err += dy;
+                x0 += sx;
+            }
+            if (e2 <= dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+        }
+    };
+
+    constexpr std::array<std::array<int, 4>, 14> kCrackSegments = {{
+        {{16, 2, 16, 29}},
+        {{16, 8, 7, 15}},
+        {{16, 10, 24, 17}},
+        {{16, 16, 5, 23}},
+        {{16, 18, 27, 26}},
+        {{16, 22, 10, 30}},
+        {{16, 14, 21, 5}},
+        {{10, 15, 8, 8}},
+        {{23, 17, 26, 9}},
+        {{11, 24, 4, 27}},
+        {{22, 25, 28, 30}},
+        {{20, 7, 27, 4}},
+        {{14, 28, 15, 31}},
+        {{4, 14, 1, 10}},
+    }};
+
+    const int segmentCount = 3 + clampedStage;
+    for (int i = 0; i < segmentCount && i < static_cast<int>(kCrackSegments.size()); ++i)
+    {
+        const auto& seg = kCrackSegments[static_cast<std::size_t>(i)];
+        const std::uint8_t alpha = static_cast<std::uint8_t>(70 + clampedStage * 16 + (i % 3) * 8);
+        drawLine(seg[0], seg[1], seg[2], seg[3], alpha);
+    }
+
+    for (int y = 0; y < kSize; ++y)
+    {
+        for (int x = 0; x < kSize; ++x)
+        {
+            const std::size_t offset = static_cast<std::size_t>(indexFor(x, y)) * 4U;
+            if (pixels[offset + 3] == 0)
+            {
+                continue;
+            }
+            const bool checker = ((x + y) & 1) == 0;
+            if (checker)
+            {
+                pixels[offset + 0] = static_cast<std::uint8_t>(pixels[offset + 0] * 0.87f);
+                pixels[offset + 1] = static_cast<std::uint8_t>(pixels[offset + 1] * 0.87f);
+                pixels[offset + 2] = static_cast<std::uint8_t>(pixels[offset + 2] * 0.87f);
+            }
+        }
+    }
+
+    const bgfx::Memory* const memory = bgfx::copy(pixels.data(), static_cast<std::uint32_t>(pixels.size()));
+    return bgfx::createTexture2D(
+        static_cast<std::uint16_t>(kSize),
+        static_cast<std::uint16_t>(kSize),
+        false,
+        1,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        memory);
+}
+
+[[nodiscard]] bgfx::TextureHandle createHeartTexture(const int fillStage)
+{
+    constexpr int kSize = 16;
+    std::array<std::uint8_t, static_cast<std::size_t>(kSize * kSize * 4)> pixels{};
+    constexpr std::array<const char*, 16> kMask = {
+        "................",
+        "...XX....XX.....",
+        "..XXXX..XXXX....",
+        ".XXXXXXXXXXXX...",
+        ".XXXXXXXXXXXX...",
+        ".XXXXXXXXXXXX...",
+        "..XXXXXXXXXX....",
+        "...XXXXXXXX.....",
+        "....XXXXXX......",
+        ".....XXXX.......",
+        "......XX........",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+    };
+
+    const int clampedFill = std::clamp(fillStage, 0, 2);
+    const int fillLimitX = clampedFill == 2 ? kSize : (clampedFill == 1 ? 8 : 0);
+    for (int y = 0; y < kSize; ++y)
+    {
+        for (int x = 0; x < kSize; ++x)
+        {
+            if (kMask[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] != 'X')
+            {
+                continue;
+            }
+
+            std::uint8_t r = 54;
+            std::uint8_t g = 54;
+            std::uint8_t b = 54;
+            std::uint8_t a = 220;
+            if (x < fillLimitX)
+            {
+                r = 220;
+                g = 40;
+                b = 48;
+                a = 255;
+            }
+            const bool highlight = y <= 3 || (y <= 6 && x > 2 && x < 13);
+            if (highlight && x < fillLimitX)
+            {
+                r = static_cast<std::uint8_t>(std::min(255, static_cast<int>(r) + 28));
+                g = static_cast<std::uint8_t>(std::min(255, static_cast<int>(g) + 18));
+                b = static_cast<std::uint8_t>(std::min(255, static_cast<int>(b) + 18));
+            }
+
+            const std::size_t offset = static_cast<std::size_t>((y * kSize + x) * 4);
+            pixels[offset + 0] = b;
+            pixels[offset + 1] = g;
+            pixels[offset + 2] = r;
+            pixels[offset + 3] = a;
+        }
+    }
+
+    const bgfx::Memory* const memory = bgfx::copy(pixels.data(), static_cast<std::uint32_t>(pixels.size()));
+    return bgfx::createTexture2D(
+        static_cast<std::uint16_t>(kSize),
+        static_cast<std::uint16_t>(kSize),
+        false,
+        1,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        memory);
+}
 
 } // namespace vibecraft::render::detail

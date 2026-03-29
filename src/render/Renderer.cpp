@@ -6,18 +6,148 @@
 #include <bgfx/platform.h>
 #include <bx/allocator.h>
 #include <bx/math.h>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <queue>
 #include <vector>
 
+#include "stb_image.h"
 #include "debugdraw.h"
 
 namespace vibecraft::render
 {
+namespace
+{
+[[nodiscard]] TextureUvRect computePrimaryOpaqueUvRect(const std::filesystem::path& texturePath)
+{
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    stbi_uc* const rgbaPixels = stbi_load(texturePath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    if (rgbaPixels == nullptr || width <= 0 || height <= 0)
+    {
+        if (rgbaPixels != nullptr)
+        {
+            stbi_image_free(rgbaPixels);
+        }
+        return {};
+    }
+
+    std::vector<std::uint8_t> visited(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0U);
+    auto pixelIndex = [width](const int x, const int y)
+    {
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
+    };
+    auto alphaAt = [rgbaPixels, width](const int x, const int y)
+    {
+        const std::size_t idx = (static_cast<std::size_t>(y) * static_cast<std::size_t>(width)
+            + static_cast<std::size_t>(x))
+            * 4U;
+        return rgbaPixels[idx + 3U];
+    };
+
+    int bestCount = 0;
+    int bestMinX = 0;
+    int bestMinY = 0;
+    int bestMaxX = width - 1;
+    int bestMaxY = height - 1;
+
+    std::queue<std::pair<int, int>> floodQueue;
+    constexpr int kDirs[4][2] = {
+        {1, 0},
+        {-1, 0},
+        {0, 1},
+        {0, -1},
+    };
+
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const std::size_t startIdx = pixelIndex(x, y);
+            if (visited[startIdx] != 0U || alphaAt(x, y) == 0U)
+            {
+                continue;
+            }
+
+            visited[startIdx] = 1U;
+            floodQueue.push({x, y});
+            int count = 0;
+            int minX = x;
+            int minY = y;
+            int maxX = x;
+            int maxY = y;
+
+            while (!floodQueue.empty())
+            {
+                const auto [cx, cy] = floodQueue.front();
+                floodQueue.pop();
+                ++count;
+                minX = std::min(minX, cx);
+                minY = std::min(minY, cy);
+                maxX = std::max(maxX, cx);
+                maxY = std::max(maxY, cy);
+
+                for (const auto& dir : kDirs)
+                {
+                    const int nx = cx + dir[0];
+                    const int ny = cy + dir[1];
+                    if (nx < 0 || ny < 0 || nx >= width || ny >= height)
+                    {
+                        continue;
+                    }
+                    const std::size_t nIdx = pixelIndex(nx, ny);
+                    if (visited[nIdx] != 0U || alphaAt(nx, ny) == 0U)
+                    {
+                        continue;
+                    }
+                    visited[nIdx] = 1U;
+                    floodQueue.push({nx, ny});
+                }
+            }
+
+            if (count > bestCount)
+            {
+                bestCount = count;
+                bestMinX = minX;
+                bestMinY = minY;
+                bestMaxX = maxX;
+                bestMaxY = maxY;
+            }
+        }
+    }
+
+    stbi_image_free(rgbaPixels);
+    if (bestCount <= 0)
+    {
+        return {};
+    }
+
+    const float invW = 1.0f / static_cast<float>(width);
+    const float invH = 1.0f / static_cast<float>(height);
+    const float texelInsetU = 0.5f * invW;
+    const float texelInsetV = 0.5f * invH;
+    TextureUvRect uv{
+        .minU = std::clamp(static_cast<float>(bestMinX) * invW + texelInsetU, 0.0f, 1.0f),
+        .maxU = std::clamp(static_cast<float>(bestMaxX + 1) * invW - texelInsetU, 0.0f, 1.0f),
+        .minV = std::clamp(static_cast<float>(bestMinY) * invH + texelInsetV, 0.0f, 1.0f),
+        .maxV = std::clamp(static_cast<float>(bestMaxY + 1) * invH - texelInsetV, 0.0f, 1.0f),
+    };
+    if (uv.maxU <= uv.minU || uv.maxV <= uv.minV)
+    {
+        return {};
+    }
+    return uv;
+}
+}  // namespace
 
 
 bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t width, const std::uint32_t height)
 {
     width_ = width;
     height_ = height;
+    blockBreakStageTextureHandles_.fill(UINT16_MAX);
 
     bgfx::PlatformData platformData{};
     platformData.nwh = nativeWindowHandle;
@@ -150,6 +280,102 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         }
     }
 
+    const bgfx::TextureHandle diamondSwordTexture = detail::createTextureFromPng("textures/item/diamond_sword.png");
+    if (bgfx::isValid(diamondSwordTexture))
+    {
+        diamondSwordTextureHandle_ = diamondSwordTexture.idx;
+    }
+    const bgfx::TextureHandle rottenFleshTexture =
+        detail::createTextureFromPng("textures/item/mob_drops/rotten_flesh.png");
+    if (bgfx::isValid(rottenFleshTexture))
+    {
+        rottenFleshTextureHandle_ = rottenFleshTexture.idx;
+    }
+    const bgfx::TextureHandle leatherTexture =
+        detail::createTextureFromPng("textures/item/mob_drops/leather.png");
+    if (bgfx::isValid(leatherTexture))
+    {
+        leatherTextureHandle_ = leatherTexture.idx;
+    }
+    const bgfx::TextureHandle rawPorkchopTexture =
+        detail::createTextureFromPng("textures/item/mob_drops/porkchop.png");
+    if (bgfx::isValid(rawPorkchopTexture))
+    {
+        rawPorkchopTextureHandle_ = rawPorkchopTexture.idx;
+    }
+    const bgfx::TextureHandle muttonTexture =
+        detail::createTextureFromPng("textures/item/mob_drops/mutton.png");
+    if (bgfx::isValid(muttonTexture))
+    {
+        muttonTextureHandle_ = muttonTexture.idx;
+    }
+    const bgfx::TextureHandle featherTexture =
+        detail::createTextureFromPng("textures/item/mob_drops/feather.png");
+    if (bgfx::isValid(featherTexture))
+    {
+        featherTextureHandle_ = featherTexture.idx;
+    }
+    const bgfx::TextureHandle fullHeartTexture = detail::createHeartTexture(2);
+    if (bgfx::isValid(fullHeartTexture))
+    {
+        fullHeartTextureHandle_ = fullHeartTexture.idx;
+    }
+    const bgfx::TextureHandle halfHeartTexture = detail::createHeartTexture(1);
+    if (bgfx::isValid(halfHeartTexture))
+    {
+        halfHeartTextureHandle_ = halfHeartTexture.idx;
+    }
+    const bgfx::TextureHandle emptyHeartTexture = detail::createHeartTexture(0);
+    if (bgfx::isValid(emptyHeartTexture))
+    {
+        emptyHeartTextureHandle_ = emptyHeartTexture.idx;
+    }
+
+    for (int stage = 0; stage < static_cast<int>(blockBreakStageTextureHandles_.size()); ++stage)
+    {
+        const bgfx::TextureHandle blockBreakTexture = detail::createBlockBreakOverlayTexture(stage);
+        if (bgfx::isValid(blockBreakTexture))
+        {
+            blockBreakStageTextureHandles_[static_cast<std::size_t>(stage)] = blockBreakTexture.idx;
+        }
+    }
+
+    const std::filesystem::path hostilePath = "textures/entity/hostile_stalker.png";
+    const bgfx::TextureHandle hostileMobTexture = detail::createTextureFromPng(hostilePath);
+    if (bgfx::isValid(hostileMobTexture))
+    {
+        hostileMobTextureHandle_ = hostileMobTexture.idx;
+        hostileMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(hostilePath));
+    }
+    const std::filesystem::path cowPath = "textures/entity/cow.png";
+    const bgfx::TextureHandle cowMobTexture = detail::createTextureFromPng(cowPath);
+    if (bgfx::isValid(cowMobTexture))
+    {
+        cowMobTextureHandle_ = cowMobTexture.idx;
+        cowMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(cowPath));
+    }
+    const std::filesystem::path pigPath = "textures/entity/pig.png";
+    const bgfx::TextureHandle pigMobTexture = detail::createTextureFromPng(pigPath);
+    if (bgfx::isValid(pigMobTexture))
+    {
+        pigMobTextureHandle_ = pigMobTexture.idx;
+        pigMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(pigPath));
+    }
+    const std::filesystem::path sheepPath = "textures/entity/sheep.png";
+    const bgfx::TextureHandle sheepMobTexture = detail::createTextureFromPng(sheepPath);
+    if (bgfx::isValid(sheepMobTexture))
+    {
+        sheepMobTextureHandle_ = sheepMobTexture.idx;
+        sheepMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(sheepPath));
+    }
+    const std::filesystem::path chickenPath = "textures/entity/chicken.png";
+    const bgfx::TextureHandle chickenMobTexture = detail::createTextureFromPng(chickenPath);
+    if (bgfx::isValid(chickenMobTexture))
+    {
+        chickenMobTextureHandle_ = chickenMobTexture.idx;
+        chickenMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(chickenPath));
+    }
+
     const bgfx::UniformHandle inventoryUiSampler = bgfx::createUniform("s_uiAtlas", bgfx::UniformType::Sampler);
     if (bgfx::isValid(inventoryUiSampler))
     {
@@ -168,6 +394,23 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         {
             bgfx::destroy(inventoryUiSampler);
             inventoryUiSamplerHandle_ = UINT16_MAX;
+        }
+    }
+
+    if (inventoryUiProgramHandle_ != UINT16_MAX)
+    {
+        std::uint16_t menuBgW = 0;
+        std::uint16_t menuBgH = 0;
+        const bgfx::TextureHandle menuBgTexture = detail::createTextureFromPng(
+            "textures/ui/main_menu_background.png",
+            BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+            &menuBgW,
+            &menuBgH);
+        if (bgfx::isValid(menuBgTexture))
+        {
+            mainMenuBackgroundTextureHandle_ = menuBgTexture.idx;
+            mainMenuBackgroundWidthPx_ = menuBgW;
+            mainMenuBackgroundHeightPx_ = menuBgH;
         }
     }
 
@@ -245,6 +488,59 @@ void Renderer::shutdown()
         bgfx::destroy(detail::toUniformHandle(crosshairSamplerHandle_));
         crosshairSamplerHandle_ = UINT16_MAX;
     }
+    if (diamondSwordTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(diamondSwordTextureHandle_));
+        diamondSwordTextureHandle_ = UINT16_MAX;
+    }
+    if (rottenFleshTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(rottenFleshTextureHandle_));
+        rottenFleshTextureHandle_ = UINT16_MAX;
+    }
+    if (leatherTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(leatherTextureHandle_));
+        leatherTextureHandle_ = UINT16_MAX;
+    }
+    if (rawPorkchopTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(rawPorkchopTextureHandle_));
+        rawPorkchopTextureHandle_ = UINT16_MAX;
+    }
+    if (muttonTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(muttonTextureHandle_));
+        muttonTextureHandle_ = UINT16_MAX;
+    }
+    if (featherTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(featherTextureHandle_));
+        featherTextureHandle_ = UINT16_MAX;
+    }
+    if (fullHeartTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(fullHeartTextureHandle_));
+        fullHeartTextureHandle_ = UINT16_MAX;
+    }
+    if (halfHeartTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(halfHeartTextureHandle_));
+        halfHeartTextureHandle_ = UINT16_MAX;
+    }
+    if (emptyHeartTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(emptyHeartTextureHandle_));
+        emptyHeartTextureHandle_ = UINT16_MAX;
+    }
+    for (std::uint16_t& textureHandle : blockBreakStageTextureHandles_)
+    {
+        if (textureHandle != UINT16_MAX)
+        {
+            bgfx::destroy(detail::toTextureHandle(textureHandle));
+            textureHandle = UINT16_MAX;
+        }
+    }
     if (inventoryUiSolidProgramHandle_ != UINT16_MAX)
     {
         bgfx::destroy(detail::toProgramHandle(inventoryUiSolidProgramHandle_));
@@ -260,6 +556,38 @@ void Renderer::shutdown()
         bgfx::destroy(detail::toUniformHandle(inventoryUiSamplerHandle_));
         inventoryUiSamplerHandle_ = UINT16_MAX;
     }
+    if (hostileMobTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(hostileMobTextureHandle_));
+        hostileMobTextureHandle_ = UINT16_MAX;
+    }
+    if (cowMobTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(cowMobTextureHandle_));
+        cowMobTextureHandle_ = UINT16_MAX;
+    }
+    if (pigMobTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(pigMobTextureHandle_));
+        pigMobTextureHandle_ = UINT16_MAX;
+    }
+    if (sheepMobTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(sheepMobTextureHandle_));
+        sheepMobTextureHandle_ = UINT16_MAX;
+    }
+    if (chickenMobTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(chickenMobTextureHandle_));
+        chickenMobTextureHandle_ = UINT16_MAX;
+    }
+    if (mainMenuBackgroundTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(mainMenuBackgroundTextureHandle_));
+        mainMenuBackgroundTextureHandle_ = UINT16_MAX;
+    }
+    mainMenuBackgroundWidthPx_ = 0;
+    mainMenuBackgroundHeightPx_ = 0;
     logoWidthPx_ = 0;
     logoHeightPx_ = 0;
     if (chunkProgramHandle_ != UINT16_MAX)
@@ -408,6 +736,44 @@ void Renderer::destroySceneMesh(const std::uint64_t sceneMeshId)
     bgfx::destroy(detail::toVertexBufferHandle(sceneMeshIt->second.vertexBufferHandle));
     bgfx::destroy(detail::toIndexBufferHandle(sceneMeshIt->second.indexBufferHandle));
     sceneMeshes_.erase(sceneMeshIt);
+}
+
+std::uint16_t Renderer::mobTextureHandleForKind(const vibecraft::game::MobKind kind) const
+{
+    using MK = vibecraft::game::MobKind;
+    switch (kind)
+    {
+    case MK::HostileStalker:
+        return hostileMobTextureHandle_;
+    case MK::Cow:
+        return cowMobTextureHandle_;
+    case MK::Pig:
+        return pigMobTextureHandle_;
+    case MK::Sheep:
+        return sheepMobTextureHandle_;
+    case MK::Chicken:
+        return chickenMobTextureHandle_;
+    }
+    return UINT16_MAX;
+}
+
+TextureUvRect Renderer::mobTextureUvForKind(const vibecraft::game::MobKind kind) const
+{
+    using MK = vibecraft::game::MobKind;
+    switch (kind)
+    {
+    case MK::HostileStalker:
+        return hostileMobTextureUv_;
+    case MK::Cow:
+        return cowMobTextureUv_;
+    case MK::Pig:
+        return pigMobTextureUv_;
+    case MK::Sheep:
+        return sheepMobTextureUv_;
+    case MK::Chicken:
+        return chickenMobTextureUv_;
+    }
+    return {};
 }
 
 } // namespace vibecraft::render

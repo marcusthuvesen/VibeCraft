@@ -70,17 +70,17 @@ void dbgTextPrintfCenteredRow(
     }
 
     const float charH = static_cast<float>(windowHeight) / static_cast<float>(textHeight);
-    float slot = std::floor(charH * 0.86f);
-    slot = std::clamp(slot, 18.0f, 46.0f);
-    float gap = std::max(2.0f, std::round(slot * 0.11f));
+    float slot = std::floor(charH * 1.42f);
+    slot = std::clamp(slot, 36.0f, 84.0f);
+    float gap = std::max(4.0f, std::round(slot * 0.15f));
     constexpr int kSlotCount = 9;
     float totalW = static_cast<float>(kSlotCount) * slot + static_cast<float>(kSlotCount - 1) * gap;
     const float maxW = static_cast<float>(windowWidth) * 0.94f;
     if (totalW > maxW && totalW > 1.0f)
     {
         const float scale = maxW / totalW;
-        slot = std::max(16.0f, std::floor(slot * scale));
-        gap = std::max(2.0f, std::round(gap * scale));
+        slot = std::max(28.0f, std::floor(slot * scale));
+        gap = std::max(3.0f, std::round(gap * scale));
         totalW = static_cast<float>(kSlotCount) * slot + static_cast<float>(kSlotCount - 1) * gap;
     }
 
@@ -97,6 +97,60 @@ void dbgTextPrintfCenteredRow(
     return layout;
 }
 
+[[nodiscard]] CraftingOverlayLayoutPx computeCraftingOverlayLayoutPx(
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const bool useWorkbench)
+{
+    CraftingOverlayLayoutPx layout{};
+    if (windowWidth == 0 || windowHeight == 0)
+    {
+        return layout;
+    }
+
+    const float maxWidth = static_cast<float>(windowWidth) * 0.88f;
+    const float maxHeight = static_cast<float>(windowHeight) * 0.88f;
+    const int craftingColumns = useWorkbench ? 3 : 2;
+    const int craftingRows = useWorkbench ? 3 : 2;
+
+    float slotSize = std::floor(std::min(maxWidth / 12.8f, maxHeight / 15.2f));
+    slotSize = std::clamp(slotSize, 22.0f, 42.0f);
+    float slotGap = std::max(3.0f, std::round(slotSize * 0.14f));
+    const float craftWidth = static_cast<float>(craftingColumns) * slotSize
+        + static_cast<float>(craftingColumns - 1) * slotGap;
+    const float inventoryWidth = 9.0f * slotSize + 8.0f * slotGap;
+    const float resultGap = std::max(18.0f, std::round(slotSize * 1.1f));
+    const float topSectionWidth = craftWidth + resultGap + slotSize;
+    const float panelWidth = std::max(inventoryWidth, topSectionWidth) + slotSize * 1.8f;
+    const float topSectionHeight = static_cast<float>(craftingRows) * slotSize
+        + static_cast<float>(craftingRows - 1) * slotGap;
+    const float inventoryHeight = 10.0f * slotSize + 9.0f * slotGap;
+    const float panelHeight = topSectionHeight + inventoryHeight + slotSize * 3.2f;
+    const float panelLeft = std::floor((static_cast<float>(windowWidth) - panelWidth) * 0.5f);
+    const float panelTop = std::floor((static_cast<float>(windowHeight) - panelHeight) * 0.5f);
+    const float panelInnerX = panelLeft + slotSize * 0.9f;
+    const float craftingOriginX = panelInnerX + std::floor((panelWidth - slotSize * 1.8f - topSectionWidth) * 0.5f);
+    const float craftingOriginY = panelTop + slotSize * 1.5f;
+    const float resultSlotX = craftingOriginX + craftWidth + resultGap;
+    const float resultSlotY = craftingOriginY + (topSectionHeight - slotSize) * 0.5f;
+    const float inventoryOriginX = panelInnerX;
+    const float inventoryOriginY = craftingOriginY + topSectionHeight + slotSize * 1.55f;
+
+    layout.panelLeft = panelLeft;
+    layout.panelTop = panelTop;
+    layout.panelRight = panelLeft + panelWidth;
+    layout.panelBottom = panelTop + panelHeight;
+    layout.slotSize = slotSize;
+    layout.slotGap = slotGap;
+    layout.craftingOriginX = craftingOriginX;
+    layout.craftingOriginY = craftingOriginY;
+    layout.resultSlotX = resultSlotX;
+    layout.resultSlotY = resultSlotY;
+    layout.inventoryOriginX = inventoryOriginX;
+    layout.inventoryOriginY = inventoryOriginY;
+    return layout;
+}
+
 [[nodiscard]] int computeHotbarGridWidthChars()
 {
     constexpr int kCellChars = 5;
@@ -107,7 +161,7 @@ void dbgTextPrintfCenteredRow(
 
 [[nodiscard]] int computeBagGridWidthChars()
 {
-    constexpr int kCellChars = 7;
+    constexpr int kCellChars = 9;
     constexpr int kGap = 1;
     constexpr int kSlotCount = 9;
     return kSlotCount * kCellChars + (kSlotCount - 1) * kGap;
@@ -246,7 +300,7 @@ void drawBagRow(
     const std::size_t slotOffset,
     const FrameDebugData& frameDebugData)
 {
-    constexpr int kCellChars = 7;
+    constexpr int kCellChars = 9;
     constexpr int kGap = 1;
     int col = computeCenteredColumnStart(computeBagGridWidthChars());
     for (int i = 0; i < 9; ++i)
@@ -254,7 +308,7 @@ void drawBagRow(
         const FrameDebugData::HotbarSlotHud& slot = frameDebugData.bagSlots[slotOffset + static_cast<std::size_t>(i)];
         const bool empty = slot.count == 0;
         const std::uint16_t attr = empty ? 0x08 : 0x0b;
-        const std::string cell = formatBagSlotCell(slot);
+        const std::string cell = " " + formatBagSlotCell(slot) + " ";
         bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), row, attr, "%s", cell.c_str());
         col += kCellChars + kGap;
     }
@@ -322,7 +376,14 @@ void drawBagHud(
     layout.centerCol = std::max(0, (textWidth - layout.outerWidth) / 2);
 
     constexpr int kButtonCount = 5;
-    const int contentRows = kSubtitleRuleAndGapRows + kButtonCount * kButtonLineCount + 1;
+    int buttonLineCount = kPreferredButtonLineCount;
+    int contentRows = kSubtitleRuleAndGapRows + kButtonCount * buttonLineCount + 1;
+    while (contentRows > std::max(10, textHeight - 2) && buttonLineCount > kMinButtonLineCount)
+    {
+        buttonLineCount -= 2;
+        contentRows = kSubtitleRuleAndGapRows + kButtonCount * buttonLineCount + 1;
+    }
+    layout.buttonLineCount = buttonLineCount;
     layout.firstContentRow =
         std::clamp((textHeight - contentRows) / 2, 1, std::max(1, textHeight - contentRows));
 
@@ -331,9 +392,9 @@ void drawBagHud(
     const int firstButtonRow = layout.firstContentRow + kSubtitleRuleAndGapRows;
     for (int i = 0; i < kButtonCount; ++i)
     {
-        layout.buttonTopRows[static_cast<std::size_t>(i)] = firstButtonRow + i * kButtonLineCount;
+        layout.buttonTopRows[static_cast<std::size_t>(i)] = firstButtonRow + i * layout.buttonLineCount;
     }
-    layout.iconHintsRow = firstButtonRow + kButtonCount * kButtonLineCount;
+    layout.iconHintsRow = firstButtonRow + kButtonCount * layout.buttonLineCount;
     return layout;
 }
 
@@ -341,13 +402,15 @@ void drawMainMenuFramedButton5(
     const int row,
     const int col,
     const int outerWidth,
+    const int lineCount,
     const std::string& label,
     const bool hovered)
 {
-    constexpr std::uint16_t kBorderGray = 0x08;
-    constexpr std::uint16_t kLabelGray = 0x07;
-    constexpr std::uint16_t kBorderHi = 0x08;
-    constexpr std::uint16_t kLabelHi = 0x0f;
+    // Solid-filled button colors for stronger visual hierarchy.
+    constexpr std::uint16_t kBorderGray = 0x17;
+    constexpr std::uint16_t kLabelGray = 0x17;
+    constexpr std::uint16_t kBorderHi = 0x3f;
+    constexpr std::uint16_t kLabelHi = 0x3f;
 
     const std::uint16_t borderAttr = hovered ? kBorderHi : kBorderGray;
     const std::uint16_t labelAttr = hovered ? kLabelHi : kLabelGray;
@@ -357,10 +420,26 @@ void drawMainMenuFramedButton5(
     const std::string midLabel = "|" + padLabelToInnerWidth(label, inner) + "|";
 
     bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), borderAttr, "%s", borderLine.c_str());
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 1), borderAttr, "%s", midEmpty.c_str());
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 2), labelAttr, "%s", midLabel.c_str());
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 3), borderAttr, "%s", midEmpty.c_str());
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 4), borderAttr, "%s", borderLine.c_str());
+    const int innerRows = std::max(1, lineCount - 2);
+    const int labelInnerRow = innerRows / 2;
+    for (int innerRow = 0; innerRow < innerRows; ++innerRow)
+    {
+        const bool isLabelRow = innerRow == labelInnerRow;
+        const std::uint16_t attr = isLabelRow ? labelAttr : borderAttr;
+        const std::string& line = isLabelRow ? midLabel : midEmpty;
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(col),
+            static_cast<std::uint16_t>(row + 1 + innerRow),
+            attr,
+            "%s",
+            line.c_str());
+    }
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(col),
+        static_cast<std::uint16_t>(row + lineCount - 1),
+        borderAttr,
+        "%s",
+        borderLine.c_str());
 }
 
 void drawFramedButton3(
@@ -369,21 +448,26 @@ void drawFramedButton3(
     const int outerWidth,
     const std::string& label,
     const bool hovered,
-    const std::uint16_t borderAttrNormal = 0x08,
-    const std::uint16_t midAttrNormal = 0x0b,
-    const std::uint16_t borderAttrHover = 0x1f,
-    const std::uint16_t midAttrHover = 0x1f)
+    const std::uint16_t borderAttrNormal = 0x17,
+    const std::uint16_t midAttrNormal = 0x17,
+    const std::uint16_t borderAttrHover = 0x3f,
+    const std::uint16_t midAttrHover = 0x3f)
 {
     const std::uint16_t borderAttr = hovered ? borderAttrHover : borderAttrNormal;
     const std::uint16_t midAttr = hovered ? midAttrHover : midAttrNormal;
     const int inner = outerWidth - 2;
     const std::string border = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
-    const std::string mid = "|" + padLabelToInnerWidth(label, inner) + "|";
+    const std::string midEmpty = "|" + std::string(static_cast<std::size_t>(inner), ' ') + "|";
+    const std::string midLabel = "|" + padLabelToInnerWidth(label, inner) + "|";
     bgfx::dbgTextPrintf(
         static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), borderAttr, "%s", border.c_str());
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 1), midAttr, "%s", mid.c_str());
     bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 2), borderAttr, "%s", border.c_str());
+        static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 1), borderAttr, "%s", midEmpty.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 2), midAttr, "%s", midLabel.c_str());
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 3), borderAttr, "%s", midEmpty.c_str());
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 4), borderAttr, "%s", border.c_str());
 }
 
 void drawBottomButtonPair(
@@ -433,6 +517,220 @@ void drawBottomButtonPair(
         border.c_str());
 }
 
+[[nodiscard]] std::string clampDbgTextLine(const std::string& text, const std::size_t maxChars)
+{
+    if (text.size() <= maxChars)
+    {
+        return text;
+    }
+    if (maxChars <= 3)
+    {
+        return text.substr(0, maxChars);
+    }
+    return text.substr(0, maxChars - 3) + "...";
+}
+
+void drawMainMenuMultiplayerOverlay(
+    const FrameDebugData& frameDebugData,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    const int tw = static_cast<int>(textWidth);
+    constexpr int kWide = MultiplayerMenuLayout::kWide;
+    const int centerCol = std::max(0, (tw - kWide) / 2);
+    const std::uint16_t footerRow =
+        textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
+    constexpr std::uint16_t kGrayBorder = 0x08;
+    constexpr std::uint16_t kGrayLabel = 0x07;
+    constexpr std::uint16_t kHiBorder = 0x08;
+    constexpr std::uint16_t kHiLabel = 0x0f;
+
+    const int hovered = frameDebugData.mainMenuMultiplayerHoveredControl;
+
+    switch (frameDebugData.mainMenuMultiplayerPanel)
+    {
+    case FrameDebugData::MainMenuMultiplayerPanel::Hub:
+        dbgTextPrintfCenteredRow(5, 0x0f, "MULTIPLAYER");
+        dbgTextPrintfCenteredRow(7, 0x07, "Play with friends on the same Wi-Fi");
+        drawFramedButton3(
+            MultiplayerMenuLayout::kHubHostRow,
+            centerCol,
+            kWide,
+            "Host game",
+            hovered == 0,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        drawFramedButton3(
+            MultiplayerMenuLayout::kHubJoinRow,
+            centerCol,
+            kWide,
+            "Join game",
+            hovered == 1,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        drawFramedButton3(
+            MultiplayerMenuLayout::kHubBackRow,
+            centerCol,
+            kWide,
+            "Back",
+            hovered == 2,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back to title");
+        break;
+
+    case FrameDebugData::MainMenuMultiplayerPanel::Host:
+        dbgTextPrintfCenteredRow(5, 0x0f, "HOST MULTIPLAYER");
+        if (frameDebugData.mainMenuMultiplayerLanAddress.empty())
+        {
+            dbgTextPrintfCenteredRow(
+                8,
+                0x07,
+                clampDbgTextLine("LAN IP not detected — check Wi-Fi IP in System Settings", static_cast<std::size_t>(tw - 2)));
+        }
+        else
+        {
+            dbgTextPrintfCenteredRow(
+                8,
+                0x07,
+                clampDbgTextLine(
+                    fmt::format(
+                        "Friend on Wi-Fi: {}:{}",
+                        frameDebugData.mainMenuMultiplayerLanAddress,
+                        frameDebugData.mainMenuMultiplayerPortDisplay),
+                    static_cast<std::size_t>(tw - 2)));
+        }
+        dbgTextPrintfCenteredRow(9, 0x08, "Same machine test: 127.0.0.1");
+        drawFramedButton3(
+            MultiplayerMenuLayout::kHostStartRow,
+            centerCol,
+            kWide,
+            "Start hosting",
+            hovered == 0,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        drawFramedButton3(
+            MultiplayerMenuLayout::kHostBackRow,
+            centerCol,
+            kWide,
+            "Back",
+            hovered == 1,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back");
+        break;
+
+    case FrameDebugData::MainMenuMultiplayerPanel::Join:
+        dbgTextPrintfCenteredRow(5, 0x0f, "JOIN MULTIPLAYER");
+        {
+            const std::uint16_t addrLabelAttr = frameDebugData.mainMenuJoinFocusedField == 0 ? 0x0f : 0x07;
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                8,
+                addrLabelAttr,
+                "%s",
+                "Host address");
+            const int inner = kWide - 2;
+            const std::string addrMid =
+                "|" + padLabelToInnerWidth(clampDbgTextLine(frameDebugData.mainMenuJoinAddressField, 80), inner) + "|";
+            const std::uint16_t addrBorderAttr =
+                (hovered == 0 || frameDebugData.mainMenuJoinFocusedField == 0) ? kHiBorder : kGrayBorder;
+            const std::uint16_t addrMidAttr =
+                (hovered == 0 || frameDebugData.mainMenuJoinFocusedField == 0) ? kHiLabel : kGrayLabel;
+            const std::string addrBorder = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinAddrFieldRow),
+                addrBorderAttr,
+                "%s",
+                addrBorder.c_str());
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinAddrFieldRow + 1),
+                addrMidAttr,
+                "%s",
+                addrMid.c_str());
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinAddrFieldRow + 2),
+                addrBorderAttr,
+                "%s",
+                addrBorder.c_str());
+        }
+        {
+            const std::uint16_t portLabelAttr = frameDebugData.mainMenuJoinFocusedField == 1 ? 0x0f : 0x07;
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                12,
+                portLabelAttr,
+                "%s",
+                "Port");
+            const int inner = kWide - 2;
+            const std::string portMid =
+                "|" + padLabelToInnerWidth(clampDbgTextLine(frameDebugData.mainMenuJoinPortField, 12), inner) + "|";
+            const std::uint16_t portBorderAttr =
+                (hovered == 1 || frameDebugData.mainMenuJoinFocusedField == 1) ? kHiBorder : kGrayBorder;
+            const std::uint16_t portMidAttr =
+                (hovered == 1 || frameDebugData.mainMenuJoinFocusedField == 1) ? kHiLabel : kGrayLabel;
+            const std::string portBorder = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinPortFieldRow),
+                portBorderAttr,
+                "%s",
+                portBorder.c_str());
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinPortFieldRow + 1),
+                portMidAttr,
+                "%s",
+                portMid.c_str());
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(centerCol),
+                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinPortFieldRow + 2),
+                portBorderAttr,
+                "%s",
+                portBorder.c_str());
+        }
+        drawFramedButton3(
+            MultiplayerMenuLayout::kJoinConnectRow,
+            centerCol,
+            kWide,
+            "Connect",
+            hovered == 2,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        drawFramedButton3(
+            MultiplayerMenuLayout::kJoinBackRow,
+            centerCol,
+            kWide,
+            "Back",
+            hovered == 3,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back   Tab: switch field   Type: edit");
+        break;
+
+    case FrameDebugData::MainMenuMultiplayerPanel::None:
+    default:
+        break;
+    }
+}
+
 void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16_t textWidth, const std::uint16_t textHeight)
 {
     const int tw = static_cast<int>(textWidth);
@@ -443,16 +741,16 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
 
     if (frameDebugData.mainMenuSoundSettingsActive)
     {
-        constexpr int kWide = 42;
+        constexpr int kWide = 96;
         const int soundCenterCol = std::max(0, (tw - kWide) / 2);
         dbgTextPrintfCenteredRow(5, 0x07, "SOUND SETTINGS");
         const int hovered = frameDebugData.mainMenuSoundSettingsHoveredControl;
         const int musicPercent = static_cast<int>(std::round(std::clamp(frameDebugData.mainMenuSoundMusicVolume, 0.0f, 1.0f) * 100.0f));
         const int sfxPercent = static_cast<int>(std::round(std::clamp(frameDebugData.mainMenuSoundSfxVolume, 0.0f, 1.0f) * 100.0f));
-        constexpr std::uint16_t kGrayBorder = 0x08;
-        constexpr std::uint16_t kGrayLabel = 0x07;
-        constexpr std::uint16_t kHiBorder = 0x08;
-        constexpr std::uint16_t kHiLabel = 0x0f;
+        constexpr std::uint16_t kGrayBorder = 0x17;
+        constexpr std::uint16_t kGrayLabel = 0x17;
+        constexpr std::uint16_t kHiBorder = 0x3f;
+        constexpr std::uint16_t kHiLabel = 0x3f;
         drawFramedButton3(
             9,
             soundCenterCol,
@@ -464,7 +762,7 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
             kHiBorder,
             kHiLabel);
         drawFramedButton3(
-            13,
+            16,
             soundCenterCol,
             kWide,
             fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent),
@@ -473,7 +771,7 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
             kGrayLabel,
             kHiBorder,
             kHiLabel);
-        drawFramedButton3(19, soundCenterCol, kWide, "Back", hovered == 0, kGrayBorder, kGrayLabel, kHiBorder, kHiLabel);
+        drawFramedButton3(25, soundCenterCol, kWide, "Back", hovered == 0, kGrayBorder, kGrayLabel, kHiBorder, kHiLabel);
         if (!frameDebugData.mainMenuNotice.empty() && footerRow >= 3)
         {
             const std::uint16_t noticeRow =
@@ -481,6 +779,34 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
             dbgTextPrintfCenteredRow(noticeRow, 0x07, frameDebugData.mainMenuNotice);
         }
         dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back to title menu   Click: adjust");
+        return;
+    }
+
+    if (frameDebugData.mainMenuMultiplayerPanel != FrameDebugData::MainMenuMultiplayerPanel::None)
+    {
+        drawMainMenuMultiplayerOverlay(frameDebugData, textWidth, textHeight);
+        return;
+    }
+
+    if (frameDebugData.mainMenuLoadingActive)
+    {
+        dbgTextPrintfCenteredRow(6, 0x0f, "LOADING SINGLEPLAYER");
+        const int percent =
+            static_cast<int>(std::round(std::clamp(frameDebugData.mainMenuLoadingProgress, 0.0f, 1.0f) * 100.0f));
+        dbgTextPrintfCenteredRow(9, 0x07, frameDebugData.mainMenuLoadingLabel);
+        dbgTextPrintfCenteredRow(11, 0x0f, fmt::format("{}%", percent));
+
+        constexpr int kBarWidth = 34;
+        const int fillChars = std::clamp(
+            static_cast<int>(std::round(frameDebugData.mainMenuLoadingProgress * static_cast<float>(kBarWidth))),
+            0,
+            kBarWidth);
+        const std::string bar = "["
+            + std::string(static_cast<std::size_t>(fillChars), '=')
+            + std::string(static_cast<std::size_t>(kBarWidth - fillChars), ' ')
+            + "]";
+        dbgTextPrintfCenteredRow(13, 0x0a, bar);
+        dbgTextPrintfCenteredRow(footerRow, 0x07, "Preparing world...");
         return;
     }
 
@@ -505,6 +831,7 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
             menu.buttonTopRows[static_cast<std::size_t>(i)],
             menu.centerCol,
             menu.outerWidth,
+            menu.buttonLineCount,
             kMainMenuLabels[static_cast<std::size_t>(i)],
             hovered == i);
     }
@@ -551,19 +878,19 @@ void drawPauseMenuOverlay(
 {
     if (frameDebugData.pauseSoundSettingsActive)
     {
-        constexpr int kWide = 42;
+        constexpr int kWide = 96;
         const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
         dbgTextPrintfCenteredRow(5, 0x0f, "SOUND SETTINGS");
         const int hovered = frameDebugData.pauseSoundSettingsHoveredControl;
         const int musicPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundMusicVolume, 0.0f, 1.0f) * 100.0f));
         const int sfxPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundSfxVolume, 0.0f, 1.0f) * 100.0f));
         drawFramedButton3(9, centerCol, kWide, fmt::format("Music volume: {:3d}%   [-] [+]", musicPercent), hovered == 1 || hovered == 2);
-        drawFramedButton3(13, centerCol, kWide, fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent), hovered == 3 || hovered == 4);
-        drawFramedButton3(19, centerCol, kWide, "Back", hovered == 0);
+        drawFramedButton3(16, centerCol, kWide, fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent), hovered == 3 || hovered == 4);
+        drawFramedButton3(25, centerCol, kWide, "Back", hovered == 0);
     }
     else if (frameDebugData.pauseGameSettingsActive)
     {
-        constexpr int kWide = 42;
+        constexpr int kWide = 96;
         const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
         dbgTextPrintfCenteredRow(5, 0x0f, "GAME OPTIONS");
         const int hovered = frameDebugData.pauseGameSettingsHoveredControl;
@@ -574,20 +901,30 @@ void drawPauseMenuOverlay(
             kWide,
             fmt::format("Mob spawning: {}", mobState),
             hovered == 1);
-        drawFramedButton3(19, centerCol, kWide, "Back", hovered == 0);
+        drawFramedButton3(25, centerCol, kWide, "Back", hovered == 0);
     }
     else
     {
-        constexpr int kWide = 32;
+        constexpr int kWide = 96;
         const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
-        dbgTextPrintfCenteredRow(5, 0x0f, "GAME MENU");
+        constexpr int kButtonCount = 5;
+        constexpr int kButtonRowSpan = 5;
+        constexpr int kButtonGap = 2;
+        constexpr int kButtonPitch = kButtonRowSpan + kButtonGap;
+        const int totalButtonRows = kButtonCount * kButtonRowSpan + (kButtonCount - 1) * kButtonGap;
+        const int firstButtonRow = std::clamp(
+            (static_cast<int>(textHeight) - totalButtonRows) / 2,
+            7,
+            std::max(7, static_cast<int>(textHeight) - totalButtonRows - 2));
+        const int titleRow = std::max(2, firstButtonRow - 4);
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(titleRow), 0x0f, "GAME MENU");
 
         const int hovered = frameDebugData.pauseMenuHoveredButton;
-        drawFramedButton3(9, centerCol, kWide, "Back to game", hovered == 0);
-        drawFramedButton3(13, centerCol, kWide, "Sound settings...", hovered == 1);
-        drawFramedButton3(17, centerCol, kWide, "Quit to title", hovered == 2);
-        drawFramedButton3(21, centerCol, kWide, "Quit game", hovered == 3);
-        drawFramedButton3(25, centerCol, kWide, "Game options...", hovered == 4);
+        drawFramedButton3(firstButtonRow + 0 * kButtonPitch, centerCol, kWide, "Back to game", hovered == 0);
+        drawFramedButton3(firstButtonRow + 1 * kButtonPitch, centerCol, kWide, "Sound settings...", hovered == 1);
+        drawFramedButton3(firstButtonRow + 2 * kButtonPitch, centerCol, kWide, "Quit to title", hovered == 2);
+        drawFramedButton3(firstButtonRow + 3 * kButtonPitch, centerCol, kWide, "Quit game", hovered == 3);
+        drawFramedButton3(firstButtonRow + 4 * kButtonPitch, centerCol, kWide, "Game options...", hovered == 4);
     }
 
     const std::uint16_t footerRow =
@@ -608,5 +945,6 @@ void drawPauseMenuOverlay(
         footerHint = "Esc: back   Click: toggle";
     }
     dbgTextPrintfCenteredRow(footerRow, 0x06, footerHint);
+}
 
 } // namespace vibecraft::render::detail

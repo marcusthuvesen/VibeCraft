@@ -2,6 +2,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <string>
+
 namespace vibecraft::platform
 {
 struct InputState
@@ -12,9 +14,18 @@ struct InputState
     bool windowFocused = true;
     bool windowSizeChanged = false;
     bool leftMousePressed = false;
+    /// True when left mouse button is released this frame (menu-style click activation).
+    bool leftMouseClicked = false;
     bool rightMousePressed = false;
     /// Set on SDL_EVENT_KEY_DOWN for Escape (not key-repeat).
     bool escapePressed = false;
+    /// Backspace on key-down (not repeat), for text fields.
+    bool backspacePressed = false;
+    /// Tab on key-down (not repeat), for UI focus cycling.
+    bool tabPressed = false;
+    /// UTF-8 text from SDL_EVENT_TEXT_INPUT this frame (after beginFrame).
+    std::string textInputUtf8;
+    int mouseWheelDeltaY = 0;
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
     /// Window-relative cursor position from the last event pump (SDL_GetMouseState).
@@ -27,8 +38,13 @@ struct InputState
         releaseMouseRequested = false;
         windowSizeChanged = false;
         leftMousePressed = false;
+        leftMouseClicked = false;
         rightMousePressed = false;
         escapePressed = false;
+        backspacePressed = false;
+        tabPressed = false;
+        textInputUtf8.clear();
+        mouseWheelDeltaY = 0;
         mouseDeltaX = 0.0f;
         mouseDeltaY = 0.0f;
     }

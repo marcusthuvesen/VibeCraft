@@ -20,11 +20,27 @@ namespace vibecraft::render::detail
 {
 namespace MainMenuLayout
 {
-constexpr int kButtonLineCount = 5;
-constexpr int kMinOuterWidth = 46;
-constexpr int kMaxOuterWidth = 62;
+constexpr int kPreferredButtonLineCount = 9;
+constexpr int kMinButtonLineCount = 5;
+constexpr int kMinOuterWidth = 92;
+constexpr int kMaxOuterWidth = 140;
 constexpr int kSubtitleRuleAndGapRows = 3;
 }  // namespace MainMenuLayout
+
+/// Rows match `drawMainMenuMultiplayerOverlay` / multiplayer hit tests (dbg text grid).
+namespace MultiplayerMenuLayout
+{
+constexpr int kWide = 84;
+constexpr int kHubHostRow = 8;
+constexpr int kHubJoinRow = 15;
+constexpr int kHubBackRow = 22;
+constexpr int kHostStartRow = 15;
+constexpr int kHostBackRow = 24;
+constexpr int kJoinAddrFieldRow = 8;
+constexpr int kJoinPortFieldRow = 15;
+constexpr int kJoinConnectRow = 22;
+constexpr int kJoinBackRow = 29;
+}  // namespace MultiplayerMenuLayout
 
 struct MainMenuComputedLayout
 {
@@ -33,6 +49,7 @@ struct MainMenuComputedLayout
     int firstContentRow = 1;
     int subtitleRow = 1;
     int ruleRow = 2;
+    int buttonLineCount = MainMenuLayout::kMinButtonLineCount;
     std::array<int, 5> buttonTopRows{};
     int iconHintsRow = 1;
 };
@@ -46,6 +63,22 @@ struct HotbarLayoutPx
     float totalWidth = 0.0f;
 };
 
+struct CraftingOverlayLayoutPx
+{
+    float panelLeft = 0.0f;
+    float panelTop = 0.0f;
+    float panelRight = 0.0f;
+    float panelBottom = 0.0f;
+    float slotSize = 0.0f;
+    float slotGap = 0.0f;
+    float craftingOriginX = 0.0f;
+    float craftingOriginY = 0.0f;
+    float resultSlotX = 0.0f;
+    float resultSlotY = 0.0f;
+    float inventoryOriginX = 0.0f;
+    float inventoryOriginY = 0.0f;
+};
+
 [[nodiscard]] MainMenuComputedLayout computeMainMenuLayout(int textWidth, int textHeight);
 
 [[nodiscard]] HotbarLayoutPx computeHotbarLayoutPx(
@@ -53,6 +86,10 @@ struct HotbarLayoutPx
     std::uint32_t windowHeight,
     std::uint16_t textHeight,
     std::uint16_t hotbarRow);
+[[nodiscard]] CraftingOverlayLayoutPx computeCraftingOverlayLayoutPx(
+    std::uint32_t windowWidth,
+    std::uint32_t windowHeight,
+    bool useWorkbench);
 
 [[nodiscard]] int computeCenteredColumnStart(int totalChars);
 [[nodiscard]] int computeHotbarGridWidthChars();
@@ -71,11 +108,18 @@ struct HotbarLayoutPx
 [[nodiscard]] bgfx::ProgramHandle loadProgram(const std::string& vertexShaderName, const std::string& fragmentShaderName);
 
 [[nodiscard]] bgfx::TextureHandle createChunkAtlasTexture();
+[[nodiscard]] bgfx::TextureHandle createTextureFromPng(
+    const std::filesystem::path& relativePath,
+    std::uint16_t textureFlags = BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+    std::uint16_t* outWidthPx = nullptr,
+    std::uint16_t* outHeightPx = nullptr);
 [[nodiscard]] bgfx::TextureHandle createLogoTextureFromPng(
     bx::AllocatorI& allocator,
     std::uint16_t& outWidth,
     std::uint16_t& outHeight);
 [[nodiscard]] bgfx::TextureHandle createMinecraftStyleCrosshairTexture();
+[[nodiscard]] bgfx::TextureHandle createBlockBreakOverlayTexture(int stage);
+[[nodiscard]] bgfx::TextureHandle createHeartTexture(int fillStage);
 
 void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
 void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
@@ -106,6 +150,7 @@ void drawBagHud(
     const FrameDebugData& frameDebugData);
 
 void drawMainMenuOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
+void drawMainMenuMultiplayerOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
 void drawPauseMenuOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
 
 }  // namespace vibecraft::render::detail

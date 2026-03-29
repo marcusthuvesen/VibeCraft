@@ -8,7 +8,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cstdlib>
+#include <fstream>
+#include <limits>
 #include <optional>
 #include <unordered_set>
 #include <vector>
@@ -17,6 +20,8 @@
 #include "vibecraft/core/Logger.hpp"
 #include "vibecraft/game/CollisionHelpers.hpp"
 #include "vibecraft/multiplayer/UdpTransport.hpp"
+#include "vibecraft/platform/LocalNetworkAddress.hpp"
+#include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
 namespace vibecraft::app
@@ -36,7 +41,8 @@ struct StreamingSettings
     int generationChunkRadius = 5;
     std::size_t generationChunkBudgetPerFrame = 12;
     std::size_t prefetchGenerationBudgetPerFrame = 6;
-    std::size_t meshBuildBudgetPerFrame = 8;
+    /// Lower cap smooths frame time when many chunks need rebuilds (slightly slower catch-up).
+    std::size_t meshBuildBudgetPerFrame = 5;
     std::size_t offResidentDirtyRebuildBudget = 8;
     int forwardPrefetchChunks = 2;
 };
@@ -70,6 +76,69 @@ constexpr InputTuning kInputTuning{};
 constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
 constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
+
+[[nodiscard]] bool isEarthyBlockType(const world::BlockType blockType)
+{
+    return blockType == world::BlockType::Grass || blockType == world::BlockType::Dirt
+        || blockType == world::BlockType::Sand;
+}
+
+[[nodiscard]] bool isStoneFamilyBlockType(const world::BlockType blockType)
+{
+    return blockType == world::BlockType::Stone || blockType == world::BlockType::Deepslate
+        || blockType == world::BlockType::CoalOre || blockType == world::BlockType::IronOre
+        || blockType == world::BlockType::GoldOre || blockType == world::BlockType::DiamondOre
+        || blockType == world::BlockType::EmeraldOre;
+}
+
+[[nodiscard]] bool isWoodFamilyBlockType(const world::BlockType blockType)
+{
+    return blockType == world::BlockType::TreeTrunk || blockType == world::BlockType::TreeCrown;
+}
+
+[[nodiscard]] float miningSpeedMultiplier(
+    const world::BlockType equippedBlockType,
+    const world::BlockType targetBlockType)
+{
+    if (equippedBlockType == world::BlockType::Air)
+    {
+        return 1.0f;
+    }
+    if (equippedBlockType == targetBlockType)
+    {
+        return 2.0f;
+    }
+    if (isStoneFamilyBlockType(targetBlockType) && isStoneFamilyBlockType(equippedBlockType))
+    {
+        return 2.5f;
+    }
+    if (isEarthyBlockType(targetBlockType) && isEarthyBlockType(equippedBlockType))
+    {
+        return 2.2f;
+    }
+    if (isWoodFamilyBlockType(targetBlockType) && isWoodFamilyBlockType(equippedBlockType))
+    {
+        return 2.2f;
+    }
+    return 1.15f;
+}
+
+[[nodiscard]] float miningDurationSeconds(
+    const world::BlockType targetBlockType,
+    const world::BlockType equippedBlockType)
+{
+    constexpr float kHardnessToSeconds = 0.65f;
+    constexpr float kMinimumBreakDurationSeconds = 0.06f;
+    const world::BlockMetadata metadata = world::blockMetadata(targetBlockType);
+    if (!metadata.breakable)
+    {
+        return std::numeric_limits<float>::max();
+    }
+
+    const float speedMultiplier = miningSpeedMultiplier(equippedBlockType, targetBlockType);
+    const float rawDurationSeconds = metadata.hardness * kHardnessToSeconds / speedMultiplier;
+    return std::max(kMinimumBreakDurationSeconds, rawDurationSeconds);
+}
 
 [[nodiscard]] const char* timeOfDayLabel(const game::TimeOfDayPeriod period)
 {
@@ -536,6 +605,255 @@ void applyMeshSyncGpuData(
     return "127.0.0.1";
 }
 
+void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHotbarIndex)
+{
+    hotbarSlots.fill({});
+    hotbarSlots[0].equippedItem = EquippedItem::DiamondSword;
+    hotbarSlots[0].count = 1;
+    hotbarSlots[0].blockType = world::BlockType::Air;
+    selectedHotbarIndex = 0;
+}
+
+[[nodiscard]] float meleeDamageForSlot(const InventorySlot& slot)
+{
+    switch (slot.equippedItem)
+    {
+    case EquippedItem::DiamondSword:
+        return 7.0f;
+    case EquippedItem::None:
+    default:
+        return 1.0f;
+    }
+}
+
+[[nodiscard]] float meleeReachForSlot(const InventorySlot& slot)
+{
+    switch (slot.equippedItem)
+    {
+    case EquippedItem::DiamondSword:
+        return 3.4f;
+    case EquippedItem::None:
+    default:
+        return 2.75f;
+    }
+}
+
+[[nodiscard]] float knockbackDistanceForSlot(const InventorySlot& slot)
+{
+    switch (slot.equippedItem)
+    {
+    case EquippedItem::DiamondSword:
+        return 0.9f;
+    case EquippedItem::None:
+    default:
+        return 0.45f;
+    }
+}
+
+[[nodiscard]] EquippedItem mobDropItemForKind(const game::MobKind mobKind)
+{
+    using MK = game::MobKind;
+    switch (mobKind)
+    {
+    case MK::HostileStalker:
+        return EquippedItem::RottenFlesh;
+    case MK::Cow:
+        return EquippedItem::Leather;
+    case MK::Pig:
+        return EquippedItem::RawPorkchop;
+    case MK::Sheep:
+        return EquippedItem::Mutton;
+    case MK::Chicken:
+        return EquippedItem::Feather;
+    }
+    return EquippedItem::RottenFlesh;
+}
+
+[[nodiscard]] render::HudItemKind hudItemKindForEquippedItem(const EquippedItem equippedItem)
+{
+    using HIK = render::HudItemKind;
+    switch (equippedItem)
+    {
+    case EquippedItem::DiamondSword:
+        return HIK::DiamondSword;
+    case EquippedItem::RottenFlesh:
+        return HIK::RottenFlesh;
+    case EquippedItem::Leather:
+        return HIK::Leather;
+    case EquippedItem::RawPorkchop:
+        return HIK::RawPorkchop;
+    case EquippedItem::Mutton:
+        return HIK::Mutton;
+    case EquippedItem::Feather:
+        return HIK::Feather;
+    case EquippedItem::None:
+    default:
+        return HIK::None;
+    }
+}
+
+[[nodiscard]] world::BlockType networkFallbackBlockTypeForEquippedItem(const EquippedItem equippedItem)
+{
+    using BK = world::BlockType;
+    switch (equippedItem)
+    {
+    case EquippedItem::RottenFlesh:
+        return BK::CoalOre;
+    case EquippedItem::Leather:
+        return BK::TreeTrunk;
+    case EquippedItem::RawPorkchop:
+        return BK::Dirt;
+    case EquippedItem::Mutton:
+        return BK::TreeCrown;
+    case EquippedItem::Feather:
+        return BK::Sand;
+    case EquippedItem::DiamondSword:
+        return BK::IronOre;
+    case EquippedItem::None:
+    default:
+        return BK::Air;
+    }
+}
+
+template <std::size_t SlotCount>
+[[nodiscard]] bool addEquippedItemToSlots(
+    std::array<InventorySlot, SlotCount>& slots,
+    const EquippedItem equippedItem,
+    std::size_t* const selectedHotbarIndex)
+{
+    for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
+    {
+        InventorySlot& slot = slots[slotIndex];
+        if (slot.equippedItem == equippedItem && slot.count < kMaxStackSize)
+        {
+            ++slot.count;
+            if (selectedHotbarIndex != nullptr)
+            {
+                *selectedHotbarIndex = slotIndex;
+            }
+            return true;
+        }
+    }
+
+    for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
+    {
+        InventorySlot& slot = slots[slotIndex];
+        if (slot.count == 0)
+        {
+            slot.blockType = world::BlockType::Air;
+            slot.equippedItem = equippedItem;
+            slot.count = 1;
+            if (selectedHotbarIndex != nullptr)
+            {
+                *selectedHotbarIndex = slotIndex;
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
+[[nodiscard]] bool addEquippedItemToInventory(
+    HotbarSlots& hotbarSlots,
+    BagSlots& bagSlots,
+    const EquippedItem equippedItem,
+    std::size_t& selectedHotbarIndex)
+{
+    if (equippedItem == EquippedItem::None)
+    {
+        return false;
+    }
+    if (addEquippedItemToSlots(hotbarSlots, equippedItem, &selectedHotbarIndex))
+    {
+        return true;
+    }
+    return addEquippedItemToSlots(bagSlots, equippedItem, nullptr);
+}
+
+[[nodiscard]] render::FrameDebugData::HotbarSlotHud makeHudSlot(const InventorySlot& slot)
+{
+    return render::FrameDebugData::HotbarSlotHud{
+        .blockType = slot.blockType,
+        .count = slot.count,
+        .itemKind = hudItemKindForEquippedItem(slot.equippedItem),
+        .hasDiamondSword = slot.equippedItem == EquippedItem::DiamondSword,
+    };
+}
+
+[[nodiscard]] bool canPlaceIntoCraftingGrid(const InventorySlot& slot)
+{
+    return slot.equippedItem == EquippedItem::None;
+}
+
+[[nodiscard]] bool canReceiveCraftingOutput(
+    const InventorySlot& carriedSlot,
+    const InventorySlot& outputSlot)
+{
+    return isInventorySlotEmpty(carriedSlot)
+        || (canMergeInventorySlots(carriedSlot, outputSlot)
+            && carriedSlot.count + outputSlot.count <= kMaxStackSize);
+}
+
+void mergeOrSwapInventorySlot(
+    InventorySlot& carriedSlot,
+    InventorySlot& targetSlot,
+    const bool allowPlacedEquippedItem)
+{
+    if (!allowPlacedEquippedItem && carriedSlot.equippedItem != EquippedItem::None)
+    {
+        return;
+    }
+    if (!allowPlacedEquippedItem && targetSlot.equippedItem != EquippedItem::None)
+    {
+        return;
+    }
+
+    if (isInventorySlotEmpty(carriedSlot))
+    {
+        std::swap(carriedSlot, targetSlot);
+        return;
+    }
+    if (isInventorySlotEmpty(targetSlot))
+    {
+        std::swap(carriedSlot, targetSlot);
+        return;
+    }
+
+    if (canMergeInventorySlots(carriedSlot, targetSlot) && targetSlot.count < kMaxStackSize)
+    {
+        const std::uint32_t space = kMaxStackSize - targetSlot.count;
+        const std::uint32_t transfer = std::min(space, carriedSlot.count);
+        targetSlot.count += transfer;
+        carriedSlot.count -= transfer;
+        if (carriedSlot.count == 0)
+        {
+            clearInventorySlot(carriedSlot);
+        }
+        return;
+    }
+
+    std::swap(carriedSlot, targetSlot);
+}
+
+void trimInPlace(std::string& value)
+{
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0)
+    {
+        value.erase(value.begin());
+    }
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0)
+    {
+        value.pop_back();
+    }
+}
+
+[[nodiscard]] std::string trimCopy(std::string value)
+{
+    trimInPlace(value);
+    return value;
+}
+
 }
 
 bool Application::initialize()
@@ -547,18 +865,14 @@ bool Application::initialize()
         return false;
     }
 
-    // Always start from a fresh origin-centered dev world. Persisted worlds are currently easy
-    // to invalidate while terrain/render experiments are in flight, so skip loading and clear any
-    // previous save to keep reruns deterministic.
+    // Keep startup fast by deferring world creation until the player chooses Singleplayer.
     {
-        std::error_code errorCode;
-        std::filesystem::remove(savePath_, errorCode);
         vibecraft::world::World::ChunkMap emptyChunks;
         world_.replaceChunks(std::move(emptyChunks));
-        world_.generateRadius(terrainGenerator_, kStreamingSettings.bootstrapChunkRadius);
     }
 
     multiplayerAddress_ = resolveJoinAddressFromEnvironment();
+    loadMultiplayerPrefs();
 
     if (!renderer_.initialize(window_.nativeWindowHandle(), window_.width(), window_.height()))
     {
@@ -568,6 +882,7 @@ bool Application::initialize()
 
     const std::filesystem::path minecraftAudioRoot = audio::resolveMinecraftAudioRoot();
     core::logInfo(fmt::format("Minecraft audio assets: {}", minecraftAudioRoot.generic_string()));
+    audio::logMinecraftAudioPackDiagnostics(minecraftAudioRoot);
     if (!sharedAudioOutput_.initialize())
     {
         core::logWarning("Shared audio output failed to open; music and SFX are disabled.");
@@ -586,29 +901,15 @@ bool Application::initialize()
     musicDirector_.setMasterGain(musicVolume_);
     soundEffects_.setMasterGain(sfxVolume_);
 
-    window_.setRelativeMouseMode(true);
-    mouseCaptured_ = true;
-
-    const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
-    playerFeetPosition_ = findInitialSpawnFeetPosition(world_, terrainGenerator_, camera_.position(), spawnHeight);
-    isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
     camera_.addYawPitch(90.0f, 0.0f);
-    spawnFeetPosition_ = playerFeetPosition_;
-    accumulatedFallDistance_ = 0.0f;
-    playerVitals_.reset();
-    playerHazards_ = samplePlayerHazards(
-        world_,
-        playerFeetPosition_,
-        kPlayerMovementSettings.standingColliderHeight,
-        kPlayerMovementSettings.standingEyeHeight);
-    camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
     dayNightCycle_.setElapsedSeconds(70.0f);
     weatherSystem_.setElapsedSeconds(0.0f);
 
-    syncWorldData();
-
     gameScreen_ = GameScreen::MainMenu;
-    mainMenuNotice_ = "Press Multiplayer, then H to host or J to join " + multiplayerAddress_ + ".";
+    mouseCaptured_ = false;
+    window_.setRelativeMouseMode(false);
+    mainMenuNotice_ = "Multiplayer: open Multiplayer, then Host game or Join game.";
+    applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
     return true;
 }
 
@@ -668,6 +969,11 @@ void Application::update(const float deltaTimeSeconds)
             smoothedFrameTimeMs_ + (frameTimeMs - smoothedFrameTimeMs_) * kFrameTimeSmoothingAlpha;
     }
 
+    if (singleplayerLoadState_.active)
+    {
+        updateSingleplayerLoad();
+    }
+
     if (gameScreen_ == GameScreen::MainMenu)
     {
         mainMenuTimeSeconds_ += deltaTimeSeconds;
@@ -690,6 +996,7 @@ void Application::update(const float deltaTimeSeconds)
     // Multiplayer clients do not receive mob state from the host yet; skip local simulation.
     if (gameScreen_ == GameScreen::Playing && multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
+        const float healthBeforeMobTick = playerVitals_.health();
         mobSpawnSystem_.tick(
             world_,
             terrainGenerator_,
@@ -699,6 +1006,10 @@ void Application::update(const float deltaTimeSeconds)
             dayNightSample.period,
             mobSpawningEnabled_,
             playerVitals_);
+        if (playerVitals_.health() + 0.001f < healthBeforeMobTick)
+        {
+            soundEffects_.playPlayerHurt();
+        }
     }
 
     std::optional<world::RaycastHit> raycastHit;
@@ -713,6 +1024,9 @@ void Application::update(const float deltaTimeSeconds)
     frameDebugData.totalFaces = world_.totalVisibleFaces();
     frameDebugData.residentChunkCount = static_cast<std::uint32_t>(residentChunkMeshIds_.size());
     frameDebugData.cameraPosition = camera_.position();
+    frameDebugData.uiCursorX = inputState_.mouseWindowX;
+    frameDebugData.uiCursorY = inputState_.mouseWindowY;
+    frameDebugData.showWorldOriginGuides = showWorldOriginGuides_;
     frameDebugData.health = playerVitals_.health();
     frameDebugData.maxHealth = playerVitals_.maxHealth();
     const float safeFrameTimeMs = std::max(smoothedFrameTimeMs_, 0.001f);
@@ -741,14 +1055,33 @@ void Application::update(const float deltaTimeSeconds)
         respawnNotice_.empty() ? "" : fmt::format("  {}", respawnNotice_));
     for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
     {
-        frameDebugData.hotbarSlots[slotIndex].blockType = hotbarSlots_[slotIndex].blockType;
-        frameDebugData.hotbarSlots[slotIndex].count = hotbarSlots_[slotIndex].count;
+        frameDebugData.hotbarSlots[slotIndex] = makeHudSlot(hotbarSlots_[slotIndex]);
     }
     frameDebugData.hotbarSelectedIndex = selectedHotbarIndex_;
+    frameDebugData.heldItemSwing = heldItemSwing_;
     for (std::size_t i = 0; i < frameDebugData.bagSlots.size(); ++i)
     {
-        frameDebugData.bagSlots[i].blockType = bagSlots_[i].blockType;
-        frameDebugData.bagSlots[i].count = bagSlots_[i].count;
+        frameDebugData.bagSlots[i] = makeHudSlot(bagSlots_[i]);
+    }
+    if (craftingMenuState_.active)
+    {
+        frameDebugData.craftingMenuActive = true;
+        frameDebugData.craftingUsesWorkbench = craftingMenuState_.usesWorkbench;
+        frameDebugData.craftingTitle =
+            craftingMenuState_.usesWorkbench ? "Crafting Table" : "Inventory Crafting";
+        frameDebugData.craftingHint = craftingMenuState_.hint;
+        frameDebugData.craftingCursorSlot = makeHudSlot(craftingMenuState_.carriedSlot);
+        if (const std::optional<CraftingMatch> craftingMatch = evaluateCraftingGrid(
+                craftingMenuState_.gridSlots,
+                craftingMenuState_.usesWorkbench ? CraftingMode::Workbench3x3 : CraftingMode::Inventory2x2);
+            craftingMatch.has_value())
+        {
+            frameDebugData.craftingResultSlot = makeHudSlot(craftingMatch->output);
+        }
+        for (std::size_t slotIndex = 0; slotIndex < frameDebugData.craftingGridSlots.size(); ++slotIndex)
+        {
+            frameDebugData.craftingGridSlots[slotIndex] = makeHudSlot(craftingMenuState_.gridSlots[slotIndex]);
+        }
     }
     frameDebugData.worldPickups.reserve(droppedItems_.size());
     for (const DroppedItem& droppedItem : droppedItems_)
@@ -756,6 +1089,7 @@ void Application::update(const float deltaTimeSeconds)
         const float bobOffset = 0.14f + std::sin(droppedItem.ageSeconds * 6.0f) * 0.08f;
         frameDebugData.worldPickups.push_back(render::FrameDebugData::WorldPickupHud{
             .blockType = droppedItem.blockType,
+            .itemKind = hudItemKindForEquippedItem(droppedItem.equippedItem),
             .worldPosition = droppedItem.worldPosition + glm::vec3(0.0f, bobOffset, 0.0f),
             .spinRadians = droppedItem.spinRadians,
         });
@@ -763,14 +1097,15 @@ void Application::update(const float deltaTimeSeconds)
 
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
-        const game::MobSpawnSettings& mobSettings = mobSpawnSystem_.settings();
-        frameDebugData.worldMobs.reserve(mobSpawnSystem_.enemies().size());
-        for (const game::EnemyInstance& enemy : mobSpawnSystem_.enemies())
+        frameDebugData.worldMobs.reserve(mobSpawnSystem_.mobs().size());
+        for (const game::MobInstance& mob : mobSpawnSystem_.mobs())
         {
             frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
-                .feetPosition = {enemy.feetX, enemy.feetY, enemy.feetZ},
-                .halfWidth = mobSettings.mobHalfWidth,
-                .height = mobSettings.mobHeight,
+                .feetPosition = {mob.feetX, mob.feetY, mob.feetZ},
+                .yawRadians = mob.yawRadians,
+                .halfWidth = mob.halfWidth,
+                .height = mob.height,
+                .mobKind = mob.kind,
             });
         }
     }
@@ -779,6 +1114,16 @@ void Application::update(const float deltaTimeSeconds)
     {
         frameDebugData.hasTarget = true;
         frameDebugData.targetBlock = raycastHit->solidBlock;
+        if (activeMiningState_.active
+            && activeMiningState_.targetBlockPosition == raycastHit->solidBlock
+            && activeMiningState_.requiredSeconds > 0.0f)
+        {
+            frameDebugData.miningTargetActive = true;
+            frameDebugData.miningTargetProgress = std::clamp(
+                activeMiningState_.elapsedSeconds / activeMiningState_.requiredSeconds,
+                0.0f,
+                1.0f);
+        }
     }
 
     if (gameScreen_ == GameScreen::MainMenu)
@@ -803,6 +1148,56 @@ void Application::update(const float deltaTimeSeconds)
                 textWidth,
                 textHeight);
         }
+        else if (singleplayerLoadState_.active)
+        {
+            frameDebugData.mainMenuHoveredButton = -1;
+            frameDebugData.mainMenuLoadingActive = true;
+            frameDebugData.mainMenuLoadingProgress = singleplayerLoadState_.progress;
+            frameDebugData.mainMenuLoadingLabel = singleplayerLoadState_.label;
+        }
+        else if (mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None)
+        {
+            frameDebugData.mainMenuMultiplayerPanel = mainMenuMultiplayerPanel_;
+            frameDebugData.mainMenuMultiplayerLanAddress = detectedLanAddress_;
+            frameDebugData.mainMenuJoinAddressField = joinAddressInput_;
+            frameDebugData.mainMenuJoinPortField = joinPortInput_;
+            frameDebugData.mainMenuMultiplayerPortDisplay = multiplayerPort_;
+            frameDebugData.mainMenuJoinFocusedField = joinFocusedField_;
+            switch (mainMenuMultiplayerPanel_)
+            {
+            case MainMenuMultiplayerPanel::Hub:
+                frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerHub(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                break;
+            case MainMenuMultiplayerPanel::Host:
+                frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerHost(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                break;
+            case MainMenuMultiplayerPanel::Join:
+                frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerJoin(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    textWidth,
+                    textHeight);
+                break;
+            case MainMenuMultiplayerPanel::None:
+            default:
+                frameDebugData.mainMenuMultiplayerHoveredControl = -1;
+                break;
+            }
+        }
         else
         {
             frameDebugData.mainMenuHoveredButton = render::Renderer::hitTestMainMenu(
@@ -812,6 +1207,12 @@ void Application::update(const float deltaTimeSeconds)
                 window_.height(),
                 textWidth,
                 textHeight);
+        }
+        if (singleplayerLoadState_.active)
+        {
+            frameDebugData.mainMenuLoadingActive = true;
+            frameDebugData.mainMenuLoadingProgress = singleplayerLoadState_.progress;
+            frameDebugData.mainMenuLoadingLabel = singleplayerLoadState_.label;
         }
     }
 
@@ -901,13 +1302,34 @@ void Application::update(const float deltaTimeSeconds)
 
 void Application::processInput(const float deltaTimeSeconds)
 {
-    if (!inputState_.windowFocused)
+    const bool allowMainMenuPointerInputWhileUnfocused =
+        gameScreen_ == GameScreen::MainMenu
+        && (inputState_.leftMousePressed || inputState_.leftMouseClicked);
+    if (!inputState_.windowFocused && !allowMainMenuPointerInputWhileUnfocused)
     {
         if (mouseCaptured_)
         {
             mouseCaptured_ = false;
             window_.setRelativeMouseMode(false);
         }
+        return;
+    }
+
+    const bool f3Down = inputState_.isKeyDown(SDL_SCANCODE_F3);
+    if (f3Down && !debugF3KeyWasDown_
+        && (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused))
+    {
+        showWorldOriginGuides_ = !showWorldOriginGuides_;
+    }
+    debugF3KeyWasDown_ = f3Down;
+
+    const bool craftingKeyDown = inputState_.isKeyDown(SDL_SCANCODE_E);
+    const bool craftingKeyPressed = craftingKeyDown && !craftingKeyWasDown_;
+    craftingKeyWasDown_ = craftingKeyDown;
+
+    if (craftingMenuState_.active && (inputState_.escapePressed || craftingKeyPressed))
+    {
+        closeCraftingMenu();
         return;
     }
 
@@ -943,6 +1365,20 @@ void Application::processInput(const float deltaTimeSeconds)
                 inputState_.clearMouseMotion();
             }
         }
+        else if (gameScreen_ == GameScreen::MainMenu && mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None
+                 && !mainMenuSoundSettingsOpen_)
+        {
+            if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Hub)
+            {
+                mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
+            }
+            else
+            {
+                mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Hub;
+            }
+            window_.setTextInputActive(false);
+            mainMenuNotice_.clear();
+        }
         else if (gameScreen_ == GameScreen::MainMenu && mainMenuSoundSettingsOpen_)
         {
             mainMenuSoundSettingsOpen_ = false;
@@ -962,18 +1398,33 @@ void Application::processInput(const float deltaTimeSeconds)
         window_.setRelativeMouseMode(true);
         inputState_.clearMouseMotion();
     }
+    if (inputState_.tabPressed && gameScreen_ == GameScreen::Playing)
+    {
+        mouseCaptured_ = true;
+        window_.setRelativeMouseMode(true);
+        inputState_.clearMouseMotion();
+    }
 
     if (gameScreen_ == GameScreen::MainMenu)
     {
-        handleMainMenuMultiplayerShortcuts();
+        if (mouseCaptured_)
+        {
+            mouseCaptured_ = false;
+            window_.setRelativeMouseMode(false);
+        }
+        processJoinMenuTextInput();
+        if (singleplayerLoadState_.active)
+        {
+            return;
+        }
         const bgfx::Stats* const stats = bgfx::getStats();
         const std::uint16_t textWidth =
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
         const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
 
-        // First frame often receives a stray mouse-down (e.g. focus / window activation) that maps
-        // onto "Singleplayer" and skips the title screen.
-        if (inputState_.leftMousePressed && runFrameIndex_ > 0)
+        // Ignore early frames: launch/focus can deliver spurious releases, and dbg-text dimensions may
+        // not match the first rendered menu until a couple of frames have passed.
+        if (inputState_.leftMouseClicked && runFrameIndex_ >= 2)
         {
             if (mainMenuSoundSettingsOpen_)
             {
@@ -1010,6 +1461,90 @@ void Application::processInput(const float deltaTimeSeconds)
                     break;
                 }
             }
+            else if (mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None)
+            {
+                if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Hub)
+                {
+                    const int hit = render::Renderer::hitTestMainMenuMultiplayerHub(
+                        inputState_.mouseWindowX,
+                        inputState_.mouseWindowY,
+                        window_.width(),
+                        window_.height(),
+                        textWidth,
+                        textHeight);
+                    switch (hit)
+                    {
+                    case 0:
+                        refreshDetectedLanAddress();
+                        mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Host;
+                        mainMenuNotice_.clear();
+                        break;
+                    case 1:
+                        mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Join;
+                        joinFocusedField_ = 0;
+                        window_.setTextInputActive(true);
+                        mainMenuNotice_.clear();
+                        break;
+                    case 2:
+                        mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
+                        mainMenuNotice_.clear();
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                else if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Host)
+                {
+                    const int hit = render::Renderer::hitTestMainMenuMultiplayerHost(
+                        inputState_.mouseWindowX,
+                        inputState_.mouseWindowY,
+                        window_.width(),
+                        window_.height(),
+                        textWidth,
+                        textHeight);
+                    switch (hit)
+                    {
+                    case 0:
+                        tryStartHostFromMenu();
+                        break;
+                    case 1:
+                        mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Hub;
+                        mainMenuNotice_.clear();
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                else if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Join)
+                {
+                    const int hit = render::Renderer::hitTestMainMenuMultiplayerJoin(
+                        inputState_.mouseWindowX,
+                        inputState_.mouseWindowY,
+                        window_.width(),
+                        window_.height(),
+                        textWidth,
+                        textHeight);
+                    switch (hit)
+                    {
+                    case 0:
+                        joinFocusedField_ = 0;
+                        break;
+                    case 1:
+                        joinFocusedField_ = 1;
+                        break;
+                    case 2:
+                        tryConnectFromJoinMenu();
+                        break;
+                    case 3:
+                        mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Hub;
+                        window_.setTextInputActive(false);
+                        mainMenuNotice_.clear();
+                        break;
+                    default:
+                        break;
+                    }
+                }
+            }
             else
             {
                 const int hit = render::Renderer::hitTestMainMenu(
@@ -1022,20 +1557,11 @@ void Application::processInput(const float deltaTimeSeconds)
                 switch (hit)
                 {
                 case 0:
-                    stopMultiplayerSessions();
-                    gameScreen_ = GameScreen::Playing;
-                    mainMenuSoundSettingsOpen_ = false;
-                    mouseCaptured_ = true;
-                    window_.setRelativeMouseMode(true);
-                    mainMenuNotice_.clear();
-                    inputState_.clearMouseMotion();
+                    beginSingleplayerLoad();
                     break;
                 case 1:
-                    mainMenuNotice_ = fmt::format(
-                        "Press H to host on {} or J to join {}:{}.",
-                        multiplayerPort_,
-                        multiplayerAddress_,
-                        multiplayerPort_);
+                    mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Hub;
+                    mainMenuNotice_.clear();
                     break;
                 case 2:
                     mainMenuNotice_ = "VibeCraft Realms is not available yet.";
@@ -1068,7 +1594,7 @@ void Application::processInput(const float deltaTimeSeconds)
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
         const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
 
-        if (inputState_.leftMousePressed)
+        if (inputState_.leftMouseClicked)
         {
             if (pauseGameSettingsOpen_)
             {
@@ -1158,12 +1684,15 @@ void Application::processInput(const float deltaTimeSeconds)
                     break;
                 case 2:
                     stopMultiplayerSessions();
+                    mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
+                    window_.setTextInputActive(false);
                     gameScreen_ = GameScreen::MainMenu;
                     pauseSoundSettingsOpen_ = false;
                     pauseGameSettingsOpen_ = false;
                     mouseCaptured_ = false;
                     window_.setRelativeMouseMode(false);
                     pauseMenuNotice_.clear();
+                    singleplayerLoadState_ = {};
                     break;
                 case 3:
                     inputState_.quitRequested = true;
@@ -1183,6 +1712,23 @@ void Application::processInput(const float deltaTimeSeconds)
     if (gameScreen_ != GameScreen::Playing)
     {
         return;
+    }
+
+    if (craftingMenuState_.active)
+    {
+        mouseCaptured_ = false;
+        window_.setRelativeMouseMode(false);
+        if (inputState_.leftMouseClicked)
+        {
+            handleCraftingMenuClick();
+        }
+        return;
+    }
+
+    heldItemSwing_ = std::max(0.0f, heldItemSwing_ - deltaTimeSeconds * 5.2f);
+    if (inputState_.leftMousePressed)
+    {
+        heldItemSwing_ = 1.0f;
     }
 
     if (mouseCaptured_)
@@ -1227,6 +1773,26 @@ void Application::processInput(const float deltaTimeSeconds)
     if (inputState_.isKeyDown(SDL_SCANCODE_9))
     {
         selectedHotbarIndex_ = 8;
+    }
+    if (inputState_.mouseWheelDeltaY != 0)
+    {
+        const int slotCount = static_cast<int>(hotbarSlots_.size());
+        int selected = static_cast<int>(selectedHotbarIndex_);
+        if (inputState_.mouseWheelDeltaY > 0)
+        {
+            selected -= inputState_.mouseWheelDeltaY;
+        }
+        else
+        {
+            selected += -inputState_.mouseWheelDeltaY;
+        }
+        selected = ((selected % slotCount) + slotCount) % slotCount;
+        selectedHotbarIndex_ = static_cast<std::size_t>(selected);
+    }
+    if (craftingKeyPressed)
+    {
+        openCraftingMenu(false);
+        return;
     }
 
     const bool sneaking = inputState_.isKeyDown(SDL_SCANCODE_LSHIFT);
@@ -1290,6 +1856,9 @@ void Application::processInput(const float deltaTimeSeconds)
     glm::vec3 horizontalDisplacement =
         horizontalForward * localMotion.z + horizontalRight * localMotion.x;
 
+    const float horizontalMoveDistance =
+        glm::length(glm::vec2(horizontalDisplacement.x, horizontalDisplacement.z));
+
     if (glm::dot(horizontalDisplacement, horizontalDisplacement) > 0.0f)
     {
         static_cast<void>(movePlayerAxisWithCollision(
@@ -1340,17 +1909,55 @@ void Application::processInput(const float deltaTimeSeconds)
     }
 
     const bool landedThisFrame = !wasGrounded && isGrounded_;
+    bool playerTookDamageThisFrame = false;
     if (landedThisFrame)
     {
+        const float healthBeforeLanding = playerVitals_.health();
         static_cast<void>(playerVitals_.applyLandingImpact(accumulatedFallDistance_, playerHazards_.bodyInWater));
+        if (playerVitals_.health() + 0.001f < healthBeforeLanding)
+        {
+            playerTookDamageThisFrame = true;
+        }
         accumulatedFallDistance_ = 0.0f;
+        footstepDistanceAccumulator_ = 0.0f;
     }
     else if (playerHazards_.bodyInWater)
     {
         accumulatedFallDistance_ = 0.0f;
     }
 
+    if (isGrounded_ && !playerHazards_.bodyInWater && horizontalMoveDistance > 0.0001f)
+    {
+        const float stepIntervalMeters = sprinting ? 0.31f : 0.42f;
+        footstepDistanceAccumulator_ += horizontalMoveDistance;
+        while (footstepDistanceAccumulator_ >= stepIntervalMeters)
+        {
+            footstepDistanceAccumulator_ -= stepIntervalMeters;
+            const int bx = static_cast<int>(std::floor(playerFeetPosition_.x));
+            const int by = static_cast<int>(std::floor(playerFeetPosition_.y)) - 1;
+            const int bz = static_cast<int>(std::floor(playerFeetPosition_.z));
+            const world::BlockType groundBlock = world_.blockAt(bx, by, bz);
+            if (world::isSolid(groundBlock))
+            {
+                soundEffects_.playFootstep(groundBlock);
+            }
+        }
+    }
+    else if (!isGrounded_ || playerHazards_.bodyInWater)
+    {
+        footstepDistanceAccumulator_ = 0.0f;
+    }
+
+    const float healthBeforeEnvironmentTick = playerVitals_.health();
     playerVitals_.tickEnvironment(deltaTimeSeconds, playerHazards_);
+    if (playerVitals_.health() + 0.001f < healthBeforeEnvironmentTick)
+    {
+        playerTookDamageThisFrame = true;
+    }
+    if (playerTookDamageThisFrame)
+    {
+        soundEffects_.playPlayerHurt();
+    }
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, eyeHeight, 0.0f));
 
     if (playerVitals_.isDead())
@@ -1359,54 +1966,140 @@ void Application::processInput(const float deltaTimeSeconds)
         respawnPlayer();
     }
 
+    bool attackedMobThisFrame = false;
+    if (inputState_.leftMousePressed)
+    {
+        const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+        if (const std::optional<game::MobDamageResult> mobDamage = mobSpawnSystem_.damageClosestAlongRay(
+                world_,
+                camera_.position(),
+                camera_.forward(),
+                meleeReachForSlot(selectedSlot),
+                meleeDamageForSlot(selectedSlot),
+                playerFeetPosition_,
+                knockbackDistanceForSlot(selectedSlot));
+            mobDamage.has_value())
+        {
+            attackedMobThisFrame = true;
+            activeMiningState_.active = false;
+            activeMiningState_.elapsedSeconds = 0.0f;
+            soundEffects_.playPlayerAttack();
+            if (mobDamage->killed)
+            {
+                soundEffects_.playMobDefeat(mobDamage->mobKind);
+                spawnDroppedItemAtPosition(
+                    mobDropItemForKind(mobDamage->mobKind),
+                    mobDamage->feetPosition + glm::vec3(0.0f, 0.35f, 0.0f));
+            }
+            else
+            {
+                soundEffects_.playMobHit(mobDamage->mobKind);
+            }
+        }
+    }
+
     const auto raycastHit =
         world_.raycast(camera_.position(), camera_.forward(), kInputTuning.reachDistance);
-    if (!raycastHit.has_value())
+    if (attackedMobThisFrame)
     {
         return;
     }
-
-    if (inputState_.leftMousePressed)
+    if (!raycastHit.has_value())
     {
-        const world::WorldEditCommand command{
-            .action = world::WorldEditAction::Remove,
-            .position = raycastHit->solidBlock,
-            .blockType = world::BlockType::Air,
-        };
-        if (world_.applyEditCommand(command))
+        activeMiningState_.active = false;
+        activeMiningState_.elapsedSeconds = 0.0f;
+        return;
+    }
+
+    const std::uint32_t mouseButtons = SDL_GetMouseState(nullptr, nullptr);
+    const bool leftMouseHeld = (mouseButtons & SDL_BUTTON_LMASK) != 0U;
+    if (!leftMouseHeld)
+    {
+        activeMiningState_.active = false;
+        activeMiningState_.elapsedSeconds = 0.0f;
+    }
+    else
+    {
+        const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+        const world::BlockType equippedBlockType =
+            selectedSlot.count == 0 ? world::BlockType::Air : selectedSlot.blockType;
+        const bool targetChanged = !activeMiningState_.active
+            || activeMiningState_.targetBlockPosition != raycastHit->solidBlock
+            || activeMiningState_.targetBlockType != raycastHit->blockType
+            || activeMiningState_.equippedBlockType != equippedBlockType;
+        if (targetChanged)
         {
-            spawnDroppedItem(raycastHit->blockType, raycastHit->solidBlock);
-            soundEffects_.playBlockBreak(raycastHit->blockType);
-            if (hostSession_ != nullptr && hostSession_->running())
+            activeMiningState_.active = true;
+            activeMiningState_.targetBlockPosition = raycastHit->solidBlock;
+            activeMiningState_.targetBlockType = raycastHit->blockType;
+            activeMiningState_.equippedBlockType = equippedBlockType;
+            activeMiningState_.elapsedSeconds = 0.0f;
+            activeMiningState_.requiredSeconds = miningDurationSeconds(raycastHit->blockType, equippedBlockType);
+            soundEffects_.playBlockDigTick(raycastHit->blockType);
+            activeMiningState_.digSoundCooldownSeconds = 0.11f;
+        }
+        else
+        {
+            activeMiningState_.digSoundCooldownSeconds -= deltaTimeSeconds;
+            if (activeMiningState_.digSoundCooldownSeconds <= 0.0f)
             {
-                hostSession_->broadcastBlockEdit({
-                    .authorClientId = localClientId_,
-                    .action = command.action,
-                    .x = command.position.x,
-                    .y = command.position.y,
-                    .z = command.position.z,
-                    .blockType = command.blockType,
-                });
+                soundEffects_.playBlockDigTick(raycastHit->blockType);
+                activeMiningState_.digSoundCooldownSeconds = 0.11f;
             }
-            if (clientSession_ != nullptr && clientSession_->connected())
+        }
+        activeMiningState_.elapsedSeconds += deltaTimeSeconds;
+
+        if (activeMiningState_.elapsedSeconds >= activeMiningState_.requiredSeconds)
+        {
+            const world::WorldEditCommand command{
+                .action = world::WorldEditAction::Remove,
+                .position = raycastHit->solidBlock,
+                .blockType = world::BlockType::Air,
+            };
+            if (world_.applyEditCommand(command))
             {
-                clientSession_->sendInput(
-                    {
-                        .clientId = clientSession_->clientId(),
-                        .breakBlock = true,
-                        .targetX = command.position.x,
-                        .targetY = command.position.y,
-                        .targetZ = command.position.z,
-                    },
-                    networkServerTick_);
+                spawnDroppedItem(raycastHit->blockType, raycastHit->solidBlock);
+                soundEffects_.playBlockBreak(raycastHit->blockType);
+                if (hostSession_ != nullptr && hostSession_->running())
+                {
+                    hostSession_->broadcastBlockEdit({
+                        .authorClientId = localClientId_,
+                        .action = command.action,
+                        .x = command.position.x,
+                        .y = command.position.y,
+                        .z = command.position.z,
+                        .blockType = command.blockType,
+                    });
+                }
+                if (clientSession_ != nullptr && clientSession_->connected())
+                {
+                    clientSession_->sendInput(
+                        {
+                            .clientId = clientSession_->clientId(),
+                            .breakBlock = true,
+                            .targetX = command.position.x,
+                            .targetY = command.position.y,
+                            .targetZ = command.position.z,
+                        },
+                        networkServerTick_);
+                }
             }
+            activeMiningState_.active = false;
+            activeMiningState_.elapsedSeconds = 0.0f;
         }
     }
 
     if (inputState_.rightMousePressed)
     {
+        if (raycastHit->blockType == world::BlockType::CraftingTable)
+        {
+            openCraftingMenu(true, raycastHit->solidBlock);
+            return;
+        }
+
         InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
-        if (selectedSlot.count == 0)
+        if (selectedSlot.count == 0 || selectedSlot.blockType == world::BlockType::Air
+            || selectedSlot.equippedItem != EquippedItem::None)
         {
             return;
         }
@@ -1459,18 +2152,59 @@ void Application::spawnDroppedItem(
         return;
     }
 
-    droppedItems_.push_back(DroppedItem{
-        .blockType = blockType,
-        .worldPosition = glm::vec3(
+    spawnDroppedItemAtPosition(
+        blockType,
+        glm::vec3(
             static_cast<float>(blockPosition.x) + 0.5f,
             static_cast<float>(blockPosition.y) + 0.2f,
-            static_cast<float>(blockPosition.z) + 0.5f),
+            static_cast<float>(blockPosition.z) + 0.5f));
+}
+
+void Application::spawnDroppedItemAtPosition(
+    const world::BlockType blockType,
+    const glm::vec3& worldPosition)
+{
+    if (blockType == world::BlockType::Air || blockType == world::BlockType::Water
+        || blockType == world::BlockType::Lava)
+    {
+        return;
+    }
+
+    const float seed = worldPosition.x * 0.73f + worldPosition.z * 1.17f + worldPosition.y * 0.41f;
+    droppedItems_.push_back(DroppedItem{
+        .blockType = blockType,
+        .equippedItem = EquippedItem::None,
+        .worldPosition = worldPosition,
         .velocity = glm::vec3(
-            std::sin(static_cast<float>(blockPosition.x + blockPosition.z) * 0.73f) * 1.05f,
+            std::sin(seed) * 1.05f,
             2.0f,
-            std::cos(static_cast<float>(blockPosition.x - blockPosition.z) * 0.61f) * 1.05f),
+            std::cos(seed * 1.37f) * 1.05f),
         .ageSeconds = 0.0f,
-        .pickupDelaySeconds = 0.25f,
+        .pickupDelaySeconds = 0.2f,
+        .spinRadians = 0.0f,
+    });
+}
+
+void Application::spawnDroppedItemAtPosition(
+    const EquippedItem equippedItem,
+    const glm::vec3& worldPosition)
+{
+    if (equippedItem == EquippedItem::None)
+    {
+        return;
+    }
+
+    const float seed = worldPosition.x * 0.73f + worldPosition.z * 1.17f + worldPosition.y * 0.41f;
+    droppedItems_.push_back(DroppedItem{
+        .blockType = world::BlockType::Air,
+        .equippedItem = equippedItem,
+        .worldPosition = worldPosition,
+        .velocity = glm::vec3(
+            std::sin(seed) * 1.05f,
+            2.0f,
+            std::cos(seed * 1.37f) * 1.05f),
+        .ageSeconds = 0.0f,
+        .pickupDelaySeconds = 0.2f,
         .spinRadians = 0.0f,
     });
 }
@@ -1521,11 +2255,31 @@ void Application::updateDroppedItems(const float deltaTimeSeconds, const float e
         }
 
         const glm::vec3 delta = droppedItem.worldPosition - pickupCenter;
-        if (droppedItem.pickupDelaySeconds <= 0.0f && glm::dot(delta, delta) <= kPickupRadiusSq
-            && addBlockToInventory(hotbarSlots_, bagSlots_, droppedItem.blockType, selectedHotbarIndex_))
+        if (droppedItem.pickupDelaySeconds <= 0.0f && glm::dot(delta, delta) <= kPickupRadiusSq)
         {
-            droppedItems_.erase(droppedItems_.begin() + static_cast<std::ptrdiff_t>(itemIndex));
-            continue;
+            bool pickedUp = false;
+            if (droppedItem.equippedItem != EquippedItem::None)
+            {
+                pickedUp = addEquippedItemToInventory(
+                    hotbarSlots_,
+                    bagSlots_,
+                    droppedItem.equippedItem,
+                    selectedHotbarIndex_);
+            }
+            else
+            {
+                pickedUp = addBlockToInventory(
+                    hotbarSlots_,
+                    bagSlots_,
+                    droppedItem.blockType,
+                    selectedHotbarIndex_);
+            }
+
+            if (pickedUp)
+            {
+                droppedItems_.erase(droppedItems_.begin() + static_cast<std::ptrdiff_t>(itemIndex));
+                continue;
+            }
         }
 
         ++itemIndex;
@@ -1547,6 +2301,207 @@ void Application::respawnPlayer()
         kPlayerMovementSettings.standingColliderHeight,
         kPlayerMovementSettings.standingEyeHeight);
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+}
+
+void Application::openCraftingMenu(
+    const bool useWorkbench,
+    const glm::ivec3& workbenchBlockPosition)
+{
+    if (!craftingMenuState_.active)
+    {
+        craftingMenuState_ = CraftingMenuState{};
+    }
+    craftingMenuState_.active = true;
+    craftingMenuState_.usesWorkbench = useWorkbench;
+    craftingMenuState_.workbenchBlockPosition = workbenchBlockPosition;
+    craftingMenuState_.hint = useWorkbench
+        ? "Logs make planks. Four planks make a crafting table."
+        : "Press E anywhere for 2x2 crafting. Place and open a crafting table for 3x3.";
+    mouseCaptured_ = false;
+    window_.setRelativeMouseMode(false);
+    inputState_.clearMouseMotion();
+}
+
+void Application::returnCraftingSlotsToInventory()
+{
+    const auto tryInsertSlot = [&](InventorySlot& slot)
+    {
+        if (isInventorySlotEmpty(slot))
+        {
+            return true;
+        }
+
+        const auto tryMergeInto = [&](auto& slots) -> bool
+        {
+            for (InventorySlot& existingSlot : slots)
+            {
+                if (canMergeInventorySlots(existingSlot, slot) && existingSlot.count < kMaxStackSize)
+                {
+                    const std::uint32_t transfer = std::min(kMaxStackSize - existingSlot.count, slot.count);
+                    existingSlot.count += transfer;
+                    slot.count -= transfer;
+                    if (slot.count == 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+            for (InventorySlot& existingSlot : slots)
+            {
+                if (isInventorySlotEmpty(existingSlot))
+                {
+                    existingSlot = slot;
+                    clearInventorySlot(slot);
+                    return true;
+                }
+            }
+            return isInventorySlotEmpty(slot);
+        };
+
+        if (tryMergeInto(hotbarSlots_) && isInventorySlotEmpty(slot))
+        {
+            return true;
+        }
+        if (tryMergeInto(bagSlots_) && isInventorySlotEmpty(slot))
+        {
+            return true;
+        }
+        return isInventorySlotEmpty(slot);
+    };
+
+    for (InventorySlot& slot : craftingMenuState_.gridSlots)
+    {
+        while (!isInventorySlotEmpty(slot))
+        {
+            if (tryInsertSlot(slot))
+            {
+                break;
+            }
+            else
+            {
+                if (slot.equippedItem != EquippedItem::None)
+                {
+                    spawnDroppedItemAtPosition(
+                        slot.equippedItem,
+                        playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
+                }
+                else
+                {
+                    spawnDroppedItemAtPosition(
+                        slot.blockType,
+                        playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
+                }
+                --slot.count;
+                if (slot.count == 0)
+                {
+                    clearInventorySlot(slot);
+                }
+            }
+        }
+    }
+
+    while (!isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+    {
+        if (tryInsertSlot(craftingMenuState_.carriedSlot))
+        {
+            break;
+        }
+        else
+        {
+            if (craftingMenuState_.carriedSlot.equippedItem != EquippedItem::None)
+            {
+                spawnDroppedItemAtPosition(
+                    craftingMenuState_.carriedSlot.equippedItem,
+                    playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
+            }
+            else if (craftingMenuState_.carriedSlot.blockType != world::BlockType::Air)
+            {
+                spawnDroppedItemAtPosition(
+                    craftingMenuState_.carriedSlot.blockType,
+                    playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
+            }
+            clearInventorySlot(craftingMenuState_.carriedSlot);
+        }
+    }
+}
+
+void Application::closeCraftingMenu()
+{
+    returnCraftingSlotsToInventory();
+    craftingMenuState_ = CraftingMenuState{};
+    mouseCaptured_ = true;
+    window_.setRelativeMouseMode(true);
+    inputState_.clearMouseMotion();
+}
+
+void Application::handleCraftingMenuClick()
+{
+    const int hit = render::Renderer::hitTestCraftingMenu(
+        inputState_.mouseWindowX,
+        inputState_.mouseWindowY,
+        window_.width(),
+        window_.height(),
+        craftingMenuState_.usesWorkbench);
+    if (hit < 0)
+    {
+        return;
+    }
+
+    if (hit == render::Renderer::kCraftingResultHit)
+    {
+        const std::optional<CraftingMatch> craftingMatch = evaluateCraftingGrid(
+            craftingMenuState_.gridSlots,
+            craftingMenuState_.usesWorkbench ? CraftingMode::Workbench3x3 : CraftingMode::Inventory2x2);
+        if (!craftingMatch.has_value() || !canReceiveCraftingOutput(craftingMenuState_.carriedSlot, craftingMatch->output))
+        {
+            return;
+        }
+        if (isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+        {
+            craftingMenuState_.carriedSlot = craftingMatch->output;
+        }
+        else
+        {
+            craftingMenuState_.carriedSlot.count += craftingMatch->output.count;
+        }
+        consumeCraftingIngredients(craftingMenuState_.gridSlots, craftingMatch.value());
+        soundEffects_.playBlockPlace(craftingMatch->output.blockType);
+        return;
+    }
+
+    InventorySlot* targetSlot = nullptr;
+    bool isCraftingGridSlot = false;
+    if (hit >= render::Renderer::kCraftingGridHitBase && hit < render::Renderer::kCraftingGridHitBase + 9)
+    {
+        targetSlot = &craftingMenuState_.gridSlots[static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase)];
+        isCraftingGridSlot = true;
+    }
+    else if (hit >= render::Renderer::kCraftingHotbarHitBase
+             && hit < render::Renderer::kCraftingHotbarHitBase + static_cast<int>(hotbarSlots_.size()))
+    {
+        targetSlot = &hotbarSlots_[static_cast<std::size_t>(hit - render::Renderer::kCraftingHotbarHitBase)];
+    }
+    else if (hit >= render::Renderer::kCraftingBagHitBase
+             && hit < render::Renderer::kCraftingBagHitBase + static_cast<int>(bagSlots_.size()))
+    {
+        targetSlot = &bagSlots_[static_cast<std::size_t>(hit - render::Renderer::kCraftingBagHitBase)];
+    }
+
+    if (targetSlot == nullptr)
+    {
+        return;
+    }
+
+    if (isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
+        && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+    {
+        return;
+    }
+
+    mergeOrSwapInventorySlot(
+        craftingMenuState_.carriedSlot,
+        *targetSlot,
+        !isCraftingGridSlot);
 }
 
 bool Application::startHostSession()
@@ -1606,42 +2561,184 @@ void Application::stopMultiplayerSessions()
     worldSyncSentClients_.clear();
 }
 
-void Application::handleMainMenuMultiplayerShortcuts()
+std::filesystem::path Application::multiplayerPrefsPath() const
 {
-    const bool hostHeld = inputState_.isKeyDown(SDL_SCANCODE_H);
-    if (hostHeld && !hostShortcutLatch_)
+    std::filesystem::path directory = savePath_.parent_path();
+    if (directory.empty())
     {
-        if (startHostSession())
-        {
-            gameScreen_ = GameScreen::Playing;
-            mouseCaptured_ = true;
-            window_.setRelativeMouseMode(true);
-            mainMenuNotice_ = "Hosting session started.";
-        }
-        else
-        {
-            mainMenuNotice_ = "Failed to start host session.";
-        }
+        directory = "assets/saves";
     }
-    hostShortcutLatch_ = hostHeld;
+    return directory / "multiplayer_prefs.txt";
+}
 
-    const bool joinHeld = inputState_.isKeyDown(SDL_SCANCODE_J);
-    if (joinHeld && !joinShortcutLatch_)
+void Application::loadMultiplayerPrefs()
+{
+    joinAddressInput_ = resolveJoinAddressFromEnvironment();
+    joinPortInput_ = "41234";
+    std::ifstream input(multiplayerPrefsPath());
+    if (!input.is_open())
     {
-        multiplayerAddress_ = resolveJoinAddressFromEnvironment();
-        if (startClientSession(multiplayerAddress_))
+        multiplayerAddress_ = joinAddressInput_;
+        return;
+    }
+
+    std::string addressLine;
+    std::string portLine;
+    std::getline(input, addressLine);
+    std::getline(input, portLine);
+    trimInPlace(addressLine);
+    trimInPlace(portLine);
+    if (!addressLine.empty())
+    {
+        joinAddressInput_ = addressLine;
+    }
+    if (!portLine.empty())
+    {
+        joinPortInput_ = portLine;
+    }
+    multiplayerAddress_ = joinAddressInput_;
+    try
+    {
+        if (!portLine.empty())
         {
-            gameScreen_ = GameScreen::Playing;
-            mouseCaptured_ = true;
-            window_.setRelativeMouseMode(true);
-            mainMenuNotice_ = "Joining remote host.";
+            const unsigned long parsedPort = std::stoul(portLine);
+            if (parsedPort <= 65535UL)
+            {
+                multiplayerPort_ = static_cast<std::uint16_t>(parsedPort);
+            }
+        }
+    }
+    catch (...)
+    {
+    }
+}
+
+void Application::saveMultiplayerPrefs() const
+{
+    std::error_code errorCode;
+    std::filesystem::create_directories(multiplayerPrefsPath().parent_path(), errorCode);
+    std::ofstream output(multiplayerPrefsPath(), std::ios::trunc);
+    if (!output.is_open())
+    {
+        return;
+    }
+    output << joinAddressInput_ << '\n' << joinPortInput_ << '\n';
+}
+
+void Application::refreshDetectedLanAddress()
+{
+    detectedLanAddress_ = platform::primaryLanIPv4String();
+}
+
+void Application::processJoinMenuTextInput()
+{
+    if (mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::Join)
+    {
+        return;
+    }
+
+    if (inputState_.tabPressed)
+    {
+        joinFocusedField_ = 1 - joinFocusedField_;
+    }
+
+    if (inputState_.backspacePressed)
+    {
+        if (joinFocusedField_ == 0)
+        {
+            if (!joinAddressInput_.empty())
+            {
+                joinAddressInput_.pop_back();
+            }
+        }
+        else if (!joinPortInput_.empty())
+        {
+            joinPortInput_.pop_back();
+        }
+    }
+
+    if (!inputState_.textInputUtf8.empty())
+    {
+        if (joinFocusedField_ == 0)
+        {
+            joinAddressInput_ += inputState_.textInputUtf8;
         }
         else
         {
-            mainMenuNotice_ = "Failed to start client session.";
+            for (const char character : inputState_.textInputUtf8)
+            {
+                if (character >= '0' && character <= '9')
+                {
+                    joinPortInput_ += character;
+                }
+            }
         }
     }
-    joinShortcutLatch_ = joinHeld;
+}
+
+void Application::tryStartHostFromMenu()
+{
+    refreshDetectedLanAddress();
+    if (!startHostSession())
+    {
+        mainMenuNotice_ = "Could not start hosting. Is the port already in use?";
+        return;
+    }
+
+    mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
+    window_.setTextInputActive(false);
+    gameScreen_ = GameScreen::Playing;
+    mouseCaptured_ = true;
+    window_.setRelativeMouseMode(true);
+    mainMenuNotice_.clear();
+    inputState_.clearMouseMotion();
+}
+
+void Application::tryConnectFromJoinMenu()
+{
+    const std::string host = trimCopy(joinAddressInput_);
+    if (host.empty())
+    {
+        mainMenuNotice_ = "Enter the host address (e.g. 192.168.1.5).";
+        return;
+    }
+
+    unsigned long parsedPort = 41234;
+    try
+    {
+        if (!joinPortInput_.empty())
+        {
+            parsedPort = std::stoul(joinPortInput_);
+        }
+    }
+    catch (...)
+    {
+        mainMenuNotice_ = "Port must be a number (default 41234).";
+        return;
+    }
+
+    if (parsedPort > 65535UL)
+    {
+        mainMenuNotice_ = "Port must be between 0 and 65535.";
+        return;
+    }
+
+    multiplayerPort_ = static_cast<std::uint16_t>(parsedPort);
+    multiplayerAddress_ = host;
+    if (!startClientSession(host))
+    {
+        mainMenuNotice_ = "Could not connect. Check address, firewall, and that the host is running.";
+        return;
+    }
+
+    saveMultiplayerPrefs();
+    mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
+    window_.setTextInputActive(false);
+    gameScreen_ = GameScreen::Playing;
+    mouseCaptured_ = true;
+    window_.setRelativeMouseMode(true);
+    mainMenuNotice_.clear();
+    inputState_.clearMouseMotion();
 }
 
 void Application::sendInitialWorldToClient(const std::uint16_t clientId)
@@ -1721,7 +2818,9 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
     for (const DroppedItem& droppedItem : droppedItems_)
     {
         snapshot.droppedItems.push_back(multiplayer::protocol::DroppedItemSnapshotMessage{
-            .blockType = droppedItem.blockType,
+            .blockType = droppedItem.equippedItem != EquippedItem::None
+                ? networkFallbackBlockTypeForEquippedItem(droppedItem.equippedItem)
+                : droppedItem.blockType,
             .posX = droppedItem.worldPosition.x,
             .posY = droppedItem.worldPosition.y,
             .posZ = droppedItem.worldPosition.z,
@@ -1939,6 +3038,181 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
         {
             multiplayerStatusLine_ = "client error: " + clientSession_->lastError();
         }
+    }
+}
+
+void Application::beginSingleplayerLoad()
+{
+    if (gameScreen_ != GameScreen::MainMenu || singleplayerLoadState_.active)
+    {
+        return;
+    }
+
+    singleplayerLoadState_.active = true;
+    singleplayerLoadState_.worldPrepared = false;
+    singleplayerLoadState_.progress = 0.0f;
+    singleplayerLoadState_.label = "Generating world...";
+
+    stopMultiplayerSessions();
+    mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
+    mainMenuSoundSettingsOpen_ = false;
+    mainMenuNotice_.clear();
+    window_.setTextInputActive(false);
+    mouseCaptured_ = false;
+    window_.setRelativeMouseMode(false);
+    inputState_.clearMouseMotion();
+
+    std::error_code errorCode;
+    std::filesystem::remove(savePath_, errorCode);
+
+    std::vector<std::uint64_t> removedMeshIds(residentChunkMeshIds_.begin(), residentChunkMeshIds_.end());
+    if (!removedMeshIds.empty())
+    {
+        renderer_.updateSceneMeshes({}, removedMeshIds);
+    }
+    residentChunkMeshIds_.clear();
+
+    vibecraft::world::World::ChunkMap emptyChunks;
+    world_.replaceChunks(std::move(emptyChunks));
+    droppedItems_.clear();
+    remotePlayers_.clear();
+    worldSyncSentClients_.clear();
+    mobSpawnSystem_.clearAllMobs();
+    applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
+    bagSlots_.fill({});
+    activeMiningState_ = {};
+    playerVitals_.reset();
+    playerHazards_ = {};
+    verticalVelocity_ = 0.0f;
+    accumulatedFallDistance_ = 0.0f;
+    isGrounded_ = false;
+    jumpWasHeld_ = false;
+    footstepDistanceAccumulator_ = 0.0f;
+    heldItemSwing_ = 0.0f;
+    respawnNotice_.clear();
+    dayNightCycle_.setElapsedSeconds(70.0f);
+    weatherSystem_.setElapsedSeconds(0.0f);
+}
+
+void Application::updateSingleplayerLoad()
+{
+    const std::size_t bootstrapTarget = static_cast<std::size_t>(
+        (kStreamingSettings.bootstrapChunkRadius * 2 + 1) * (kStreamingSettings.bootstrapChunkRadius * 2 + 1));
+    const world::ChunkCoord originChunk{0, 0};
+
+    if (!singleplayerLoadState_.worldPrepared)
+    {
+        world_.generateMissingChunksAround(
+            terrainGenerator_,
+            originChunk,
+            kStreamingSettings.bootstrapChunkRadius,
+            std::max<std::size_t>(6, kStreamingSettings.generationChunkBudgetPerFrame));
+
+        const std::size_t generatedCount = std::min(world_.chunks().size(), bootstrapTarget);
+        singleplayerLoadState_.progress =
+            0.45f * (bootstrapTarget > 0 ? static_cast<float>(generatedCount) / static_cast<float>(bootstrapTarget) : 1.0f);
+        singleplayerLoadState_.label =
+            fmt::format("Generating world... {}/{} chunks", generatedCount, bootstrapTarget);
+
+        if (generatedCount < bootstrapTarget)
+        {
+            return;
+        }
+
+        const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
+        playerFeetPosition_ = findInitialSpawnFeetPosition(world_, terrainGenerator_, camera_.position(), spawnHeight);
+        isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
+        spawnFeetPosition_ = playerFeetPosition_;
+        accumulatedFallDistance_ = 0.0f;
+        playerHazards_ = samplePlayerHazards(
+            world_,
+            playerFeetPosition_,
+            kPlayerMovementSettings.standingColliderHeight,
+            kPlayerMovementSettings.standingEyeHeight);
+        camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+        singleplayerLoadState_.worldPrepared = true;
+    }
+
+    const world::ChunkCoord cameraChunk = world::worldToChunkCoord(
+        static_cast<int>(std::floor(camera_.position().x)),
+        static_cast<int>(std::floor(camera_.position().z)));
+    const std::size_t residentTarget = static_cast<std::size_t>(
+        (kStreamingSettings.residentChunkRadius * 2 + 1) * (kStreamingSettings.residentChunkRadius * 2 + 1));
+
+    world_.generateMissingChunksAround(
+        terrainGenerator_,
+        cameraChunk,
+        kStreamingSettings.residentChunkRadius,
+        std::max<std::size_t>(12, kStreamingSettings.generationChunkBudgetPerFrame * 2));
+
+    const std::vector<world::ChunkCoord> dirtyCoords = world_.dirtyChunkCoords();
+    std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> dirtyCoordSet(
+        dirtyCoords.begin(),
+        dirtyCoords.end());
+    const MeshSyncCpuData cpuData = buildMeshSyncCpuData(
+        world_,
+        chunkMesher_,
+        residentChunkMeshIds_,
+        dirtyCoordSet,
+        cameraChunk,
+        std::max<std::size_t>(12, kStreamingSettings.meshBuildBudgetPerFrame * 3));
+    applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
+    if (!cpuData.dirtyResidentMeshUpdates.empty())
+    {
+        world_.applyMeshStatsAndClearDirty(cpuData.dirtyResidentMeshUpdates);
+    }
+
+    std::size_t residentGeneratedCount = 0;
+    std::size_t residentMeshCount = 0;
+    std::size_t residentDirtyCount = 0;
+    for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
+         chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius;
+         ++chunkZ)
+    {
+        for (int chunkX = cameraChunk.x - kStreamingSettings.residentChunkRadius;
+             chunkX <= cameraChunk.x + kStreamingSettings.residentChunkRadius;
+             ++chunkX)
+        {
+            const world::ChunkCoord coord{chunkX, chunkZ};
+            if (world_.chunks().contains(coord))
+            {
+                ++residentGeneratedCount;
+            }
+            if (residentChunkMeshIds_.contains(chunkMeshId(coord)))
+            {
+                ++residentMeshCount;
+            }
+            if (dirtyCoordSet.contains(coord))
+            {
+                ++residentDirtyCount;
+            }
+        }
+    }
+
+    const float residentGeneratedProgress = residentTarget > 0
+        ? static_cast<float>(residentGeneratedCount) / static_cast<float>(residentTarget)
+        : 1.0f;
+    const float residentMeshProgress = residentTarget > 0
+        ? static_cast<float>(residentMeshCount) / static_cast<float>(residentTarget)
+        : 1.0f;
+    singleplayerLoadState_.progress =
+        std::clamp(0.45f + residentGeneratedProgress * 0.2f + residentMeshProgress * 0.35f, 0.0f, 1.0f);
+    singleplayerLoadState_.label = fmt::format(
+        "Preparing spawn area... terrain {}/{}  meshes {}/{}",
+        residentGeneratedCount,
+        residentTarget,
+        residentMeshCount,
+        residentTarget);
+
+    if (residentGeneratedCount >= residentTarget && residentMeshCount >= residentTarget && residentDirtyCount == 0)
+    {
+        singleplayerLoadState_.progress = 1.0f;
+        singleplayerLoadState_.label = "World ready";
+        singleplayerLoadState_.active = false;
+        gameScreen_ = GameScreen::Playing;
+        mouseCaptured_ = true;
+        window_.setRelativeMouseMode(true);
+        inputState_.clearMouseMotion();
     }
 }
 

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "vibecraft/app/Inventory.hpp"
+#include "vibecraft/app/Crafting.hpp"
 #include "vibecraft/audio/MusicDirector.hpp"
 #include "vibecraft/audio/SharedAudioOutput.hpp"
 #include "vibecraft/audio/SoundEffects.hpp"
@@ -28,6 +29,8 @@
 
 namespace vibecraft::app
 {
+using MainMenuMultiplayerPanel = render::FrameDebugData::MainMenuMultiplayerPanel;
+
 enum class GameScreen
 {
     MainMenu,
@@ -76,6 +79,7 @@ class Application
     struct DroppedItem
     {
         vibecraft::world::BlockType blockType = vibecraft::world::BlockType::Air;
+        EquippedItem equippedItem = EquippedItem::None;
         glm::vec3 worldPosition{0.0f};
         glm::vec3 velocity{0.0f};
         float ageSeconds = 0.0f;
@@ -83,11 +87,47 @@ class Application
         float spinRadians = 0.0f;
     };
 
+    struct ActiveMiningState
+    {
+        bool active = false;
+        glm::ivec3 targetBlockPosition{0};
+        vibecraft::world::BlockType targetBlockType = vibecraft::world::BlockType::Air;
+        vibecraft::world::BlockType equippedBlockType = vibecraft::world::BlockType::Air;
+        float elapsedSeconds = 0.0f;
+        float requiredSeconds = 0.0f;
+        /// Time until the next dig tick while holding attack (immediate tick on target change).
+        float digSoundCooldownSeconds = 0.0f;
+    };
+
+    struct SingleplayerLoadState
+    {
+        bool active = false;
+        bool worldPrepared = false;
+        float progress = 0.0f;
+        std::string label;
+    };
+
+    struct CraftingMenuState
+    {
+        bool active = false;
+        bool usesWorkbench = false;
+        glm::ivec3 workbenchBlockPosition{0};
+        CraftingGridSlots gridSlots{};
+        InventorySlot carriedSlot{};
+        std::string hint;
+    };
+
     bool startHostSession();
     bool startClientSession(const std::string& address);
     void stopMultiplayerSessions();
     void updateMultiplayer(float deltaTimeSeconds);
-    void handleMainMenuMultiplayerShortcuts();
+    void loadMultiplayerPrefs();
+    void saveMultiplayerPrefs() const;
+    [[nodiscard]] std::filesystem::path multiplayerPrefsPath() const;
+    void refreshDetectedLanAddress();
+    void processJoinMenuTextInput();
+    void tryStartHostFromMenu();
+    void tryConnectFromJoinMenu();
     void sendInitialWorldToClient(std::uint16_t clientId);
     void applyChunkSnapshot(const vibecraft::multiplayer::protocol::ChunkSnapshotMessage& chunkMessage);
     void applyRemoteBlockEdit(const vibecraft::multiplayer::protocol::BlockEditEventMessage& editMessage);
@@ -95,9 +135,17 @@ class Application
 
     void update(float deltaTimeSeconds);
     void processInput(float deltaTimeSeconds);
+    void beginSingleplayerLoad();
+    void updateSingleplayerLoad();
     void syncWorldData();
     void respawnPlayer();
+    void openCraftingMenu(bool useWorkbench, const glm::ivec3& workbenchBlockPosition = glm::ivec3(0));
+    void closeCraftingMenu();
+    void handleCraftingMenuClick();
+    void returnCraftingSlotsToInventory();
     void spawnDroppedItem(vibecraft::world::BlockType blockType, const glm::ivec3& blockPosition);
+    void spawnDroppedItemAtPosition(vibecraft::world::BlockType blockType, const glm::vec3& worldPosition);
+    void spawnDroppedItemAtPosition(EquippedItem equippedItem, const glm::vec3& worldPosition);
     void updateDroppedItems(float deltaTimeSeconds, float eyeHeight);
 
     vibecraft::platform::Window window_;
@@ -139,8 +187,11 @@ class Application
     std::string multiplayerStatusLine_;
     float networkTickAccumulatorSeconds_ = 0.0f;
     std::uint32_t networkServerTick_ = 0;
-    bool hostShortcutLatch_ = false;
-    bool joinShortcutLatch_ = false;
+    MainMenuMultiplayerPanel mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
+    std::string joinAddressInput_;
+    std::string joinPortInput_;
+    int joinFocusedField_ = 0;
+    std::string detectedLanAddress_;
     std::vector<RemotePlayerState> remotePlayers_;
     std::unordered_set<std::uint16_t> worldSyncSentClients_;
     float mainMenuTimeSeconds_ = 0.0f;
@@ -152,9 +203,17 @@ class Application
     bool mainMenuSoundSettingsOpen_ = false;
     float musicVolume_ = 0.85f;
     float sfxVolume_ = 1.0f;
+    float heldItemSwing_ = 0.0f;
+    float footstepDistanceAccumulator_ = 0.0f;
+    bool craftingKeyWasDown_ = false;
     std::string respawnNotice_;
     std::vector<DroppedItem> droppedItems_;
-    /// Run-loop frame index (used to ignore spurious startup mouse-down on the main menu).
+    ActiveMiningState activeMiningState_{};
+    SingleplayerLoadState singleplayerLoadState_{};
+    CraftingMenuState craftingMenuState_{};
+    /// Run-loop frame index (used to delay main-menu mouse activation until layout is stable).
     std::uint32_t runFrameIndex_ = 0;
+    bool showWorldOriginGuides_ = false;
+    bool debugF3KeyWasDown_ = false;
 };
 }  // namespace vibecraft::app

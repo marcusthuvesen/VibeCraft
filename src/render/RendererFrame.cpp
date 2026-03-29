@@ -29,6 +29,7 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         bgfx::setViewRect(detail::kUiView, 0, 0, static_cast<std::uint16_t>(width_), static_cast<std::uint16_t>(height_));
         bgfx::touch(detail::kMainView);
         bgfx::touch(detail::kUiView);
+        drawMainMenuBackground();
         drawMainMenuLogo();
         bgfx::dbgTextClear();
         const bgfx::Stats* const menuStats = bgfx::getStats();
@@ -155,8 +156,8 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(false);
     constexpr float kCelestialDistance = 240.0f;
-    constexpr float kSunRadius = 20.0f;
-    constexpr float kMoonRadius = 13.0f;
+    constexpr float kSunRadius = 17.0f;
+    constexpr float kMoonRadius = 11.0f;
     if (cameraFrameData.sunVisibility > 0.01f)
     {
         const glm::vec3 sunPosition = cameraFrameData.position + cameraFrameData.sunDirection * kCelestialDistance;
@@ -165,15 +166,9 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
             cameraFrameData.position.x - sunPosition.x,
             cameraFrameData.position.y - sunPosition.y,
             cameraFrameData.position.z - sunPosition.z);
-        bx::Sphere sunSphere;
-        sunSphere.center = sunCenter;
-        sunSphere.radius = kSunRadius;
-        debugDrawEncoder.setColor(detail::packAbgr8(glm::mix(cameraFrameData.horizonTint, cameraFrameData.sunLightTint, 0.65f), 1.0f));
-        debugDrawEncoder.drawQuad(sunFacingNormal, sunCenter, kSunRadius * 3.6f);
-        debugDrawEncoder.setColor(detail::packAbgr8(cameraFrameData.sunLightTint, 1.0f));
-        debugDrawEncoder.draw(sunSphere);
-        debugDrawEncoder.setColor(detail::packAbgr8(cameraFrameData.horizonTint, 1.0f));
-        debugDrawEncoder.drawCircle(sunFacingNormal, sunCenter, kSunRadius * 1.45f, 2.5f);
+        const glm::vec3 sunTint = glm::mix(cameraFrameData.horizonTint, cameraFrameData.sunLightTint, 0.78f);
+        debugDrawEncoder.setColor(detail::packAbgr8(sunTint, 1.0f));
+        debugDrawEncoder.drawQuad(sunFacingNormal, sunCenter, kSunRadius * 2.2f);
     }
     if (cameraFrameData.moonVisibility > 0.01f)
     {
@@ -183,13 +178,9 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
             cameraFrameData.position.x - moonPosition.x,
             cameraFrameData.position.y - moonPosition.y,
             cameraFrameData.position.z - moonPosition.z);
-        bx::Sphere moonSphere;
-        moonSphere.center = moonCenter;
-        moonSphere.radius = kMoonRadius;
-        debugDrawEncoder.setColor(detail::packAbgr8(glm::mix(cameraFrameData.skyTint, cameraFrameData.moonLightTint, 0.55f), 1.0f));
-        debugDrawEncoder.drawQuad(moonFacingNormal, moonCenter, kMoonRadius * 2.8f);
-        debugDrawEncoder.setColor(detail::packAbgr8(cameraFrameData.moonLightTint, 1.0f));
-        debugDrawEncoder.draw(moonSphere);
+        const glm::vec3 moonTint = glm::mix(cameraFrameData.skyTint, cameraFrameData.moonLightTint, 0.72f);
+        debugDrawEncoder.setColor(detail::packAbgr8(moonTint, 1.0f));
+        debugDrawEncoder.drawQuad(moonFacingNormal, moonCenter, kMoonRadius * 2.0f);
     }
     debugDrawEncoder.pop();
     detail::drawWeatherRain(debugDrawEncoder, cameraFrameData);
@@ -219,20 +210,9 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         debugDrawEncoder.setWireframe(false);
     }
 
-    for (const FrameDebugData::WorldMobHud& mob : frameDebugData.worldMobs)
-    {
-        const float hw = mob.halfWidth;
-        const bx::Aabb mobAabb{
-            bx::Vec3(mob.feetPosition.x - hw, mob.feetPosition.y, mob.feetPosition.z - hw),
-            bx::Vec3(mob.feetPosition.x + hw, mob.feetPosition.y + mob.height, mob.feetPosition.z + hw),
-        };
-        debugDrawEncoder.setWireframe(true);
-        debugDrawEncoder.setColor(0xffe53935);
-        debugDrawEncoder.draw(mobAabb);
-        debugDrawEncoder.setWireframe(false);
-    }
-
     debugDrawEncoder.end();
+    drawWorldMobSprites(frameDebugData, cameraFrameData);
+    drawBlockBreakingOverlay(frameDebugData);
 
     bgfx::dbgTextClear();
     const bgfx::Stats* const bgfxStats = bgfx::getStats();
@@ -250,6 +230,7 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     }
 
     drawCrosshairOverlay();
+    drawHeldItemOverlay(frameDebugData);
 
     const std::uint16_t hotbarRow = textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
     const std::uint16_t hotbarKeyRow = textHeight > 1 ? static_cast<std::uint16_t>(textHeight - 2) : 0;
@@ -325,11 +306,17 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     if (inventoryUiSolidProgramHandle_ == UINT16_MAX)
     {
         detail::drawHotbarHud(hotbarRow, frameDebugData);
+        detail::drawHotbarKeyHintsRow(hotbarKeyRow, width_, height_, textWidthForHud, textHeight, hotbarRow);
     }
-    detail::drawHotbarKeyHintsRow(hotbarKeyRow, width_, height_, textWidthForHud, textHeight, hotbarRow);
     detail::drawHotbarStackCounts(hotbarRow, frameDebugData, width_, height_, textWidthForHud, textHeight, hotbarRow);
-    detail::drawHealthHud(healthRow, frameDebugData);
-    if (textHeight >= 10)
+    if (inventoryUiSolidProgramHandle_ == UINT16_MAX
+        || fullHeartTextureHandle_ == UINT16_MAX
+        || halfHeartTextureHandle_ == UINT16_MAX
+        || emptyHeartTextureHandle_ == UINT16_MAX)
+    {
+        detail::drawHealthHud(healthRow, frameDebugData);
+    }
+    if (inventoryUiSolidProgramHandle_ == UINT16_MAX && textHeight >= 10)
     {
         detail::drawBagHud(
             bagTitleRow,

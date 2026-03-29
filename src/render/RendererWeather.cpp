@@ -91,21 +91,22 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
     const glm::vec2 windDirection =
         normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
     const glm::vec2 windOffset = windDirection * cameraFrameData.weatherTimeSeconds * cameraFrameData.weatherWindSpeed;
-    constexpr float kCloudCellSize = 30.0f;
+    constexpr float kCloudCellSize = 36.0f;
     const int cloudRadiusInCells =
-        std::clamp(static_cast<int>(2.0f + cameraFrameData.cloudCoverage * 2.75f), 2, 4);
+        std::clamp(static_cast<int>(2.0f + cameraFrameData.cloudCoverage * 1.6f), 2, 3);
     const float cloudHeight = glm::max(78.0f, cameraFrameData.position.y + 38.0f);
     const int baseCellX = static_cast<int>(std::floor((cameraFrameData.position.x + windOffset.x) / kCloudCellSize));
     const int baseCellZ = static_cast<int>(std::floor((cameraFrameData.position.z + windOffset.y) / kCloudCellSize));
     const float densityThreshold = std::clamp(0.86f - cameraFrameData.cloudCoverage * 0.62f, 0.24f, 0.82f);
-    const bool drawSecondaryCloudLayer = cameraFrameData.cloudCoverage > 0.42f;
+    const bool drawSecondaryCloudLayer = cameraFrameData.cloudCoverage > 0.72f;
+    const int cloudStride = cameraFrameData.cloudCoverage < 0.48f ? 2 : 1;
 
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(true);
 
-    for (int cellZ = -cloudRadiusInCells; cellZ <= cloudRadiusInCells; ++cellZ)
+    for (int cellZ = -cloudRadiusInCells; cellZ <= cloudRadiusInCells; cellZ += cloudStride)
     {
-        for (int cellX = -cloudRadiusInCells; cellX <= cloudRadiusInCells; ++cellX)
+        for (int cellX = -cloudRadiusInCells; cellX <= cloudRadiusInCells; cellX += cloudStride)
         {
             const int gridX = baseCellX + cellX;
             const int gridZ = baseCellZ + cellZ;
@@ -135,11 +136,11 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
             const float centerZ =
                 static_cast<float>(gridZ) * kCloudCellSize
                 - windOffset.y
-                + (hashUnitFloat(gridX, gridZ, 31) - 0.5f) * 14.0f;
+                + (hashUnitFloat(gridX, gridZ, 31) - 0.5f) * 12.0f;
             const float y = cloudHeight + (hashUnitFloat(gridX, gridZ, 41) - 0.5f) * 4.0f;
-            const float baseSize = 18.0f + patchStrength * 28.0f + hashUnitFloat(gridX, gridZ, 51) * 12.0f;
-            const float stretch = 0.8f + hashUnitFloat(gridX, gridZ, 61) * 0.7f;
-            const float secondaryOffset = 6.0f + hashUnitFloat(gridX, gridZ, 71) * 8.0f;
+            const float baseSize = 16.0f + patchStrength * 22.0f + hashUnitFloat(gridX, gridZ, 51) * 8.0f;
+            const float stretch = 0.9f + hashUnitFloat(gridX, gridZ, 61) * 0.5f;
+            const float secondaryOffset = 5.0f + hashUnitFloat(gridX, gridZ, 71) * 5.0f;
             const glm::vec3 brightCloudWhite(0.97f, 0.98f, 1.0f);
             const glm::vec3 primaryTint = glm::mix(
                 cameraFrameData.cloudTint,
@@ -159,7 +160,7 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
                 debugDrawEncoder.drawQuad(
                     bx::Vec3(0.0f, 1.0f, 0.0f),
                     bx::Vec3(centerX + secondaryOffset, y - 1.0f, centerZ - secondaryOffset * 0.5f),
-                    baseSize * 0.75f);
+                    baseSize * 0.58f);
             }
         }
     }
@@ -176,10 +177,10 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
 
     const glm::vec2 windDirection =
         normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
-    const float rainGridSpacing = 4.0f + (1.0f - cameraFrameData.rainIntensity) * 2.25f;
-    const int rainRadiusInCells = std::clamp(static_cast<int>(3.0f + cameraFrameData.rainIntensity * 2.0f), 3, 5);
-    const float rainFallDistance = 5.5f + cameraFrameData.rainIntensity * 3.5f;
-    const float rainSpeed = 14.0f + cameraFrameData.rainIntensity * 10.0f;
+    const float rainGridSpacing = 5.5f + (1.0f - cameraFrameData.rainIntensity) * 2.5f;
+    const int rainRadiusInCells = std::clamp(static_cast<int>(2.0f + cameraFrameData.rainIntensity * 1.5f), 2, 4);
+    const float rainFallDistance = 5.0f + cameraFrameData.rainIntensity * 2.8f;
+    const float rainSpeed = 13.0f + cameraFrameData.rainIntensity * 8.0f;
     const glm::vec3 rainVector(
         windDirection.x * 0.35f,
         -1.0f,
@@ -188,7 +189,8 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
     const int baseCellX = static_cast<int>(std::floor(cameraFrameData.position.x / rainGridSpacing));
     const int baseCellZ = static_cast<int>(std::floor(cameraFrameData.position.z / rainGridSpacing));
     const glm::vec3 rainTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.70f, 0.82f, 1.0f), 0.65f);
-    const int rainStride = cameraFrameData.rainIntensity < 0.38f ? 2 : 1;
+    const int rainStride =
+        cameraFrameData.rainIntensity < 0.30f ? 3 : (cameraFrameData.rainIntensity < 0.65f ? 2 : 1);
 
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(true);
@@ -210,7 +212,7 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
             const float phase = hashUnitFloat(gridX, gridZ, 131);
             const float dropCycle =
                 std::fmod(cameraFrameData.weatherTimeSeconds * rainSpeed + phase * rainFallDistance, rainFallDistance);
-            const float startY = cameraFrameData.position.y + 14.0f - dropCycle;
+            const float startY = cameraFrameData.position.y + 12.0f - dropCycle;
             const glm::vec3 start(
                 static_cast<float>(gridX) * rainGridSpacing + offsetX,
                 startY,
@@ -223,5 +225,6 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
     }
 
     debugDrawEncoder.pop();
+}
 
 } // namespace vibecraft::render::detail

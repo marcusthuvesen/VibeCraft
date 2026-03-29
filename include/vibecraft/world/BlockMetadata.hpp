@@ -29,7 +29,7 @@ struct BlockMetadata
 };
 
 // Vertex color multiplies the atlas sample; white shows materials as authored in assets/textures/materials.
-// Tile indices follow scripts/build_chunk_atlas.sh row-major order on a 5x4 atlas.
+// Tile indices follow scripts/build_chunk_atlas.sh row-major order on the chunk atlas grid.
 [[nodiscard]] constexpr BlockMetadata blockMetadata(const BlockType blockType)
 {
     switch (blockType)
@@ -137,6 +137,34 @@ struct BlockMetadata
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 16, .bottom = 16, .side = 16},
             .hardness = 0.2f,
+            .breakable = true,
+        };
+    case BlockType::OakPlanks:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 17, .bottom = 17, .side = 17},
+            .hardness = 1.5f,
+            .breakable = true,
+        };
+    case BlockType::CraftingTable:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 20, .bottom = 17, .side = 21},
+            .hardness = 2.5f,
+            .breakable = true,
+        };
+    case BlockType::Cobblestone:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 18, .bottom = 18, .side = 18},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
+    case BlockType::Sandstone:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 19, .bottom = 19, .side = 19},
+            .hardness = 0.8f,
             .breakable = true,
         };
     case BlockType::Air:

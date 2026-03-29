@@ -136,6 +136,7 @@ add_custom_target(
 set(VIBECRAFT_HEADERS
     include/vibecraft/ChunkAtlasLayout.hpp
     include/vibecraft/app/Application.hpp
+    include/vibecraft/app/Crafting.hpp
     include/vibecraft/app/Inventory.hpp
     include/vibecraft/audio/MusicCatalog.hpp
     include/vibecraft/audio/MusicDirector.hpp
@@ -154,6 +155,7 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/game/PlayerVitals.hpp
     include/vibecraft/meshing/ChunkMesher.hpp
     include/vibecraft/platform/InputState.hpp
+    include/vibecraft/platform/LocalNetworkAddress.hpp
     include/vibecraft/platform/Window.hpp
     include/vibecraft/render/Renderer.hpp
     include/vibecraft/render/RendererDetail.hpp
@@ -172,6 +174,7 @@ set(VIBECRAFT_HEADERS
 
 set(VIBECRAFT_SOURCES
     src/app/Application.cpp
+    src/app/Crafting.cpp
     src/app/Inventory.cpp
     src/app/main.cpp
     src/audio/MusicCatalog.cpp
@@ -188,6 +191,7 @@ set(VIBECRAFT_SOURCES
     src/multiplayer/Session.cpp
     src/multiplayer/UdpTransport.cpp
     src/meshing/ChunkMesher.cpp
+    src/platform/LocalNetworkAddress.cpp
     src/platform/Window.cpp
     src/render/Renderer.cpp
     src/render/RendererCulling.cpp
@@ -260,6 +264,7 @@ endif()
 
 add_executable(vibecraft_tests
     tests/world_smoke_tests.cpp
+    src/app/Crafting.cpp
     src/game/CollisionHelpers.cpp
     src/game/MobSpawnSystem.cpp
     src/game/PlayerVitals.cpp

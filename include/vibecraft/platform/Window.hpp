@@ -22,6 +22,7 @@ class Window
     void destroy();
     void pollEvents(InputState& inputState);
     bool setRelativeMouseMode(bool enabled) const;
+    void setTextInputActive(bool enabled);
 
     [[nodiscard]] SDL_Window* sdlWindow() const
     {

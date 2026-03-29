@@ -62,9 +62,20 @@ void Window::pollEvents(InputState& inputState)
             {
                 inputState.escapePressed = true;
             }
-            if (event.key.scancode == SDL_SCANCODE_TAB)
+            if (event.key.scancode == SDL_SCANCODE_TAB && !event.key.repeat)
             {
-                inputState.captureMouseRequested = true;
+                inputState.tabPressed = true;
+            }
+            if (event.key.scancode == SDL_SCANCODE_BACKSPACE && !event.key.repeat)
+            {
+                inputState.backspacePressed = true;
+            }
+            break;
+
+        case SDL_EVENT_TEXT_INPUT:
+            if (event.text.text != nullptr)
+            {
+                inputState.textInputUtf8 += event.text.text;
             }
             break;
 
@@ -97,10 +108,25 @@ void Window::pollEvents(InputState& inputState)
                 inputState.rightMousePressed = true;
             }
             break;
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            if (event.button.button == SDL_BUTTON_LEFT)
+            {
+                inputState.leftMouseClicked = true;
+            }
+            break;
+        case SDL_EVENT_MOUSE_WHEEL:
+            inputState.mouseWheelDeltaY += static_cast<int>(event.wheel.y);
+            break;
 
         default:
             break;
         }
+    }
+
+    if (window_ != nullptr)
+    {
+        const SDL_WindowFlags flags = SDL_GetWindowFlags(window_);
+        inputState.windowFocused = (flags & SDL_WINDOW_INPUT_FOCUS) != 0;
     }
 
     float mouseX = 0.0f;
@@ -122,6 +148,22 @@ void Window::pollEvents(InputState& inputState)
     }
     inputState.mouseWindowX = mouseX;
     inputState.mouseWindowY = mouseY;
+}
+
+void Window::setTextInputActive(const bool enabled)
+{
+    if (window_ == nullptr)
+    {
+        return;
+    }
+    if (enabled)
+    {
+        static_cast<void>(SDL_StartTextInput(window_));
+    }
+    else
+    {
+        static_cast<void>(SDL_StopTextInput(window_));
+    }
 }
 
 bool Window::setRelativeMouseMode(const bool enabled) const

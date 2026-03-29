@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "vibecraft/game/MobTypes.hpp"
 #include "vibecraft/world/Block.hpp"
 
 namespace vibecraft::audio
@@ -23,6 +24,18 @@ class SoundEffects
 
     void playBlockBreak(vibecraft::world::BlockType blockType);
     void playBlockPlace(vibecraft::world::BlockType blockType);
+    /// Short dig/hit tick while mining (quieter than full break).
+    void playBlockDigTick(vibecraft::world::BlockType blockType);
+    /// Footstep on the given surface block (grass, stone, sand, …).
+    void playFootstep(vibecraft::world::BlockType surfaceBlockType);
+    /// Short melee whoosh on a successful player attack.
+    void playPlayerAttack();
+    /// Player hurt cue for fall/lava/drowning/combat damage.
+    void playPlayerHurt();
+    /// Mob damage impact cue.
+    void playMobHit(vibecraft::game::MobKind mobKind);
+    /// Slightly heavier cue when a mob dies.
+    void playMobDefeat(vibecraft::game::MobKind mobKind);
 
   private:
     struct DecodedClip
@@ -33,6 +46,10 @@ class SoundEffects
     [[nodiscard]] bool decodeClip(const std::string& relativePath, DecodedClip& outClip);
     [[nodiscard]] const DecodedClip* getOrLoadClip(const std::string& relativePath);
     void playRandomClip(const std::vector<std::string>& options);
+    void playRandomClipWithGain(const std::vector<std::string>& options, float gain);
+    void queueProceduralFallbackClip();
+    void queueProceduralFallbackScaled(float gain);
+    void queueProceduralSweep(float startHz, float endHz, float durationSeconds, float gain, float noiseMix);
     [[nodiscard]] int randomInclusive(int minValue, int maxValue);
 
     std::filesystem::path audioRoot_;

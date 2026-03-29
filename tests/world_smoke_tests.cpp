@@ -10,6 +10,7 @@
 
 #include <glm/vec3.hpp>
 
+#include "vibecraft/app/Crafting.hpp"
 #include "vibecraft/game/DayNightCycle.hpp"
 #include "vibecraft/game/MobSpawnSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
@@ -159,7 +160,42 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     CHECK(vibecraft::world::textureTileIndex(BlockType::Stone, BlockFace::Top) == 3);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Sand, BlockFace::Side) == 7);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Water, BlockFace::Side) == 6);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::OakPlanks, BlockFace::Side) == 17);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::CraftingTable, BlockFace::Top) == 20);
     CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xffffffff);
+}
+
+TEST_CASE("crafting recipes include trunk to planks and planks to crafting table")
+{
+    using vibecraft::app::CraftingGridSlots;
+    using vibecraft::app::CraftingMode;
+    using vibecraft::world::BlockType;
+
+    CraftingGridSlots inventoryGrid{};
+    inventoryGrid[0].blockType = BlockType::TreeTrunk;
+    inventoryGrid[0].count = 1;
+    const auto planksMatch = vibecraft::app::evaluateCraftingGrid(
+        inventoryGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(planksMatch.has_value());
+    CHECK(planksMatch->output.blockType == BlockType::OakPlanks);
+    CHECK(planksMatch->output.count == 4);
+
+    CraftingGridSlots workbenchGrid{};
+    workbenchGrid[0].blockType = BlockType::OakPlanks;
+    workbenchGrid[0].count = 1;
+    workbenchGrid[1].blockType = BlockType::OakPlanks;
+    workbenchGrid[1].count = 1;
+    workbenchGrid[3].blockType = BlockType::OakPlanks;
+    workbenchGrid[3].count = 1;
+    workbenchGrid[4].blockType = BlockType::OakPlanks;
+    workbenchGrid[4].count = 1;
+    const auto tableMatch = vibecraft::app::evaluateCraftingGrid(
+        workbenchGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(tableMatch.has_value());
+    CHECK(tableMatch->output.blockType == BlockType::CraftingTable);
+    CHECK(tableMatch->output.count == 1);
 }
 
 TEST_CASE("deeper block families are harder and bedrock is unbreakable")
@@ -456,12 +492,12 @@ TEST_CASE("generateMissingChunksAround adds only missing chunks near a center")
         != vibecraft::world::BlockType::Air);
 }
 
-TEST_CASE("MobSpawnSystem clearAllMobs leaves empty enemy list")
+TEST_CASE("MobSpawnSystem clearAllMobs leaves empty mob list")
 {
     vibecraft::game::MobSpawnSystem sys;
-    CHECK(sys.enemies().empty());
+    CHECK(sys.mobs().empty());
     sys.clearAllMobs();
-    CHECK(sys.enemies().empty());
+    CHECK(sys.mobs().empty());
 }
 
 TEST_CASE("MobSpawnSystem does not spawn hostiles during daytime")
@@ -472,6 +508,8 @@ TEST_CASE("MobSpawnSystem does not spawn hostiles during daytime")
 
     vibecraft::game::MobSpawnSettings settings;
     settings.spawnAttemptIntervalSeconds = 0.01f;
+    // Daytime would otherwise spawn passive animals on grass; this test targets hostile rules only.
+    settings.maxPassiveMobsNearPlayer = 0;
     vibecraft::game::MobSpawnSystem sys(settings);
     sys.setRngSeedForTests(12'345u);
 
@@ -492,5 +530,5 @@ TEST_CASE("MobSpawnSystem does not spawn hostiles during daytime")
             vitals);
     }
 
-    CHECK(sys.enemies().empty());
+    CHECK(sys.mobs().empty());
 }

@@ -89,6 +89,9 @@ void MusicDirector::shutdown()
     hasActiveTrack_ = false;
     activeTrackFrameCursor_ = 0;
     queuedSilenceFrames_ = 0;
+    proceduralPhase_ = 0;
+    loggedMissingMusicAssets_ = false;
+    decodeExhaustedForContext_ = false;
 }
 
 void MusicDirector::update(const float /*deltaTimeSeconds*/, const MusicContext desiredContext)
@@ -105,6 +108,7 @@ void MusicDirector::update(const float /*deltaTimeSeconds*/, const MusicContext 
         hasContext_ = true;
         hasActiveTrack_ = false;
         activeTrackFrameCursor_ = 0;
+        decodeExhaustedForContext_ = false;
         if (firstContext)
         {
             queuedSilenceFrames_ = 0;
@@ -254,6 +258,43 @@ void MusicDirector::queueSilenceFrames(int frameCount)
     }
 }
 
+void MusicDirector::queueProceduralFallbackFrames(const int frameCount)
+{
+    if (stream_ == nullptr || frameCount <= 0)
+    {
+        return;
+    }
+
+    constexpr int kChunkFrames = 1024;
+    constexpr float kSampleRate = static_cast<float>(kOutputSampleRate);
+    constexpr float kAmplitude = 0.12f;
+    constexpr float kTwoPi = 6.2831853f;
+
+    int remaining = frameCount;
+    while (remaining > 0)
+    {
+        const int chunkFrames = std::min(remaining, kChunkFrames);
+        std::array<float, kChunkFrames * kOutputChannelCount> chunk{};
+        for (int i = 0; i < chunkFrames; ++i)
+        {
+            const float t = static_cast<float>(proceduralPhase_ + static_cast<std::uint64_t>(i)) / kSampleRate;
+            const float s = kAmplitude
+                * (0.62f * std::sin(kTwoPi * 220.0f * t) + 0.38f * std::sin(kTwoPi * 329.63f * t));
+            const std::size_t o = static_cast<std::size_t>(i) * 2;
+            chunk[o] = s;
+            chunk[o + 1] = s;
+        }
+        proceduralPhase_ += static_cast<std::uint64_t>(chunkFrames);
+        const int byteCount = chunkFrames * kOutputChannelCount * static_cast<int>(sizeof(float));
+        if (!SDL_PutAudioStreamData(stream_, chunk.data(), byteCount))
+        {
+            core::logWarning(fmt::format("Failed queuing procedural fallback audio: {}", SDL_GetError()));
+            return;
+        }
+        remaining -= chunkFrames;
+    }
+}
+
 void MusicDirector::queueTrackAudioFrames(const int frameCount)
 {
     if (!hasActiveTrack_ || stream_ == nullptr || frameCount <= 0)
@@ -317,12 +358,27 @@ void MusicDirector::refillQueue()
             continue;
         }
 
-        if (!hasActiveTrack_ && !pickAndDecodeNextTrack(context_))
+        if (!hasActiveTrack_)
         {
-            // Keep output alive even if assets are missing.
-            queueSilenceFrames(kOutputSampleRate);
-            queuedFrames += kOutputSampleRate;
-            continue;
+            if (!decodeExhaustedForContext_ && !pickAndDecodeNextTrack(context_))
+            {
+                decodeExhaustedForContext_ = true;
+                if (!loggedMissingMusicAssets_)
+                {
+                    core::logWarning(fmt::format(
+                        "No music could be decoded from '{}'. "
+                        "Place Minecraft OGGs under assets/audio/minecraft or audio/minecraft next to the executable. "
+                        "Playing a placeholder tone so speaker output can be verified.",
+                        audioRoot_.generic_string()));
+                    loggedMissingMusicAssets_ = true;
+                }
+            }
+            if (decodeExhaustedForContext_)
+            {
+                queueProceduralFallbackFrames(refillFrames);
+                queuedFrames += refillFrames;
+                continue;
+            }
         }
 
         const std::size_t beforeCursor = activeTrackFrameCursor_;

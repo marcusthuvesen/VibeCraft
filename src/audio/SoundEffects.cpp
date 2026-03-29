@@ -4,10 +4,12 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <unordered_set>
 
 #include "vibecraft/core/Logger.hpp"
 
@@ -22,6 +24,7 @@ namespace
 {
 constexpr int kOutputSampleRate = 44100;
 constexpr int kOutputChannelCount = 2;
+constexpr int kSfxImmediateQueueMaxMs = 85;
 
 [[nodiscard]] std::vector<std::string> blockBreakOptions(const vibecraft::world::BlockType blockType)
 {
@@ -33,8 +36,11 @@ constexpr int kOutputChannelCount = 2;
     case BlockType::TreeCrown:
         return {"dig/grass1.ogg", "dig/grass2.ogg", "dig/grass3.ogg", "dig/grass4.ogg"};
     case BlockType::Sand:
+    case BlockType::Sandstone:
         return {"block/sand/sand1.ogg", "block/sand/sand2.ogg", "block/sand/sand3.ogg", "block/sand/sand4.ogg"};
     case BlockType::TreeTrunk:
+    case BlockType::OakPlanks:
+    case BlockType::CraftingTable:
         return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {
@@ -47,11 +53,80 @@ constexpr int kOutputChannelCount = 2;
     case BlockType::GoldOre:
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
+    case BlockType::Cobblestone:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
         return {"dig/stone1.ogg", "dig/stone2.ogg", "dig/stone3.ogg", "dig/stone4.ogg"};
     }
+}
+
+[[nodiscard]] std::vector<std::string> footstepOptions(const vibecraft::world::BlockType blockType)
+{
+    using vibecraft::world::BlockType;
+    std::vector<std::string> step;
+    switch (blockType)
+    {
+    case BlockType::Grass:
+    case BlockType::Dirt:
+    case BlockType::TreeCrown:
+        step.assign(
+            {"block/grass/step1.ogg",
+             "block/grass/step2.ogg",
+             "block/grass/step3.ogg",
+             "block/grass/step4.ogg",
+             "block/grass/step5.ogg",
+             "block/grass/step6.ogg"});
+        break;
+    case BlockType::Sand:
+    case BlockType::Sandstone:
+        step.assign(
+            {"block/sand/sand1.ogg",
+             "block/sand/sand2.ogg",
+             "block/sand/sand3.ogg",
+             "block/sand/sand4.ogg"});
+        break;
+    case BlockType::TreeTrunk:
+    case BlockType::OakPlanks:
+    case BlockType::CraftingTable:
+        step.assign(
+            {"block/wood/step1.ogg",
+             "block/wood/step2.ogg",
+             "block/wood/step3.ogg",
+             "block/wood/step4.ogg",
+             "block/wood/step5.ogg",
+             "block/wood/step6.ogg"});
+        break;
+    case BlockType::Deepslate:
+        step.assign(
+            {"block/deepslate/step1.ogg",
+             "block/deepslate/step2.ogg",
+             "block/deepslate/step3.ogg",
+             "block/deepslate/step4.ogg",
+             "block/deepslate/step5.ogg"});
+        break;
+    case BlockType::CoalOre:
+    case BlockType::IronOre:
+    case BlockType::GoldOre:
+    case BlockType::DiamondOre:
+    case BlockType::EmeraldOre:
+    case BlockType::Cobblestone:
+    case BlockType::Bedrock:
+    case BlockType::Stone:
+    default:
+        step.assign(
+            {"block/stone/step1.ogg",
+             "block/stone/step2.ogg",
+             "block/stone/step3.ogg",
+             "block/stone/step4.ogg",
+             "block/stone/step5.ogg",
+             "block/stone/step6.ogg"});
+        break;
+    }
+
+    const std::vector<std::string> dig = blockBreakOptions(blockType);
+    step.insert(step.end(), dig.begin(), dig.end());
+    return step;
 }
 
 [[nodiscard]] std::vector<std::string> blockPlaceOptions(const vibecraft::world::BlockType blockType)
@@ -64,8 +139,11 @@ constexpr int kOutputChannelCount = 2;
     case BlockType::TreeCrown:
         return {"dig/grass1.ogg", "dig/grass2.ogg", "dig/grass3.ogg", "dig/grass4.ogg"};
     case BlockType::Sand:
+    case BlockType::Sandstone:
         return {"block/sand/sand5.ogg", "block/sand/sand6.ogg", "block/sand/sand7.ogg", "block/sand/sand8.ogg"};
     case BlockType::TreeTrunk:
+    case BlockType::OakPlanks:
+    case BlockType::CraftingTable:
         return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {
@@ -78,11 +156,124 @@ constexpr int kOutputChannelCount = 2;
     case BlockType::GoldOre:
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
+    case BlockType::Cobblestone:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
         return {"dig/stone1.ogg", "dig/stone2.ogg", "dig/stone3.ogg", "dig/stone4.ogg"};
     }
+}
+
+[[nodiscard]] std::vector<std::string> playerAttackOptions()
+{
+    return {
+        "entity/player/attack/sweep1.ogg",
+        "entity/player/attack/sweep2.ogg",
+        "entity/player/attack/sweep3.ogg",
+        "entity/player/attack/sweep4.ogg",
+        "entity/player/attack/sweep5.ogg",
+        "entity/player/attack/sweep6.ogg",
+        "entity/player/attack/sweep7.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> playerHurtOptions()
+{
+    return {
+        "entity/player/hurt/fire_hurt1.ogg",
+        "entity/player/hurt/fire_hurt2.ogg",
+        "entity/player/hurt/fire_hurt3.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> mobHitOptions(const vibecraft::game::MobKind mobKind)
+{
+    using vibecraft::game::MobKind;
+    switch (mobKind)
+    {
+    case MobKind::HostileStalker:
+        return {"mob/zombie/hurt1.ogg", "mob/zombie/hurt2.ogg", "mob/zombie/say1.ogg", "mob/zombie/say2.ogg"};
+    case MobKind::Cow:
+        return {"mob/cow/hurt1.ogg", "mob/cow/hurt2.ogg", "mob/cow/hurt3.ogg"};
+    case MobKind::Pig:
+        return {"mob/pig/say1.ogg", "mob/pig/say2.ogg", "mob/pig/say3.ogg"};
+    case MobKind::Sheep:
+        return {"mob/sheep/say1.ogg", "mob/sheep/say2.ogg", "mob/sheep/say3.ogg"};
+    case MobKind::Chicken:
+        return {"mob/chicken/hurt1.ogg", "mob/chicken/hurt2.ogg", "mob/chicken/say1.ogg", "mob/chicken/say2.ogg"};
+    }
+    return {};
+}
+
+[[nodiscard]] std::vector<std::string> mobDefeatOptions(const vibecraft::game::MobKind mobKind)
+{
+    using vibecraft::game::MobKind;
+    switch (mobKind)
+    {
+    case MobKind::HostileStalker:
+        return {"mob/zombie/death.ogg"};
+    case MobKind::Cow:
+        return {"mob/cow/hurt1.ogg", "mob/cow/hurt2.ogg"};
+    case MobKind::Pig:
+        return {"mob/pig/death.ogg"};
+    case MobKind::Sheep:
+        return {"mob/sheep/say1.ogg", "mob/sheep/say2.ogg"};
+    case MobKind::Chicken:
+        return {"mob/chicken/hurt1.ogg", "mob/chicken/hurt2.ogg"};
+    }
+    return {};
+}
+
+[[nodiscard]] std::vector<std::string> warmupClipPaths()
+{
+    std::vector<std::string> clips;
+    const auto append = [&clips](const std::vector<std::string>& src)
+    {
+        clips.insert(clips.end(), src.begin(), src.end());
+    };
+
+    append(blockBreakOptions(vibecraft::world::BlockType::Stone));
+    append(blockBreakOptions(vibecraft::world::BlockType::Grass));
+    append(blockBreakOptions(vibecraft::world::BlockType::Sand));
+    append(blockBreakOptions(vibecraft::world::BlockType::TreeTrunk));
+    append(blockBreakOptions(vibecraft::world::BlockType::Deepslate));
+
+    append(blockPlaceOptions(vibecraft::world::BlockType::Stone));
+    append(blockPlaceOptions(vibecraft::world::BlockType::Grass));
+    append(blockPlaceOptions(vibecraft::world::BlockType::Sand));
+    append(blockPlaceOptions(vibecraft::world::BlockType::TreeTrunk));
+    append(blockPlaceOptions(vibecraft::world::BlockType::Deepslate));
+
+    append(footstepOptions(vibecraft::world::BlockType::Stone));
+    append(footstepOptions(vibecraft::world::BlockType::Grass));
+    append(footstepOptions(vibecraft::world::BlockType::Sand));
+    append(footstepOptions(vibecraft::world::BlockType::TreeTrunk));
+    append(footstepOptions(vibecraft::world::BlockType::Deepslate));
+
+    append(playerAttackOptions());
+    append(playerHurtOptions());
+
+    using MK = vibecraft::game::MobKind;
+    append(mobHitOptions(MK::HostileStalker));
+    append(mobHitOptions(MK::Cow));
+    append(mobHitOptions(MK::Pig));
+    append(mobHitOptions(MK::Sheep));
+    append(mobHitOptions(MK::Chicken));
+    append(mobDefeatOptions(MK::HostileStalker));
+    append(mobDefeatOptions(MK::Cow));
+    append(mobDefeatOptions(MK::Pig));
+    append(mobDefeatOptions(MK::Sheep));
+    append(mobDefeatOptions(MK::Chicken));
+
+    std::unordered_set<std::string> seen;
+    std::vector<std::string> unique;
+    unique.reserve(clips.size());
+    for (const std::string& clip : clips)
+    {
+        if (seen.emplace(clip).second)
+        {
+            unique.push_back(clip);
+        }
+    }
+    return unique;
 }
 }  // namespace
 
@@ -99,6 +290,10 @@ bool SoundEffects::initialize(SDL_AudioStream* const stream, const std::filesyst
 
     setMasterGain(streamGain_);
     clipCache_.clear();
+    for (const std::string& clipPath : warmupClipPaths())
+    {
+        static_cast<void>(getOrLoadClip(clipPath));
+    }
     return true;
 }
 
@@ -142,6 +337,84 @@ void SoundEffects::playBlockPlace(const vibecraft::world::BlockType blockType)
         return;
     }
     playRandomClip(blockPlaceOptions(blockType));
+}
+
+void SoundEffects::playBlockDigTick(const vibecraft::world::BlockType blockType)
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(blockBreakOptions(blockType), 0.58f);
+}
+
+void SoundEffects::playFootstep(const vibecraft::world::BlockType surfaceBlockType)
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(footstepOptions(surfaceBlockType), 0.32f);
+}
+
+void SoundEffects::playPlayerAttack()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    const std::vector<std::string> options = playerAttackOptions();
+    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    {
+        playRandomClipWithGain(options, 0.52f);
+        return;
+    }
+    queueProceduralSweep(760.0f, 310.0f, 0.055f, 0.19f, 0.22f);
+}
+
+void SoundEffects::playPlayerHurt()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    const std::vector<std::string> options = playerHurtOptions();
+    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    {
+        playRandomClipWithGain(options, 0.65f);
+        return;
+    }
+    queueProceduralSweep(280.0f, 130.0f, 0.095f, 0.33f, 0.26f);
+}
+
+void SoundEffects::playMobHit(const vibecraft::game::MobKind mobKind)
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    const std::vector<std::string> options = mobHitOptions(mobKind);
+    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    {
+        playRandomClipWithGain(options, 0.85f);
+        return;
+    }
+    queueProceduralSweep(210.0f, 110.0f, 0.085f, 0.34f, 0.34f);
+}
+
+void SoundEffects::playMobDefeat(const vibecraft::game::MobKind mobKind)
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    const std::vector<std::string> options = mobDefeatOptions(mobKind);
+    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    {
+        playRandomClipWithGain(options, 0.92f);
+        return;
+    }
+    queueProceduralSweep(180.0f, 70.0f, 0.14f, 0.38f, 0.28f);
 }
 
 bool SoundEffects::decodeClip(const std::string& relativePath, DecodedClip& outClip)
@@ -226,26 +499,153 @@ const SoundEffects::DecodedClip* SoundEffects::getOrLoadClip(const std::string& 
     return &insertedIt->second;
 }
 
+void SoundEffects::queueProceduralFallbackClip()
+{
+    queueProceduralFallbackScaled(1.0f);
+}
+
+void SoundEffects::queueProceduralFallbackScaled(const float gain)
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+
+    constexpr int kSampleRate = 44100;
+    constexpr int kFrames = kSampleRate * 4 / 100;
+    std::array<float, static_cast<std::size_t>(kFrames) * 2> chunk{};
+    constexpr float kTwoPi = 6.2831853f;
+    const float g = std::clamp(gain, 0.0f, 4.0f);
+    for (int i = 0; i < kFrames; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(kSampleRate);
+        const float env = 1.0f - static_cast<float>(i) / static_cast<float>((kFrames > 1) ? (kFrames - 1) : 1);
+        const float s = 0.42f * g * env * std::sin(kTwoPi * 1400.0f * t);
+        chunk[static_cast<std::size_t>(i) * 2] = s;
+        chunk[static_cast<std::size_t>(i) * 2 + 1] = s;
+    }
+
+    if (!SDL_PutAudioStreamData(stream_, chunk.data(), static_cast<int>(chunk.size() * sizeof(float))))
+    {
+        core::logWarning(fmt::format("Failed queuing procedural SFX: {}", SDL_GetError()));
+    }
+    else
+    {
+        static_cast<void>(SDL_FlushAudioStream(stream_));
+    }
+}
+
+void SoundEffects::queueProceduralSweep(
+    const float startHz,
+    const float endHz,
+    const float durationSeconds,
+    const float gain,
+    const float noiseMix)
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+
+    const int frames = std::max(1, static_cast<int>(std::round(durationSeconds * static_cast<float>(kOutputSampleRate))));
+    std::vector<float> chunk(static_cast<std::size_t>(frames) * 2U, 0.0f);
+    constexpr float kTwoPi = 6.2831853f;
+    float phase = 0.0f;
+    const float clampedGain = std::clamp(gain, 0.0f, 1.5f);
+    const float clampedNoiseMix = std::clamp(noiseMix, 0.0f, 1.0f);
+
+    for (int i = 0; i < frames; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(std::max(1, frames - 1));
+        const float env = std::pow(1.0f - t, 1.7f);
+        const float hz = startHz + (endHz - startHz) * t;
+        phase += kTwoPi * hz / static_cast<float>(kOutputSampleRate);
+        const float tonal = std::sin(phase);
+        const float noise = static_cast<float>(randomInclusive(-1000, 1000)) / 1000.0f;
+        const float sample = (tonal * (1.0f - clampedNoiseMix) + noise * clampedNoiseMix * 0.75f) * env * clampedGain;
+        chunk[static_cast<std::size_t>(i) * 2U] = sample;
+        chunk[static_cast<std::size_t>(i) * 2U + 1U] = sample;
+    }
+
+    if (!SDL_PutAudioStreamData(stream_, chunk.data(), static_cast<int>(chunk.size() * sizeof(float))))
+    {
+        core::logWarning(fmt::format("Failed queuing procedural combat SFX: {}", SDL_GetError()));
+    }
+    else
+    {
+        static_cast<void>(SDL_FlushAudioStream(stream_));
+    }
+}
+
 void SoundEffects::playRandomClip(const std::vector<std::string>& options)
+{
+    playRandomClipWithGain(options, 1.0f);
+}
+
+void SoundEffects::playRandomClipWithGain(const std::vector<std::string>& options, const float gain)
 {
     if (stream_ == nullptr || options.empty())
     {
         return;
     }
 
+    const int queuedBytes = SDL_GetAudioStreamQueued(stream_);
+    if (queuedBytes < 0)
+    {
+        core::logWarning(fmt::format("Failed querying SFX queue size: {}", SDL_GetError()));
+    }
+    else
+    {
+        const int maxQueuedBytes = (kOutputSampleRate * kOutputChannelCount * static_cast<int>(sizeof(float))
+            * kSfxImmediateQueueMaxMs) / 1000;
+        if (queuedBytes > maxQueuedBytes && !SDL_ClearAudioStream(stream_))
+        {
+            core::logWarning(fmt::format("Failed clearing delayed SFX queue: {}", SDL_GetError()));
+        }
+    }
+
+    const float g = std::clamp(gain, 0.0f, 4.0f);
     const int clipIndex = randomInclusive(0, static_cast<int>(options.size()) - 1);
     const DecodedClip* const clip = getOrLoadClip(options[static_cast<std::size_t>(clipIndex)]);
     if (clip == nullptr || clip->pcmF32Stereo.empty())
     {
+        queueProceduralFallbackScaled(g);
         return;
+    }
+
+    if (g >= 0.999f && g <= 1.001f)
+    {
+        if (!SDL_PutAudioStreamData(
+                stream_,
+                clip->pcmF32Stereo.data(),
+                static_cast<int>(clip->pcmF32Stereo.size() * sizeof(float))))
+        {
+            core::logWarning(fmt::format("Failed queuing SFX clip: {}", SDL_GetError()));
+        }
+        else
+        {
+            static_cast<void>(SDL_FlushAudioStream(stream_));
+        }
+        return;
+    }
+
+    thread_local std::vector<float> scaled;
+    scaled.resize(clip->pcmF32Stereo.size());
+    for (std::size_t i = 0; i < clip->pcmF32Stereo.size(); ++i)
+    {
+        scaled[i] = clip->pcmF32Stereo[i] * g;
     }
 
     if (!SDL_PutAudioStreamData(
             stream_,
-            clip->pcmF32Stereo.data(),
-            static_cast<int>(clip->pcmF32Stereo.size() * sizeof(float))))
+            scaled.data(),
+            static_cast<int>(scaled.size() * sizeof(float))))
     {
         core::logWarning(fmt::format("Failed queuing SFX clip: {}", SDL_GetError()));
+    }
+    else
+    {
+        static_cast<void>(SDL_FlushAudioStream(stream_));
     }
 }
 

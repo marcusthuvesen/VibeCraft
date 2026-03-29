@@ -2,7 +2,11 @@
 
 #include <SDL3/SDL_filesystem.h>
 
+#include <fmt/format.h>
+
 #include <filesystem>
+
+#include "vibecraft/core/Logger.hpp"
 
 namespace vibecraft::audio
 {
@@ -43,5 +47,26 @@ std::filesystem::path resolveMinecraftAudioRoot()
     }
 
     return baseFromSdl / "audio" / "minecraft";
+}
+
+void logMinecraftAudioPackDiagnostics(const std::filesystem::path& root)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const bool ok = looksLikeMinecraftAudioPack(root);
+    if (ok)
+    {
+        core::logInfo(fmt::format("Minecraft audio pack found at {}", root.generic_string()));
+        return;
+    }
+
+    const bool rootExists = fs::exists(root, ec);
+    core::logWarning(fmt::format(
+        "Minecraft audio pack missing or empty at '{}'{}."
+        " Expected `music/` (OGG music) and/or `dig/grass1.ogg` (SFX). "
+        "Copy `assets/audio/minecraft` from a Minecraft 1.20+ jar or install the pack next to the binary under `audio/minecraft`. "
+        "Placeholder music and click SFX will play until files are present.",
+        root.generic_string(),
+        rootExists ? "" : " (path does not exist)"));
 }
 }  // namespace vibecraft::audio
