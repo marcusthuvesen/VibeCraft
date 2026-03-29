@@ -1067,6 +1067,44 @@ void Renderer::drawWorldMobSprites(
         bgfx::submit(detail::kMainView, detail::toProgramHandle(inventoryUiProgramHandle_));
         return true;
     };
+    const auto resolveHeldSpriteTexture = [&](const FrameDebugData::WorldMobHud& mob,
+                                              std::uint16_t& textureHandle,
+                                              float& minU,
+                                              float& maxU,
+                                              float& minV,
+                                              float& maxV)
+    {
+        textureHandle = UINT16_MAX;
+        minU = 0.0f;
+        maxU = 1.0f;
+        minV = 0.0f;
+        maxV = 1.0f;
+
+        if (mob.heldItemKind != HudItemKind::None)
+        {
+            textureHandle = hudItemKindTextureHandle(mob.heldItemKind);
+        }
+        if (textureHandle == UINT16_MAX && mob.heldBlockType != vibecraft::world::BlockType::Air)
+        {
+            if (chunkAtlasTextureHandle_ == UINT16_MAX)
+            {
+                return false;
+            }
+            textureHandle = chunkAtlasTextureHandle_;
+            const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
+                mob.heldBlockType,
+                vibecraft::world::BlockFace::Side);
+            const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
+            const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
+            const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
+            const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
+            minU = tileX * tileWidth;
+            maxU = minU + tileWidth;
+            minV = tileY * tileHeight;
+            maxV = minV + tileHeight;
+        }
+        return textureHandle != UINT16_MAX;
+    };
 
     for (const FrameDebugData::WorldMobHud& mob : frameDebugData.worldMobs)
     {
@@ -1083,9 +1121,47 @@ void Renderer::drawWorldMobSprites(
         const float yawCos = std::cos(mob.yawRadians);
         const glm::vec3 forward(yawSin, 0.0f, yawCos);
         const glm::vec3 right(yawCos, 0.0f, -yawSin);
+        const float pitchSin = std::sin(mob.pitchRadians);
+        const float pitchCos = std::cos(mob.pitchRadians);
+        const glm::vec3 headForward = glm::normalize(forward * pitchCos + glm::vec3(0.0f, pitchSin, 0.0f));
+        const glm::vec3 headUp = glm::normalize(glm::cross(headForward, right));
         const float sx = halfWidth / referenceHalfWidthPxForMobKind(mob.mobKind);
         const float sy = height / referenceHeightPxForMobKind(mob.mobKind);
         const float sz = sx;
+        const auto submitHeldItemSprite = [&](const glm::vec3& centerOffsetPx,
+                                              const float halfWidthPx,
+                                              const float halfHeightPx)
+        {
+            std::uint16_t textureHandle = UINT16_MAX;
+            float minU = 0.0f;
+            float maxU = 1.0f;
+            float minV = 0.0f;
+            float maxV = 1.0f;
+            if (!resolveHeldSpriteTexture(mob, textureHandle, minU, maxU, minV, maxV))
+            {
+                return true;
+            }
+
+            const glm::vec3 center = mob.feetPosition
+                + right * (centerOffsetPx.x * sx)
+                + glm::vec3(0.0f, centerOffsetPx.y * sy, 0.0f)
+                + forward * (centerOffsetPx.z * sz);
+            const glm::vec3 spriteRight = right * (halfWidthPx * sx);
+            const glm::vec3 spriteUp(0.0f, halfHeightPx * sy, 0.0f);
+            return submitFace(
+                center - spriteRight - spriteUp,
+                center + spriteRight - spriteUp,
+                center + spriteRight + spriteUp,
+                center - spriteRight + spriteUp,
+                TextureUvRect{
+                    .minU = minU,
+                    .maxU = maxU,
+                    .minV = minV,
+                    .maxV = maxV,
+                },
+                0xffffffff,
+                textureHandle);
+        };
 
         const auto submitOrientedCuboid = [&](const glm::vec3& centerOffsetPx,
                                               const glm::vec3& halfExtentsWorld,
@@ -1177,11 +1253,28 @@ void Renderer::drawWorldMobSprites(
             const float bodyBob = std::abs(std::sin(gaitPhase * 2.0f)) * 0.2f;
 
             if (!submitCuboid(glm::vec3(0.0f, 18.0f + bodyBob, 0.0f), glm::vec3(4.0f, 6.0f, 2.0f), uv.body)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 28.0f + bodyBob, 0.0f), glm::vec3(4.0f, 4.0f, 4.0f), uv.head)) break;
+            if (!submitOrientedCuboid(
+                    glm::vec3(0.0f, 28.0f + bodyBob, 0.0f),
+                    glm::vec3(4.0f * sx, 4.0f * sy, 4.0f * sz),
+                    right,
+                    headUp,
+                    headForward,
+                    uv.head))
+            {
+                break;
+            }
             if (!submitCuboid(glm::vec3(-6.0f, 18.0f + bodyBob, armSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
             if (!submitCuboid(glm::vec3(6.0f, 18.0f + bodyBob, -armSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
             if (!submitCuboid(glm::vec3(-2.0f, 6.0f, legSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(2.0f, 6.0f, -legSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
+            if (mob.heldItemUsesSwordPose)
+            {
+                if (!submitHeldItemSprite(glm::vec3(8.7f, 15.5f + bodyBob, -armSwing - 1.0f), 1.35f, 4.1f)) break;
+            }
+            else if (mob.heldItemKind != HudItemKind::None || mob.heldBlockType != vibecraft::world::BlockType::Air)
+            {
+                if (!submitHeldItemSprite(glm::vec3(8.1f, 15.8f + bodyBob, -armSwing - 0.3f), 2.1f, 2.1f)) break;
+            }
             break;
         }
         case MK::HostileStalker:

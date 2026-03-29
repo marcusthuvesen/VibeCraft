@@ -143,9 +143,13 @@ struct FrameDebugData
     {
         glm::vec3 feetPosition{0.0f};
         float yawRadians = 0.0f;
+        float pitchRadians = 0.0f;
         float halfWidth = 0.28f;
         float height = 1.75f;
         vibecraft::game::MobKind mobKind = vibecraft::game::MobKind::HostileStalker;
+        vibecraft::world::BlockType heldBlockType = vibecraft::world::BlockType::Air;
+        HudItemKind heldItemKind = HudItemKind::None;
+        bool heldItemUsesSwordPose = false;
     };
     std::vector<WorldMobHud> worldMobs;
 

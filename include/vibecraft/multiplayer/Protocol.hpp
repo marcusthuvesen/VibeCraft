@@ -8,13 +8,14 @@
 #include <variant>
 #include <vector>
 
+#include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/world/Chunk.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
 namespace vibecraft::multiplayer::protocol
 {
 inline constexpr std::uint32_t kProtocolMagic = 0x56434d50;  // "VCMP"
-inline constexpr std::uint16_t kProtocolVersion = 1;
+inline constexpr std::uint16_t kProtocolVersion = 2;
 inline constexpr std::size_t kMaxPlayerNameLength = 32;
 inline constexpr std::size_t kMaxStringLength = 256;
 inline constexpr std::size_t kMaxPlayersPerSnapshot = 8;
@@ -78,6 +79,8 @@ struct ClientInputMessage
     float positionZ = 0.0f;
     float health = 20.0f;
     float air = 10.0f;
+    app::EquippedItem selectedEquippedItem = app::EquippedItem::None;
+    world::BlockType selectedBlockType = world::BlockType::Air;
     bool jump = false;
     bool breakBlock = false;
     bool placeBlock = false;
@@ -98,6 +101,8 @@ struct PlayerSnapshotMessage
     float pitchDegrees = 0.0f;
     float health = 20.0f;
     float air = 10.0f;
+    app::EquippedItem selectedEquippedItem = app::EquippedItem::None;
+    world::BlockType selectedBlockType = world::BlockType::Air;
 };
 
 struct DroppedItemSnapshotMessage

@@ -857,6 +857,12 @@ void World::applyMeshStatsAndClearDirty(const std::span<const ChunkMeshUpdate> u
 void World::replaceChunk(Chunk chunk)
 {
     const ChunkCoord coord = chunk.coord();
+    const auto existingIt = chunks_.find(coord);
+    if (existingIt != chunks_.end() && existingIt->second.blockStorage() == chunk.blockStorage())
+    {
+        return;
+    }
+
     chunks_[coord] = std::move(chunk);
 
     // A streamed chunk update can change faces on the chunk itself and along all four borders.

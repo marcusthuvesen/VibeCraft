@@ -88,6 +88,7 @@ struct PlayerMovementSettings
     float waterSwimUpAcceleration = 15.0f;
     float waterSinkAcceleration = 6.0f;
     float waterVerticalDrag = 4.0f;
+    float maxStepHeight = 0.6f;
     float collisionSweepStep = 0.2f;
     float groundProbeDistance = 0.05f;
 };
@@ -98,6 +99,24 @@ constexpr InputTuning kInputTuning{};
 constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
 constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
+
+[[nodiscard]] float normalizeDegrees(float degrees)
+{
+    while (degrees > 180.0f)
+    {
+        degrees -= 360.0f;
+    }
+    while (degrees < -180.0f)
+    {
+        degrees += 360.0f;
+    }
+    return degrees;
+}
+
+[[nodiscard]] float lerpDegrees(const float fromDegrees, const float toDegrees, const float t)
+{
+    return normalizeDegrees(fromDegrees + normalizeDegrees(toDegrees - fromDegrees) * t);
+}
 
 [[nodiscard]] std::int64_t chestStorageKey(const glm::ivec3& blockPosition)
 {
@@ -759,7 +778,13 @@ void applyMeshSyncGpuData(
     return findInitialSpawnFeetPosition(worldState, terrainGenerator, spawnProbePosition, colliderHeight);
 }
 
-[[nodiscard]] bool movePlayerAxisWithCollision(
+struct AxisMoveResult
+{
+    bool blocked = false;
+    float appliedDisplacement = 0.0f;
+};
+
+[[nodiscard]] AxisMoveResult movePlayerAxisWithCollision(
     const world::World& worldState,
     glm::vec3& feetPosition,
     const int axisIndex,
@@ -768,11 +793,12 @@ void applyMeshSyncGpuData(
 {
     if (std::abs(displacement) <= kFloatEpsilon)
     {
-        return false;
+        return {};
     }
 
     float remaining = displacement;
     bool blocked = false;
+    const float startPosition = feetPosition[axisIndex];
 
     while (std::abs(remaining) > kFloatEpsilon)
     {
@@ -813,7 +839,66 @@ void applyMeshSyncGpuData(
         break;
     }
 
-    return blocked;
+    return AxisMoveResult{
+        .blocked = blocked,
+        .appliedDisplacement = feetPosition[axisIndex] - startPosition,
+    };
+}
+
+[[nodiscard]] bool tryStepUpAfterHorizontalBlock(
+    const world::World& worldState,
+    glm::vec3& feetPosition,
+    const int axisIndex,
+    const float remainingDisplacement,
+    const float colliderHeight)
+{
+    if (axisIndex == 1 || std::abs(remainingDisplacement) <= kFloatEpsilon)
+    {
+        return false;
+    }
+
+    glm::vec3 steppedPosition = feetPosition;
+    const AxisMoveResult stepUpResult = movePlayerAxisWithCollision(
+        worldState,
+        steppedPosition,
+        1,
+        kPlayerMovementSettings.maxStepHeight,
+        colliderHeight);
+    if (stepUpResult.blocked || stepUpResult.appliedDisplacement < kPlayerMovementSettings.maxStepHeight * 0.5f)
+    {
+        return false;
+    }
+
+    const AxisMoveResult horizontalResult = movePlayerAxisWithCollision(
+        worldState,
+        steppedPosition,
+        axisIndex,
+        remainingDisplacement,
+        colliderHeight);
+    if (horizontalResult.blocked)
+    {
+        return false;
+    }
+
+    static_cast<void>(movePlayerAxisWithCollision(
+        worldState,
+        steppedPosition,
+        1,
+        -(kPlayerMovementSettings.maxStepHeight + kPlayerMovementSettings.groundProbeDistance + kFloatEpsilon),
+        colliderHeight));
+    glm::vec3 groundedProbe = steppedPosition;
+    groundedProbe.y -= kPlayerMovementSettings.groundProbeDistance;
+    if (!game::collidesWithSolidBlock(worldState, playerAabbAt(groundedProbe, colliderHeight)))
+    {
+        return false;
+    }
+    if (steppedPosition.y <= feetPosition.y + kFloatEpsilon)
+    {
+        return false;
+    }
+
+    feetPosition = steppedPosition;
+    return true;
 }
 
 [[nodiscard]] bool isGroundedAtFeetPosition(
@@ -1300,6 +1385,7 @@ bool Application::initialize()
 
     multiplayerAddress_ = resolveJoinAddressFromEnvironment();
     loadMultiplayerPrefs();
+    loadAudioPrefs();
 
     if (!renderer_.initialize(window_.nativeWindowHandle(), window_.width(), window_.height()))
     {
@@ -1358,6 +1444,7 @@ int Application::run()
         ++runFrameIndex_;
     }
 
+    saveAudioPrefs();
     stopMultiplayerSessions();
     musicDirector_.shutdown();
     soundEffects_.shutdown();
@@ -1550,6 +1637,7 @@ void Application::update(const float deltaTimeSeconds)
             frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
                 .feetPosition = {mob.feetX, mob.feetY, mob.feetZ},
                 .yawRadians = mob.yawRadians,
+                .pitchRadians = 0.0f,
                 .halfWidth = mob.halfWidth,
                 .height = mob.height,
                 .mobKind = mob.kind,
@@ -1561,9 +1649,13 @@ void Application::update(const float deltaTimeSeconds)
             frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
                 .feetPosition = remotePlayer.position,
                 .yawRadians = remotePlayer.yawDegrees * kDegreesToRadians,
+                .pitchRadians = remotePlayer.pitchDegrees * kDegreesToRadians,
                 .halfWidth = 0.30f,
                 .height = 2.0f,
                 .mobKind = game::MobKind::Player,
+                .heldBlockType = remotePlayer.selectedBlockType,
+                .heldItemKind = hudItemKindForEquippedItem(remotePlayer.selectedEquippedItem),
+                .heldItemUsesSwordPose = isSwordItem(remotePlayer.selectedEquippedItem),
             });
         }
     }
@@ -1857,6 +1949,7 @@ void Application::processInput(const float deltaTimeSeconds)
             {
                 pauseSoundSettingsOpen_ = false;
                 pauseMenuNotice_ = "Sound settings saved.";
+                saveAudioPrefs();
             }
             else
             {
@@ -1885,6 +1978,7 @@ void Application::processInput(const float deltaTimeSeconds)
         {
             mainMenuSoundSettingsOpen_ = false;
             mainMenuNotice_ = "Sound settings saved.";
+            saveAudioPrefs();
         }
     }
 
@@ -1977,6 +2071,7 @@ void Application::processInput(const float deltaTimeSeconds)
                 default:
                     break;
                 }
+                saveAudioPrefs();
             }
             else if (mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None)
             {
@@ -2221,6 +2316,7 @@ void Application::processInput(const float deltaTimeSeconds)
                     break;
                 }
                 }
+                saveAudioPrefs();
             }
             else
             {
@@ -2458,10 +2554,40 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (glm::dot(horizontalDisplacement, horizontalDisplacement) > 0.0f)
     {
-        static_cast<void>(movePlayerAxisWithCollision(
-            world_, playerFeetPosition_, 0, horizontalDisplacement.x, colliderHeight));
-        static_cast<void>(movePlayerAxisWithCollision(
-            world_, playerFeetPosition_, 2, horizontalDisplacement.z, colliderHeight));
+        const bool allowStepAssist = isGrounded_ && !inWaterForMovement;
+        const AxisMoveResult moveXResult = movePlayerAxisWithCollision(
+            world_,
+            playerFeetPosition_,
+            0,
+            horizontalDisplacement.x,
+            colliderHeight);
+        if (allowStepAssist && moveXResult.blocked)
+        {
+            const float remainingX = horizontalDisplacement.x - moveXResult.appliedDisplacement;
+            static_cast<void>(tryStepUpAfterHorizontalBlock(
+                world_,
+                playerFeetPosition_,
+                0,
+                remainingX,
+                colliderHeight));
+        }
+
+        const AxisMoveResult moveZResult = movePlayerAxisWithCollision(
+            world_,
+            playerFeetPosition_,
+            2,
+            horizontalDisplacement.z,
+            colliderHeight);
+        if (allowStepAssist && moveZResult.blocked)
+        {
+            const float remainingZ = horizontalDisplacement.z - moveZResult.appliedDisplacement;
+            static_cast<void>(tryStepUpAfterHorizontalBlock(
+                world_,
+                playerFeetPosition_,
+                2,
+                remainingZ,
+                colliderHeight));
+        }
     }
 
     const bool wasGrounded = isGrounded_;
@@ -2501,8 +2627,9 @@ void Application::processInput(const float deltaTimeSeconds)
 
     const glm::vec3 verticalStartPosition = playerFeetPosition_;
     const float verticalDisplacement = verticalVelocity_ * deltaTimeSeconds;
-    const bool verticalBlocked =
+    const AxisMoveResult verticalMoveResult =
         movePlayerAxisWithCollision(world_, playerFeetPosition_, 1, verticalDisplacement, colliderHeight);
+    const bool verticalBlocked = verticalMoveResult.blocked;
     if (verticalBlocked)
     {
         if (verticalVelocity_ < 0.0f)
@@ -2781,6 +2908,8 @@ void Application::processInput(const float deltaTimeSeconds)
                             .pitchDelta = camera_.pitchDegrees(),
                             .health = playerVitals_.health(),
                             .air = playerVitals_.air(),
+                        .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
+                        .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
                             .breakBlock = true,
                             .targetX = command.position.x,
                             .targetY = command.position.y,
@@ -2849,6 +2978,8 @@ void Application::processInput(const float deltaTimeSeconds)
                         .pitchDelta = camera_.pitchDegrees(),
                         .health = playerVitals_.health(),
                         .air = playerVitals_.air(),
+                        .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
+                        .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
                         .placeBlock = true,
                         .targetX = command.position.x,
                         .targetY = command.position.y,
@@ -3463,6 +3594,57 @@ void Application::saveMultiplayerPrefs() const
     output << joinAddressInput_ << '\n' << joinPortInput_ << '\n';
 }
 
+std::filesystem::path Application::audioPrefsPath() const
+{
+    std::filesystem::path directory = savePath_.parent_path();
+    if (directory.empty())
+    {
+        directory = "assets/saves";
+    }
+    return directory / "audio_prefs.txt";
+}
+
+void Application::loadAudioPrefs()
+{
+    std::ifstream input(audioPrefsPath());
+    if (!input.is_open())
+    {
+        return;
+    }
+    std::string musicLine;
+    std::string sfxLine;
+    std::getline(input, musicLine);
+    std::getline(input, sfxLine);
+    trimInPlace(musicLine);
+    trimInPlace(sfxLine);
+    try
+    {
+        if (!musicLine.empty())
+        {
+            musicVolume_ = std::clamp(std::stof(musicLine), 0.0f, 1.0f);
+        }
+        if (!sfxLine.empty())
+        {
+            sfxVolume_ = std::clamp(std::stof(sfxLine), 0.0f, 1.0f);
+        }
+    }
+    catch (...)
+    {
+    }
+}
+
+void Application::saveAudioPrefs() const
+{
+    std::error_code errorCode;
+    std::filesystem::create_directories(audioPrefsPath().parent_path(), errorCode);
+    std::ofstream output(audioPrefsPath(), std::ios::trunc);
+    if (!output.is_open())
+    {
+        return;
+    }
+    output << fmt::format("{:.4f}\n{:.4f}\n", musicVolume_, sfxVolume_);
+}
+
 void Application::refreshDetectedLanAddress()
 {
     detectedLanAddress_ = platform::primaryLanIPv4String();
@@ -3643,6 +3825,7 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
     snapshot.dayNightElapsedSeconds = dayNightCycle_.elapsedSeconds();
     snapshot.weatherElapsedSeconds = weatherSystem_.elapsedSeconds();
     snapshot.players.reserve(remotePlayers_.size() + 1);
+    const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
     snapshot.players.push_back(multiplayer::protocol::PlayerSnapshotMessage{
         .clientId = localClientId_,
         .posX = playerFeetPosition_.x,
@@ -3652,6 +3835,8 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
         .pitchDegrees = camera_.pitchDegrees(),
         .health = playerVitals_.health(),
         .air = playerVitals_.air(),
+        .selectedEquippedItem = selectedSlot.equippedItem,
+        .selectedBlockType = selectedSlot.blockType,
     });
     for (const RemotePlayerState& remote : remotePlayers_)
     {
@@ -3664,6 +3849,8 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
             .pitchDegrees = remote.pitchDegrees,
             .health = remote.health,
             .air = remote.air,
+            .selectedEquippedItem = remote.selectedEquippedItem,
+            .selectedBlockType = remote.selectedBlockType,
         });
     }
     snapshot.droppedItems.reserve(droppedItems_.size());
@@ -3758,6 +3945,8 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                     .pitchDegrees = camera_.pitchDegrees(),
                     .health = 20.0f,
                     .air = 10.0f,
+                    .selectedBlockType = world::BlockType::Air,
+                    .selectedEquippedItem = EquippedItem::None,
                 });
                 remotePlayerIt = std::prev(remotePlayers_.end());
                 const world::ChunkCoord spawnChunk = world::worldToChunkCoord(
@@ -3842,6 +4031,8 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                     .pitchDegrees = input.pitchDelta,
                     .health = input.health,
                     .air = input.air,
+                    .selectedBlockType = input.selectedBlockType,
+                    .selectedEquippedItem = input.selectedEquippedItem,
                 });
                 remotePlayerIt = std::prev(remotePlayers_.end());
             }
@@ -3850,6 +4041,8 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
             remotePlayerIt->pitchDegrees = input.pitchDelta;
             remotePlayerIt->health = input.health;
             remotePlayerIt->air = input.air;
+            remotePlayerIt->selectedBlockType = input.selectedBlockType;
+            remotePlayerIt->selectedEquippedItem = input.selectedEquippedItem;
 
             if (input.breakBlock)
             {
@@ -4055,13 +4248,24 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                 const glm::vec3 smoothedPosition = previousIt == remotePlayers_.end()
                     ? targetPosition
                     : glm::mix(previousIt->position, targetPosition, 0.35f);
+                const float smoothedYawDegrees = previousIt == remotePlayers_.end()
+                    ? normalizeDegrees(player.yawDegrees)
+                    : lerpDegrees(previousIt->yawDegrees, player.yawDegrees, 0.35f);
+                const float smoothedPitchDegrees = previousIt == remotePlayers_.end()
+                    ? std::clamp(player.pitchDegrees, -89.0f, 89.0f)
+                    : std::clamp(
+                        previousIt->pitchDegrees + (player.pitchDegrees - previousIt->pitchDegrees) * 0.35f,
+                        -89.0f,
+                        89.0f);
                 updatedRemotePlayers.push_back(RemotePlayerState{
                     .clientId = player.clientId,
                     .position = smoothedPosition,
-                    .yawDegrees = player.yawDegrees,
-                    .pitchDegrees = player.pitchDegrees,
+                    .yawDegrees = smoothedYawDegrees,
+                    .pitchDegrees = smoothedPitchDegrees,
                     .health = player.health,
                     .air = player.air,
+                    .selectedBlockType = player.selectedBlockType,
+                    .selectedEquippedItem = player.selectedEquippedItem,
                 });
             }
             remotePlayers_ = std::move(updatedRemotePlayers);
@@ -4082,6 +4286,9 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                         .pitchDelta = camera_.pitchDegrees(),
                         .health = playerVitals_.health(),
                         .air = playerVitals_.air(),
+                        .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
+                        .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
+                        .selectedHotbarIndex = static_cast<std::uint8_t>(selectedHotbarIndex_),
                     },
                     networkServerTick_);
             }

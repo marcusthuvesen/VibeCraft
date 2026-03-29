@@ -115,25 +115,39 @@ struct RecipeDefinition
 
 [[nodiscard]] RecipeDefinition makeAxeRecipe(
     const vibecraft::world::BlockType material,
-    const EquippedItem output)
+    const EquippedItem output,
+    const bool mirrored)
 {
     using vibecraft::world::BlockType;
     const InventorySlot empty{};
+    const std::array<InventorySlot, 9> pattern = mirrored
+        ? std::array<InventorySlot, 9>{
+            empty,
+            ingredientBlock(material),
+            ingredientBlock(material),
+            empty,
+            ingredientItem(EquippedItem::Stick),
+            ingredientBlock(material),
+            empty,
+            ingredientItem(EquippedItem::Stick),
+            empty,
+        }
+        : std::array<InventorySlot, 9>{
+            ingredientBlock(material),
+            ingredientBlock(material),
+            empty,
+            ingredientBlock(material),
+            ingredientItem(EquippedItem::Stick),
+            empty,
+            empty,
+            ingredientItem(EquippedItem::Stick),
+            empty,
+        };
     return RecipeDefinition{
         .width = 3,
         .height = 3,
         .requiresWorkbench = true,
-        .pattern = {
-            ingredientBlock(material),
-            ingredientBlock(material),
-            empty,
-            ingredientBlock(material),
-            ingredientItem(EquippedItem::Stick),
-            empty,
-            empty,
-            ingredientItem(EquippedItem::Stick),
-            empty,
-        },
+        .pattern = pattern,
         .output = InventorySlot{
             .blockType = BlockType::Air,
             .count = 1,
@@ -404,22 +418,39 @@ struct RecipeDefinition
         });
 
         r.push_back(makeSwordRecipe(BlockType::OakPlanks, EquippedItem::WoodSword, true));
+        r.push_back(makeSwordRecipe(BlockType::TreeTrunk, EquippedItem::WoodSword, true));
+        r.push_back(makeSwordRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodSword, true));
+        r.push_back(makeSwordRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::Cobblestone, EquippedItem::StoneSword, true));
         r.push_back(makeSwordRecipe(BlockType::IronOre, EquippedItem::IronSword, true));
         r.push_back(makeSwordRecipe(BlockType::GoldOre, EquippedItem::GoldSword, true));
         r.push_back(makeSwordRecipe(BlockType::DiamondOre, EquippedItem::DiamondSword, true));
 
         r.push_back(makePickaxeRecipe(BlockType::OakPlanks, EquippedItem::WoodPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::TreeTrunk, EquippedItem::WoodPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::Cobblestone, EquippedItem::StonePickaxe));
         r.push_back(makePickaxeRecipe(BlockType::IronOre, EquippedItem::IronPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::GoldOre, EquippedItem::GoldPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondPickaxe));
 
-        r.push_back(makeAxeRecipe(BlockType::OakPlanks, EquippedItem::WoodAxe));
-        r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe));
-        r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe));
-        r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe));
-        r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe));
+        r.push_back(makeAxeRecipe(BlockType::OakPlanks, EquippedItem::WoodAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::OakPlanks, EquippedItem::WoodAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::TreeTrunk, EquippedItem::WoodAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::TreeTrunk, EquippedItem::WoodAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe, true));
 
         return r;
     }();

@@ -241,6 +241,8 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
                 writer.writeF32(message.positionZ);
                 writer.writeF32(message.health);
                 writer.writeF32(message.air);
+                writer.writeU8(static_cast<std::uint8_t>(message.selectedEquippedItem));
+                writer.writeU8(static_cast<std::uint8_t>(message.selectedBlockType));
                 std::uint8_t flags = 0;
                 if (message.jump)
                 {
@@ -279,6 +281,8 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
                     writer.writeF32(player.pitchDegrees);
                     writer.writeF32(player.health);
                     writer.writeF32(player.air);
+                    writer.writeU8(static_cast<std::uint8_t>(player.selectedEquippedItem));
+                    writer.writeU8(static_cast<std::uint8_t>(player.selectedBlockType));
                 }
                 writer.writeU16(static_cast<std::uint16_t>(message.droppedItems.size()));
                 for (const DroppedItemSnapshotMessage& droppedItem : message.droppedItems)
@@ -386,17 +390,22 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
     {
         ClientInputMessage message;
         std::uint8_t flags = 0;
+        std::uint8_t selectedEquippedItem = 0;
+        std::uint8_t selectedBlockType = 0;
         std::uint8_t blockType = 0;
         if (!reader.readU16(message.clientId) || !reader.readF32(message.dtSeconds) || !reader.readF32(message.moveX)
             || !reader.readF32(message.moveZ) || !reader.readF32(message.yawDelta)
             || !reader.readF32(message.pitchDelta) || !reader.readF32(message.positionX)
             || !reader.readF32(message.positionY) || !reader.readF32(message.positionZ)
-            || !reader.readF32(message.health) || !reader.readF32(message.air) || !reader.readU8(flags)
+            || !reader.readF32(message.health) || !reader.readF32(message.air)
+            || !reader.readU8(selectedEquippedItem) || !reader.readU8(selectedBlockType) || !reader.readU8(flags)
             || !reader.readI32(message.targetX) || !reader.readI32(message.targetY) || !reader.readI32(message.targetZ)
             || !reader.readU8(message.selectedHotbarIndex) || !reader.readU8(blockType))
         {
             return std::nullopt;
         }
+        message.selectedEquippedItem = static_cast<app::EquippedItem>(selectedEquippedItem);
+        message.selectedBlockType = static_cast<world::BlockType>(selectedBlockType);
         message.jump = (flags & (1U << 0U)) != 0;
         message.breakBlock = (flags & (1U << 1U)) != 0;
         message.placeBlock = (flags & (1U << 2U)) != 0;
@@ -418,13 +427,17 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
         for (std::uint8_t i = 0; i < playerCount; ++i)
         {
             PlayerSnapshotMessage player;
+            std::uint8_t selectedEquippedItem = 0;
+            std::uint8_t selectedBlockType = 0;
             if (!reader.readU16(player.clientId) || !reader.readF32(player.posX) || !reader.readF32(player.posY)
                 || !reader.readF32(player.posZ) || !reader.readF32(player.yawDegrees)
-                || !reader.readF32(player.pitchDegrees) || !reader.readF32(player.health)
-                || !reader.readF32(player.air))
+                || !reader.readF32(player.pitchDegrees) || !reader.readF32(player.health) || !reader.readF32(player.air)
+                || !reader.readU8(selectedEquippedItem) || !reader.readU8(selectedBlockType))
             {
                 return std::nullopt;
             }
+            player.selectedEquippedItem = static_cast<app::EquippedItem>(selectedEquippedItem);
+            player.selectedBlockType = static_cast<world::BlockType>(selectedBlockType);
             message.players.push_back(player);
         }
         if (!reader.readU16(droppedItemCount))

@@ -95,6 +95,8 @@ class Application
         float pitchDegrees = 0.0f;
         float health = 20.0f;
         float air = 10.0f;
+        vibecraft::world::BlockType selectedBlockType = vibecraft::world::BlockType::Air;
+        EquippedItem selectedEquippedItem = EquippedItem::None;
     };
 
     struct DroppedItem
@@ -156,6 +158,9 @@ class Application
     void loadMultiplayerPrefs();
     void saveMultiplayerPrefs() const;
     [[nodiscard]] std::filesystem::path multiplayerPrefsPath() const;
+    void loadAudioPrefs();
+    void saveAudioPrefs() const;
+    [[nodiscard]] std::filesystem::path audioPrefsPath() const;
     void refreshDetectedLanAddress();
     void processJoinMenuTextInput();
     void tryStartHostFromMenu();
