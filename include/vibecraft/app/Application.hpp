@@ -142,6 +142,7 @@ class Application
     void openCraftingMenu(bool useWorkbench, const glm::ivec3& workbenchBlockPosition = glm::ivec3(0));
     void closeCraftingMenu();
     void handleCraftingMenuClick();
+    void handleCraftingMenuRightClick();
     void returnCraftingSlotsToInventory();
     void spawnDroppedItem(vibecraft::world::BlockType blockType, const glm::ivec3& blockPosition);
     void spawnDroppedItemAtPosition(vibecraft::world::BlockType blockType, const glm::vec3& worldPosition);

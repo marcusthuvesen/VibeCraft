@@ -229,6 +229,26 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         return;
     }
 
+    if (frameDebugData.craftingMenuActive)
+    {
+        drawCraftingOverlay(frameDebugData);
+        const std::string craftingTitle =
+            frameDebugData.craftingTitle.empty()
+            ? (frameDebugData.craftingUsesWorkbench ? "Crafting Table" : "Inventory Crafting")
+            : frameDebugData.craftingTitle;
+        bgfx::dbgTextPrintf(0, 1, 0x0f, "%s", craftingTitle.c_str());
+        bgfx::dbgTextPrintf(
+            0,
+            3,
+            0x0a,
+            "%s",
+            frameDebugData.craftingHint.empty()
+                ? "Left-click to move stacks. Press E or Esc to close."
+                : frameDebugData.craftingHint.c_str());
+        bgfx::frame();
+        return;
+    }
+
     drawCrosshairOverlay();
     drawHeldItemOverlay(frameDebugData);
 

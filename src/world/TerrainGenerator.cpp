@@ -24,6 +24,7 @@ constexpr int kMountainStoneCapStartY = 110;
 constexpr int kMountainStoneCapThickness = 2;
 constexpr int kLowlandPondMaxHeightAboveSea = 3;
 constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
+constexpr int kSandstoneStratumDepth = 6;
 
 [[nodiscard]] bool shouldPlaceBedrock(const int y)
 {
@@ -74,6 +75,16 @@ constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
         std::cos(static_cast<double>(worldZ) * 0.027) +
         std::sin(static_cast<double>(worldX - worldZ) * 0.015);
     return drynessNoise > 1.05;
+}
+
+/// Beaches and dry lowlands use sand on the surface; sandstone sits below that (uses existing atlas tile).
+[[nodiscard]] bool columnUsesSandStrata(const int worldX, const int worldZ, const int surfaceHeight)
+{
+    if (surfaceHeight <= kSeaLevel + kBeachMaxHeightAboveSea)
+    {
+        return true;
+    }
+    return isSandyBiome(worldX, worldZ, surfaceHeight);
 }
 
 [[nodiscard]] BlockType surfaceBlockTypeAt(const int worldX, const int worldZ, const int surfaceHeight)
@@ -168,6 +179,16 @@ BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int
     if (underground::shouldCarveCave(worldX, y, worldZ, surfaceHeight))
     {
         return underground::caveInteriorBlockType(worldX, y, worldZ, surfaceHeight);
+    }
+
+    if (columnUsesSandStrata(worldX, worldZ, surfaceHeight))
+    {
+        const int stratumTopExclusive = surfaceHeight - topsoilDepth;
+        const int stratumBottomInclusive = stratumTopExclusive - kSandstoneStratumDepth;
+        if (y < stratumTopExclusive && y >= stratumBottomInclusive)
+        {
+            return BlockType::Sandstone;
+        }
     }
 
     const BlockType hostBlockType = undergroundBlockTypeAt(worldX, y, worldZ);

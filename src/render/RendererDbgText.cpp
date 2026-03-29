@@ -70,8 +70,9 @@ void dbgTextPrintfCenteredRow(
     }
 
     const float charH = static_cast<float>(windowHeight) / static_cast<float>(textHeight);
-    float slot = std::floor(charH * 1.42f);
-    slot = std::clamp(slot, 36.0f, 84.0f);
+    // Triple the earlier HUD inventory target size, then scale down only if width would overflow.
+    float slot = std::floor(charH * 4.26f);
+    slot = std::clamp(slot, 72.0f, 132.0f);
     float gap = std::max(4.0f, std::round(slot * 0.15f));
     constexpr int kSlotCount = 9;
     float totalW = static_cast<float>(kSlotCount) * slot + static_cast<float>(kSlotCount - 1) * gap;
@@ -108,24 +109,56 @@ void dbgTextPrintfCenteredRow(
         return layout;
     }
 
-    const float maxWidth = static_cast<float>(windowWidth) * 0.88f;
-    const float maxHeight = static_cast<float>(windowHeight) * 0.88f;
+    const float maxWidth = static_cast<float>(windowWidth) * 0.98f;
+    const float maxHeight = static_cast<float>(windowHeight) * 0.98f;
     const int craftingColumns = useWorkbench ? 3 : 2;
     const int craftingRows = useWorkbench ? 3 : 2;
+    constexpr int kVisibleInventoryRows = 3;
+    constexpr int kVisibleHotbarRows = 1;
 
-    float slotSize = std::floor(std::min(maxWidth / 12.8f, maxHeight / 15.2f));
-    slotSize = std::clamp(slotSize, 22.0f, 42.0f);
-    float slotGap = std::max(3.0f, std::round(slotSize * 0.14f));
-    const float craftWidth = static_cast<float>(craftingColumns) * slotSize
-        + static_cast<float>(craftingColumns - 1) * slotGap;
-    const float inventoryWidth = 9.0f * slotSize + 8.0f * slotGap;
-    const float resultGap = std::max(18.0f, std::round(slotSize * 1.1f));
-    const float topSectionWidth = craftWidth + resultGap + slotSize;
-    const float panelWidth = std::max(inventoryWidth, topSectionWidth) + slotSize * 1.8f;
+    const auto panelMetricsForSlot = [&](const float candidateSlotSize)
+    {
+        const float candidateGap = std::max(3.0f, std::round(candidateSlotSize * 0.14f));
+        const float craftWidth = static_cast<float>(craftingColumns) * candidateSlotSize
+            + static_cast<float>(craftingColumns - 1) * candidateGap;
+        const float inventoryWidth = 9.0f * candidateSlotSize + 8.0f * candidateGap;
+        const float resultGap = std::max(18.0f, std::round(candidateSlotSize * 1.1f));
+        const float topSectionWidth = craftWidth + resultGap + candidateSlotSize;
+        const float panelWidth = std::max(inventoryWidth, topSectionWidth) + candidateSlotSize * 1.8f;
+        const float topSectionHeight = static_cast<float>(craftingRows) * candidateSlotSize
+            + static_cast<float>(craftingRows - 1) * candidateGap;
+        const float inventoryHeight =
+            static_cast<float>(kVisibleInventoryRows + kVisibleHotbarRows) * candidateSlotSize
+            + static_cast<float>(kVisibleInventoryRows + kVisibleHotbarRows - 1) * candidateGap;
+        const float panelHeight = topSectionHeight + inventoryHeight + candidateSlotSize * 3.2f;
+        return std::array<float, 6>{
+            candidateGap,
+            craftWidth,
+            resultGap,
+            topSectionWidth,
+            panelWidth,
+            panelHeight,
+        };
+    };
+
+    const float previousBaselineSize =
+        std::floor(std::min(maxWidth / 12.8f, maxHeight / 15.2f));
+    float slotSize = std::clamp(previousBaselineSize * 3.0f, 22.0f, 160.0f);
+    auto metrics = panelMetricsForSlot(slotSize);
+    while (slotSize > 22.0f && (metrics[4] > maxWidth || metrics[5] > maxHeight))
+    {
+        slotSize -= 1.0f;
+        metrics = panelMetricsForSlot(slotSize);
+    }
+
+    const float slotGap = metrics[0];
+    const float craftWidth = metrics[1];
+    const float resultGap = metrics[2];
+    const float topSectionWidth = metrics[3];
+    const float panelWidth = metrics[4];
+    const float panelHeight = metrics[5];
     const float topSectionHeight = static_cast<float>(craftingRows) * slotSize
         + static_cast<float>(craftingRows - 1) * slotGap;
-    const float inventoryHeight = 10.0f * slotSize + 9.0f * slotGap;
-    const float panelHeight = topSectionHeight + inventoryHeight + slotSize * 3.2f;
     const float panelLeft = std::floor((static_cast<float>(windowWidth) - panelWidth) * 0.5f);
     const float panelTop = std::floor((static_cast<float>(windowHeight) - panelHeight) * 0.5f);
     const float panelInnerX = panelLeft + slotSize * 0.9f;
@@ -871,60 +904,88 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
     dbgTextPrintfCenteredRow(footerRow, 0x07, "Tab: capture mouse   Esc: pause menu");
 }
 
+void drawPauseMenuFramedButton(
+    const int rowTop,
+    const int col,
+    const int outerWidth,
+    const std::string& label,
+    const bool hovered)
+{
+    // High-contrast VGA attrs: 0x1f white-on-blue; hover 0x3f white-on-cyan for the whole control.
+    const std::uint16_t borderAttr = hovered ? static_cast<std::uint16_t>(0x3f) : static_cast<std::uint16_t>(0x1f);
+    const std::uint16_t labelAttr = hovered ? static_cast<std::uint16_t>(0x3f) : static_cast<std::uint16_t>(0x1f);
+    const int inner = outerWidth - 2;
+    const std::string border = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
+    const std::string mid = "|" + padLabelToInnerWidth(label, inner) + "|";
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(rowTop), borderAttr, "%s", border.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(rowTop + 1), labelAttr, "%s", mid.c_str());
+    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(rowTop + 2), borderAttr, "%s", border.c_str());
+}
+
 void drawPauseMenuOverlay(
     const FrameDebugData& frameDebugData,
     const std::uint16_t textWidth,
     const std::uint16_t textHeight)
 {
+    constexpr int kWide = PauseMenuLayout::kWideChars;
+    const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+
     if (frameDebugData.pauseSoundSettingsActive)
     {
-        constexpr int kWide = 96;
-        const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
-        dbgTextPrintfCenteredRow(5, 0x0f, "SOUND SETTINGS");
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(PauseMenuLayout::kSoundTitleRow), 0x1f, " SOUND SETTINGS ");
         const int hovered = frameDebugData.pauseSoundSettingsHoveredControl;
         const int musicPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundMusicVolume, 0.0f, 1.0f) * 100.0f));
         const int sfxPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundSfxVolume, 0.0f, 1.0f) * 100.0f));
-        drawFramedButton3(9, centerCol, kWide, fmt::format("Music volume: {:3d}%   [-] [+]", musicPercent), hovered == 1 || hovered == 2);
-        drawFramedButton3(16, centerCol, kWide, fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent), hovered == 3 || hovered == 4);
-        drawFramedButton3(25, centerCol, kWide, "Back", hovered == 0);
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::kSoundMusicButtonRow,
+            centerCol,
+            kWide,
+            fmt::format("Music volume: {:3d}%   [-] [+]", musicPercent),
+            hovered == 1 || hovered == 2);
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::kSoundSfxButtonRow,
+            centerCol,
+            kWide,
+            fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent),
+            hovered == 3 || hovered == 4);
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::kSoundBackButtonRow,
+            centerCol,
+            kWide,
+            "Back",
+            hovered == 0);
     }
     else if (frameDebugData.pauseGameSettingsActive)
     {
-        constexpr int kWide = 96;
-        const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
-        dbgTextPrintfCenteredRow(5, 0x0f, "GAME OPTIONS");
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(PauseMenuLayout::kGameTitleRow), 0x1f, " GAME OPTIONS ");
         const int hovered = frameDebugData.pauseGameSettingsHoveredControl;
         const char* const mobState = frameDebugData.mobSpawningEnabled ? "ON" : "OFF";
-        drawFramedButton3(
-            11,
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::kGameMobButtonRow,
             centerCol,
             kWide,
             fmt::format("Mob spawning: {}", mobState),
             hovered == 1);
-        drawFramedButton3(25, centerCol, kWide, "Back", hovered == 0);
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::kGameBackButtonRow,
+            centerCol,
+            kWide,
+            "Back",
+            hovered == 0);
     }
     else
     {
-        constexpr int kWide = 96;
-        const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
-        constexpr int kButtonCount = 5;
-        constexpr int kButtonRowSpan = 5;
-        constexpr int kButtonGap = 2;
-        constexpr int kButtonPitch = kButtonRowSpan + kButtonGap;
-        const int totalButtonRows = kButtonCount * kButtonRowSpan + (kButtonCount - 1) * kButtonGap;
-        const int firstButtonRow = std::clamp(
-            (static_cast<int>(textHeight) - totalButtonRows) / 2,
-            7,
-            std::max(7, static_cast<int>(textHeight) - totalButtonRows - 2));
-        const int titleRow = std::max(2, firstButtonRow - 4);
-        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(titleRow), 0x0f, "GAME MENU");
+        const int firstButtonRow = PauseMenuLayout::mainPauseMenuFirstButtonRow(static_cast<int>(textHeight));
+        const int titleRow = std::max(2, firstButtonRow - 3);
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(titleRow), 0x1f, " GAME MENU ");
 
         const int hovered = frameDebugData.pauseMenuHoveredButton;
-        drawFramedButton3(firstButtonRow + 0 * kButtonPitch, centerCol, kWide, "Back to game", hovered == 0);
-        drawFramedButton3(firstButtonRow + 1 * kButtonPitch, centerCol, kWide, "Sound settings...", hovered == 1);
-        drawFramedButton3(firstButtonRow + 2 * kButtonPitch, centerCol, kWide, "Quit to title", hovered == 2);
-        drawFramedButton3(firstButtonRow + 3 * kButtonPitch, centerCol, kWide, "Quit game", hovered == 3);
-        drawFramedButton3(firstButtonRow + 4 * kButtonPitch, centerCol, kWide, "Game options...", hovered == 4);
+        constexpr int kPitch = PauseMenuLayout::kButtonPitch;
+        drawPauseMenuFramedButton(firstButtonRow + 0 * kPitch, centerCol, kWide, "Back to game", hovered == 0);
+        drawPauseMenuFramedButton(firstButtonRow + 1 * kPitch, centerCol, kWide, "Sound settings...", hovered == 1);
+        drawPauseMenuFramedButton(firstButtonRow + 2 * kPitch, centerCol, kWide, "Quit to title", hovered == 2);
+        drawPauseMenuFramedButton(firstButtonRow + 3 * kPitch, centerCol, kWide, "Quit game", hovered == 3);
+        drawPauseMenuFramedButton(firstButtonRow + 4 * kPitch, centerCol, kWide, "Game options...", hovered == 4);
     }
 
     const std::uint16_t footerRow =
@@ -944,7 +1005,7 @@ void drawPauseMenuOverlay(
     {
         footerHint = "Esc: back   Click: toggle";
     }
-    dbgTextPrintfCenteredRow(footerRow, 0x06, footerHint);
+    dbgTextPrintfCenteredRow(footerRow, 0x0f, footerHint);
 }
 
 } // namespace vibecraft::render::detail

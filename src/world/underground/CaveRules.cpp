@@ -1,5 +1,6 @@
 #include "vibecraft/world/underground/CaveRules.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "vibecraft/world/Block.hpp"
@@ -10,16 +11,22 @@ namespace vibecraft::world::underground
 {
 namespace
 {
-constexpr int kCaveRoofBuffer = 5;
+/// Blocks below surface before 3D cave carve is allowed (keeps shallow subsurface solid).
+constexpr int kCaveRoofBuffer = 20;
 constexpr int kSeaLevel = 63;
 constexpr int kLavaPoolMinY = -54;
 constexpr int kLavaPoolMaxY = -20;
 constexpr std::uint32_t kLavaNoiseSeed = 0x8d3b2917U;
+/// Base carve threshold (higher than legacy 2.2 → fewer caves overall).
+constexpr double kCaveDensityThresholdDeep = 2.48;
+/// Extra threshold added near the top of the cave band so shallow underground rarely carves.
+constexpr double kCaveShallowThresholdBoost = 0.52;
 }  // namespace
 
 bool shouldCarveCave(const int worldX, const int y, const int worldZ, const int surfaceHeight)
 {
-    if (y < kUndergroundStartY || y > surfaceHeight - kCaveRoofBuffer)
+    const int caveCeilingY = surfaceHeight - kCaveRoofBuffer;
+    if (y < kUndergroundStartY || y > caveCeilingY)
     {
         return false;
     }
@@ -31,7 +38,12 @@ bool shouldCarveCave(const int worldX, const int y, const int worldZ, const int 
         std::sin(static_cast<double>(y) * 0.17 - static_cast<double>(worldZ) * 0.03) +
         std::sin(static_cast<double>(worldX - worldZ) * 0.09 + static_cast<double>(y) * 0.12);
 
-    return caveDensity > 2.2;
+    const int verticalSpan = std::max(1, caveCeilingY - kUndergroundStartY);
+    const double shallow01 =
+        static_cast<double>(y - kUndergroundStartY) / static_cast<double>(verticalSpan);
+    const double carveThreshold = kCaveDensityThresholdDeep + kCaveShallowThresholdBoost * shallow01;
+
+    return caveDensity > carveThreshold;
 }
 
 BlockType caveInteriorBlockType(
@@ -51,10 +63,12 @@ BlockType caveInteriorBlockType(
     if (y >= kLavaPoolMinY && y <= kLavaPoolMaxY && lavaField > lavaThreshold)
     {
         const double spot = noise::random01(worldX, y * 31 + worldZ, 0x51ab12efU);
-        if (spot > 0.94)
+        // Lava uses chunk atlas tile 13 (lava_still); keep pool interior dry or lava — not sea water.
+        if (spot > 0.88)
         {
             return BlockType::Lava;
         }
+        return BlockType::Air;
     }
 
     if (y <= kSeaLevel)

@@ -1,6 +1,7 @@
 #include "vibecraft/meshing/ChunkMesher.hpp"
 
 #include <array>
+#include <limits>
 
 #include "vibecraft/ChunkAtlasLayout.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
@@ -11,6 +12,7 @@ namespace vibecraft::meshing
 namespace
 {
 using vibecraft::world::BlockType;
+using BlockStorage = std::array<BlockType, vibecraft::world::Chunk::kBlockCount>;
 
 struct FaceDefinition
 {
@@ -63,6 +65,68 @@ constexpr float kTileInsetV = 0.5f / static_cast<float>(vibecraft::kChunkAtlasHe
     const float v = minV + (maxV - minV) * faceUv[1];
     return {u, v};
 }
+
+[[nodiscard]] constexpr std::size_t chunkStorageIndex(
+    const int localX,
+    const int y,
+    const int localZ)
+{
+    const int localY = y - vibecraft::world::kWorldMinY;
+    return static_cast<std::size_t>(localY * vibecraft::world::Chunk::kSize * vibecraft::world::Chunk::kSize
+        + localZ * vibecraft::world::Chunk::kSize
+        + localX);
+}
+
+[[nodiscard]] BlockType blockFromStorage(
+    const BlockStorage& storage,
+    const int localX,
+    const int y,
+    const int localZ)
+{
+    return storage[chunkStorageIndex(localX, y, localZ)];
+}
+
+[[nodiscard]] BlockType sampledNeighborBlock(
+    const BlockStorage& currentStorage,
+    const vibecraft::world::Chunk* const westChunk,
+    const vibecraft::world::Chunk* const eastChunk,
+    const vibecraft::world::Chunk* const northChunk,
+    const vibecraft::world::Chunk* const southChunk,
+    const int localX,
+    const int y,
+    const int localZ)
+{
+    if (y < vibecraft::world::kWorldMinY)
+    {
+        return BlockType::Bedrock;
+    }
+    if (y > vibecraft::world::kWorldMaxY)
+    {
+        return BlockType::Air;
+    }
+    if (localX >= 0 && localX < vibecraft::world::Chunk::kSize
+        && localZ >= 0 && localZ < vibecraft::world::Chunk::kSize)
+    {
+        return blockFromStorage(currentStorage, localX, y, localZ);
+    }
+    if (localX < 0)
+    {
+        return westChunk != nullptr
+            ? westChunk->blockAt(vibecraft::world::Chunk::kSize - 1, y, localZ)
+            : BlockType::Air;
+    }
+    if (localX >= vibecraft::world::Chunk::kSize)
+    {
+        return eastChunk != nullptr ? eastChunk->blockAt(0, y, localZ) : BlockType::Air;
+    }
+    if (localZ < 0)
+    {
+        return northChunk != nullptr
+            ? northChunk->blockAt(localX, y, vibecraft::world::Chunk::kSize - 1)
+            : BlockType::Air;
+    }
+    return southChunk != nullptr ? southChunk->blockAt(localX, y, 0) : BlockType::Air;
+}
 }  // namespace
 
 ChunkMeshData ChunkMesher::buildMesh(
@@ -70,16 +134,67 @@ ChunkMeshData ChunkMesher::buildMesh(
     const vibecraft::world::ChunkCoord& coord) const
 {
     ChunkMeshData meshData;
+    const auto currentChunkIt = world.chunks().find(coord);
+    if (currentChunkIt == world.chunks().end())
+    {
+        return meshData;
+    }
+
+    const auto chunkAt = [&world](const vibecraft::world::ChunkCoord& neighborCoord)
+    {
+        const auto chunkIt = world.chunks().find(neighborCoord);
+        return chunkIt != world.chunks().end() ? &chunkIt->second : nullptr;
+    };
+    const vibecraft::world::Chunk* const westChunk =
+        chunkAt(vibecraft::world::ChunkCoord{coord.x - 1, coord.z});
+    const vibecraft::world::Chunk* const eastChunk =
+        chunkAt(vibecraft::world::ChunkCoord{coord.x + 1, coord.z});
+    const vibecraft::world::Chunk* const northChunk =
+        chunkAt(vibecraft::world::ChunkCoord{coord.x, coord.z - 1});
+    const vibecraft::world::Chunk* const southChunk =
+        chunkAt(vibecraft::world::ChunkCoord{coord.x, coord.z + 1});
+    const BlockStorage& currentStorage = currentChunkIt->second.blockStorage();
+    constexpr int kNoRenderableBlock = std::numeric_limits<int>::min();
+    std::array<int, vibecraft::world::Chunk::kSize * vibecraft::world::Chunk::kSize> columnMinY;
+    std::array<int, vibecraft::world::Chunk::kSize * vibecraft::world::Chunk::kSize> columnMaxY;
+    columnMinY.fill(kNoRenderableBlock);
+    columnMaxY.fill(kNoRenderableBlock);
 
     for (int localZ = 0; localZ < vibecraft::world::Chunk::kSize; ++localZ)
     {
         for (int localX = 0; localX < vibecraft::world::Chunk::kSize; ++localX)
         {
+            const std::size_t columnIndex = static_cast<std::size_t>(localZ * vibecraft::world::Chunk::kSize + localX);
             for (int y = vibecraft::world::kWorldMinY; y <= vibecraft::world::kWorldMaxY; ++y)
             {
-                const int worldX = coord.x * vibecraft::world::Chunk::kSize + localX;
-                const int worldZ = coord.z * vibecraft::world::Chunk::kSize + localZ;
-                const BlockType blockType = world.blockAt(worldX, y, worldZ);
+                if (!vibecraft::world::isRenderable(blockFromStorage(currentStorage, localX, y, localZ)))
+                {
+                    continue;
+                }
+                if (columnMinY[columnIndex] == kNoRenderableBlock)
+                {
+                    columnMinY[columnIndex] = y;
+                }
+                columnMaxY[columnIndex] = y;
+            }
+        }
+    }
+
+    for (int localZ = 0; localZ < vibecraft::world::Chunk::kSize; ++localZ)
+    {
+        for (int localX = 0; localX < vibecraft::world::Chunk::kSize; ++localX)
+        {
+            const std::size_t columnIndex = static_cast<std::size_t>(localZ * vibecraft::world::Chunk::kSize + localX);
+            if (columnMinY[columnIndex] == kNoRenderableBlock)
+            {
+                continue;
+            }
+
+            const int worldX = coord.x * vibecraft::world::Chunk::kSize + localX;
+            const int worldZ = coord.z * vibecraft::world::Chunk::kSize + localZ;
+            for (int y = columnMinY[columnIndex]; y <= columnMaxY[columnIndex]; ++y)
+            {
+                const BlockType blockType = blockFromStorage(currentStorage, localX, y, localZ);
                 if (!vibecraft::world::isRenderable(blockType))
                 {
                     continue;
@@ -87,8 +202,15 @@ ChunkMeshData ChunkMesher::buildMesh(
 
                 for (const FaceDefinition& face : kFaces)
                 {
-                    const BlockType neighborBlock =
-                        world.blockAt(worldX + face.offsetX, y + face.offsetY, worldZ + face.offsetZ);
+                    const BlockType neighborBlock = sampledNeighborBlock(
+                        currentStorage,
+                        westChunk,
+                        eastChunk,
+                        northChunk,
+                        southChunk,
+                        localX + face.offsetX,
+                        y + face.offsetY,
+                        localZ + face.offsetZ);
                     if (neighborBlock == blockType
                         || vibecraft::world::occludesFaces(neighborBlock))
                     {

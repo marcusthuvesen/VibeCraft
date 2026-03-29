@@ -160,6 +160,7 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     CHECK(vibecraft::world::textureTileIndex(BlockType::Stone, BlockFace::Top) == 3);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Sand, BlockFace::Side) == 7);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Water, BlockFace::Side) == 6);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Lava, BlockFace::Side) == 13);
     CHECK(vibecraft::world::textureTileIndex(BlockType::OakPlanks, BlockFace::Side) == 17);
     CHECK(vibecraft::world::textureTileIndex(BlockType::CraftingTable, BlockFace::Top) == 20);
     CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xffffffff);
@@ -169,6 +170,7 @@ TEST_CASE("crafting recipes include trunk to planks and planks to crafting table
 {
     using vibecraft::app::CraftingGridSlots;
     using vibecraft::app::CraftingMode;
+    using vibecraft::app::EquippedItem;
     using vibecraft::world::BlockType;
 
     CraftingGridSlots inventoryGrid{};
@@ -196,6 +198,18 @@ TEST_CASE("crafting recipes include trunk to planks and planks to crafting table
     REQUIRE(tableMatch.has_value());
     CHECK(tableMatch->output.blockType == BlockType::CraftingTable);
     CHECK(tableMatch->output.count == 1);
+
+    CraftingGridSlots stickGrid{};
+    stickGrid[0].blockType = BlockType::OakPlanks;
+    stickGrid[0].count = 1;
+    stickGrid[3].blockType = BlockType::OakPlanks;
+    stickGrid[3].count = 1;
+    const auto stickMatch = vibecraft::app::evaluateCraftingGrid(
+        stickGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(stickMatch.has_value());
+    CHECK(stickMatch->output.equippedItem == EquippedItem::Stick);
+    CHECK(stickMatch->output.count == 4);
 }
 
 TEST_CASE("deeper block families are harder and bedrock is unbreakable")
@@ -252,6 +266,25 @@ TEST_CASE("world save and load round-trips edited blocks")
 
     std::error_code errorCode;
     std::filesystem::remove(tempPath, errorCode);
+}
+
+TEST_CASE("world raycast hits the first solid block and reports the previous empty cell")
+{
+    vibecraft::world::World world;
+    REQUIRE(world.applyEditCommand({
+        .action = vibecraft::world::WorldEditAction::Place,
+        .position = {2, 10, 0},
+        .blockType = vibecraft::world::BlockType::Stone,
+    }));
+
+    const auto hit = world.raycast(
+        glm::vec3{0.5f, 10.5f, 0.5f},
+        glm::vec3{1.0f, 0.0f, 0.0f},
+        10.0f);
+    REQUIRE(hit.has_value());
+    CHECK(hit->solidBlock == glm::ivec3(2, 10, 0));
+    CHECK(hit->buildTarget == glm::ivec3(1, 10, 0));
+    CHECK(hit->blockType == vibecraft::world::BlockType::Stone);
 }
 
 TEST_CASE("world queries below the supported world depth return bedrock for collision")

@@ -80,19 +80,17 @@ int Renderer::hitTestPauseMenu(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, th - 1);
 
-    constexpr int kWide = 96;
+    constexpr int kWide = detail::PauseMenuLayout::kWideChars;
     const int centerCol = std::max(0, (tw - kWide) / 2);
-    constexpr int kButtonCount = 5;
-    constexpr int kButtonRowSpan = 5;
-    constexpr int kButtonGap = 2;
-    constexpr int kButtonPitch = kButtonRowSpan + kButtonGap;
-    const int totalButtonRows = kButtonCount * kButtonRowSpan + (kButtonCount - 1) * kButtonGap;
-    const int firstButtonRow = std::clamp((th - totalButtonRows) / 2, 7, std::max(7, th - totalButtonRows - 2));
+    const int firstButtonRow = detail::PauseMenuLayout::mainPauseMenuFirstButtonRow(th);
+    constexpr int kPitch = detail::PauseMenuLayout::kButtonPitch;
+    constexpr int kSpan = detail::PauseMenuLayout::kButtonRowSpan;
 
-    for (int buttonIndex = 0; buttonIndex < 5; ++buttonIndex)
+    for (int buttonIndex = 0; buttonIndex < detail::PauseMenuLayout::kMainButtonCount; ++buttonIndex)
     {
-        const int row0 = firstButtonRow + buttonIndex * kButtonPitch;
-        if (clampedRow >= row0 && clampedRow <= row0 + 4 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+        const int row0 = firstButtonRow + buttonIndex * kPitch;
+        if (clampedRow >= row0 && clampedRow <= row0 + kSpan - 1 && clampedCol >= centerCol
+            && clampedCol <= centerCol + kWide - 1)
         {
             return buttonIndex;
         }
@@ -121,14 +119,19 @@ int Renderer::hitTestPauseGameSettingsMenu(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, th - 1);
 
-    constexpr int kWide = 96;
+    constexpr int kWide = detail::PauseMenuLayout::kWideChars;
     const int centerCol = std::max(0, (tw - kWide) / 2);
+    constexpr int kSpan = detail::PauseMenuLayout::kButtonRowSpan;
+    const int backRow = detail::PauseMenuLayout::kGameBackButtonRow;
+    const int mobRow = detail::PauseMenuLayout::kGameMobButtonRow;
 
-    if (clampedRow >= 25 && clampedRow <= 29 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= backRow && clampedRow <= backRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
     {
         return 0;
     }
-    if (clampedRow >= 11 && clampedRow <= 15 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= mobRow && clampedRow <= mobRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
     {
         return 1;
     }
@@ -156,35 +159,48 @@ int Renderer::hitTestPauseSoundMenu(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, th - 1);
 
-    constexpr int kWide = 96;
+    constexpr int kWide = detail::PauseMenuLayout::kWideChars;
     const int centerCol = std::max(0, (tw - kWide) / 2);
+    constexpr int kSpan = detail::PauseMenuLayout::kButtonRowSpan;
+    const int backRow = detail::PauseMenuLayout::kSoundBackButtonRow;
+    const int musicRow = detail::PauseMenuLayout::kSoundMusicButtonRow;
+    const int sfxRow = detail::PauseMenuLayout::kSoundSfxButtonRow;
 
-    if (clampedRow >= 25 && clampedRow <= 29 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= backRow && clampedRow <= backRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
     {
         return 0;
     }
-    if (clampedRow >= 9 && clampedRow <= 13 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= musicRow && clampedRow <= musicRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
     {
-        const int relCol = clampedCol - centerCol;
-        if (relCol >= kWide - 9 && relCol <= kWide - 7)
+        if (clampedRow == musicRow + 1)
         {
-            return 1;
-        }
-        if (relCol >= kWide - 5 && relCol <= kWide - 3)
-        {
-            return 2;
+            const int relCol = clampedCol - centerCol;
+            if (relCol >= kWide - 9 && relCol <= kWide - 7)
+            {
+                return 1;
+            }
+            if (relCol >= kWide - 5 && relCol <= kWide - 3)
+            {
+                return 2;
+            }
         }
     }
-    if (clampedRow >= 16 && clampedRow <= 20 && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= sfxRow && clampedRow <= sfxRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
     {
-        const int relCol = clampedCol - centerCol;
-        if (relCol >= kWide - 9 && relCol <= kWide - 7)
+        if (clampedRow == sfxRow + 1)
         {
-            return 3;
-        }
-        if (relCol >= kWide - 5 && relCol <= kWide - 3)
-        {
-            return 4;
+            const int relCol = clampedCol - centerCol;
+            if (relCol >= kWide - 9 && relCol <= kWide - 7)
+            {
+                return 3;
+            }
+            if (relCol >= kWide - 5 && relCol <= kWide - 3)
+            {
+                return 4;
+            }
         }
     }
 
@@ -337,6 +353,7 @@ int Renderer::hitTestCraftingMenu(
     {
         return -1;
     }
+    constexpr int kVisibleBagRows = 3;
 
     const detail::CraftingOverlayLayoutPx layout =
         detail::computeCraftingOverlayLayoutPx(windowWidth, windowHeight, useWorkbench);
@@ -371,17 +388,7 @@ int Renderer::hitTestCraftingMenu(
         return kCraftingResultHit;
     }
 
-    for (int slotIndex = 0; slotIndex < 9; ++slotIndex)
-    {
-        const float slotX = layout.inventoryOriginX + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-        const float slotY = layout.inventoryOriginY + 9.0f * (layout.slotSize + layout.slotGap);
-        if (insideRect(slotX, slotY))
-        {
-            return kCraftingHotbarHitBase + slotIndex;
-        }
-    }
-
-    for (int row = 0; row < 9; ++row)
+    for (int row = 0; row < kVisibleBagRows; ++row)
     {
         for (int col = 0; col < 9; ++col)
         {
@@ -391,6 +398,16 @@ int Renderer::hitTestCraftingMenu(
             {
                 return kCraftingBagHitBase + row * 9 + col;
             }
+        }
+    }
+
+    for (int slotIndex = 0; slotIndex < 9; ++slotIndex)
+    {
+        const float slotX = layout.inventoryOriginX + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
+        const float slotY = layout.inventoryOriginY + static_cast<float>(kVisibleBagRows) * (layout.slotSize + layout.slotGap);
+        if (insideRect(slotX, slotY))
+        {
+            return kCraftingHotbarHitBase + slotIndex;
         }
     }
 

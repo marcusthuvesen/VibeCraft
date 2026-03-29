@@ -13,22 +13,44 @@ resize_tile() {
   magick "${src}" -filter Point -resize 16x16! "${dst}"
 }
 
+# Modern Minecraft grass textures are biome-tinted at runtime.
+# Bake a sane green tint into atlas tiles so they don't look gray/white.
+tint_tile_green() {
+  local src="$1" dst="$2" strength="${3:-58}"
+  magick "${src}" -filter Point -resize 16x16! -fill "#6aa84f" -colorize "${strength}%" "${dst}"
+}
+
+# Minecraft-style *still* fluids are 16-wide vertical animation strips; take the top 16×16 frame only.
+# (Resizing the whole strip to 16×16 smears every frame into one broken tile.)
+still_fluid_tile() {
+  local src="$1" dst="$2"
+  magick "${src}" -filter Point -crop 16x16+0+0 +repage "${dst}"
+}
+
 # Source order = tile indices 0..23 (row-major: 6 columns x 4 rows).
 # Prefer canonical Minecraft names when available; fall back to existing project aliases.
-resize_tile "${MAT}/grass_block_top.png" "${TMP}/t00.png"
-resize_tile "${MAT}/grass_block_side.png" "${TMP}/t01.png"
+# Water in-game uses BlockMetadata tile 6 ← must match t06 below (water_still.png frame 0, not water.png).
+tint_tile_green "${MAT}/grass_block_top.png" "${TMP}/t00.png" 62
+if [[ -f "${MAT}/grass_block_side_overlay.png" ]]; then
+  resize_tile "${MAT}/dirt.png" "${TMP}/_grass_side_base.png"
+  tint_tile_green "${MAT}/grass_block_side_overlay.png" "${TMP}/_grass_side_overlay.png" 72
+  magick "${TMP}/_grass_side_base.png" "${TMP}/_grass_side_overlay.png" -compose over -composite "${TMP}/t01.png"
+else
+  # Fallback if overlay texture is unavailable.
+  tint_tile_green "${MAT}/grass_block_side.png" "${TMP}/t01.png" 26
+fi
 resize_tile "${MAT}/dirt.png" "${TMP}/t02.png"
 resize_tile "${MAT}/stone.png" "${TMP}/t03.png"
 resize_tile "${MAT}/deepslate.png" "${TMP}/t04.png"
 resize_tile "${MAT}/coal_ore.png" "${TMP}/t05.png"
-resize_tile "${MAT}/water_still.png" "${TMP}/t06.png"
+still_fluid_tile "${MAT}/water_still.png" "${TMP}/t06.png"
 resize_tile "${MAT}/sand.png" "${TMP}/t07.png"
 resize_tile "${MAT}/bedrock.png" "${TMP}/t08.png"
 resize_tile "${MAT}/iron_ore.png" "${TMP}/t09.png"
 resize_tile "${MAT}/gold_ore.png" "${TMP}/t10.png"
 resize_tile "${MAT}/diamond_ore.png" "${TMP}/t11.png"
 resize_tile "${MAT}/emerald_ore.png" "${TMP}/t12.png"
-resize_tile "${MAT}/lava_still.png" "${TMP}/t13.png"
+still_fluid_tile "${MAT}/lava_still.png" "${TMP}/t13.png"
 resize_tile "${MAT}/oak_log_top.png" "${TMP}/t14.png"
 resize_tile "${MAT}/oak_log.png" "${TMP}/t15.png"
 resize_tile "${MAT}/oak_leaves.png" "${TMP}/t16.png"

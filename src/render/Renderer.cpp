@@ -169,6 +169,8 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     bgfx::setDebug(BGFX_DEBUG_TEXT);
     bgfx::setViewClear(detail::kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x263238ff, 1.0f, 0);
     bgfx::setViewClear(detail::kUiView, BGFX_CLEAR_NONE, 0, 1.0f, 0);
+    // UI overlays rely on painter's-order submission so slot fills do not cover item icons.
+    bgfx::setViewMode(detail::kUiView, bgfx::ViewMode::Sequential);
     ddInit();
 
     const bgfx::ProgramHandle chunkProgram = detail::loadProgram("vs_chunk", "fs_chunk");
@@ -284,6 +286,11 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     if (bgfx::isValid(diamondSwordTexture))
     {
         diamondSwordTextureHandle_ = diamondSwordTexture.idx;
+    }
+    const bgfx::TextureHandle stickTexture = detail::createTextureFromPng("textures/item/stick.png");
+    if (bgfx::isValid(stickTexture))
+    {
+        stickTextureHandle_ = stickTexture.idx;
     }
     const bgfx::TextureHandle rottenFleshTexture =
         detail::createTextureFromPng("textures/item/mob_drops/rotten_flesh.png");
@@ -492,6 +499,11 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toTextureHandle(diamondSwordTextureHandle_));
         diamondSwordTextureHandle_ = UINT16_MAX;
+    }
+    if (stickTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(stickTextureHandle_));
+        stickTextureHandle_ = UINT16_MAX;
     }
     if (rottenFleshTextureHandle_ != UINT16_MAX)
     {

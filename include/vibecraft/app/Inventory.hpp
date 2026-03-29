@@ -13,6 +13,7 @@ enum class EquippedItem : std::uint8_t
 {
     None = 0,
     DiamondSword,
+    Stick,
     RottenFlesh,
     Leather,
     RawPorkchop,

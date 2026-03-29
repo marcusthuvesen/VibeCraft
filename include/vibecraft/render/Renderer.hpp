@@ -68,6 +68,7 @@ enum class HudItemKind : std::uint8_t
 {
     None = 0,
     DiamondSword,
+    Stick,
     RottenFlesh,
     Leather,
     RawPorkchop,
@@ -325,6 +326,7 @@ class Renderer
     std::uint16_t crosshairTextureHandle_ = UINT16_MAX;
     std::uint16_t crosshairSamplerHandle_ = UINT16_MAX;
     std::uint16_t diamondSwordTextureHandle_ = UINT16_MAX;
+    std::uint16_t stickTextureHandle_ = UINT16_MAX;
     std::uint16_t rottenFleshTextureHandle_ = UINT16_MAX;
     std::uint16_t leatherTextureHandle_ = UINT16_MAX;
     std::uint16_t rawPorkchopTextureHandle_ = UINT16_MAX;

@@ -84,8 +84,9 @@ struct BlockMetadata
             .breakable = false,
         };
     case BlockType::Water:
+        // Tile 6 = first frame of assets/textures/materials/water_still.png (see build_chunk_atlas.sh).
         return {
-            .debugColor = 0xffffffff,
+            .debugColor = 0xb8ffcf7a,
             .textureTiles = {.top = 6, .bottom = 6, .side = 6},
             .hardness = 1000.0f,
             .breakable = false,

@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -353,19 +354,83 @@ std::optional<RaycastHit> World::raycast(
     const float maxDistance,
     const float stepSize) const
 {
+    static_cast<void>(stepSize);
+    if (maxDistance <= 0.0f || glm::dot(direction, direction) == 0.0f)
+    {
+        return std::nullopt;
+    }
+
     const glm::vec3 normalizedDirection = glm::normalize(direction);
-    glm::ivec3 previousCell(
+    glm::ivec3 cell(
         static_cast<int>(std::floor(origin.x)),
         static_cast<int>(std::floor(origin.y)),
         static_cast<int>(std::floor(origin.z)));
+    glm::ivec3 previousCell = cell;
 
-    for (float distance = 0.0f; distance <= maxDistance; distance += stepSize)
+    const BlockType startingBlock = blockAt(cell.x, cell.y, cell.z);
+    if (isSolid(startingBlock))
     {
-        const glm::vec3 samplePoint = origin + normalizedDirection * distance;
-        const glm::ivec3 cell(
-            static_cast<int>(std::floor(samplePoint.x)),
-            static_cast<int>(std::floor(samplePoint.y)),
-            static_cast<int>(std::floor(samplePoint.z)));
+        return RaycastHit{
+            .solidBlock = cell,
+            .buildTarget = previousCell,
+            .blockType = startingBlock,
+        };
+    }
+
+    constexpr float kInfinity = std::numeric_limits<float>::infinity();
+    const glm::ivec3 step(
+        normalizedDirection.x > 0.0f ? 1 : (normalizedDirection.x < 0.0f ? -1 : 0),
+        normalizedDirection.y > 0.0f ? 1 : (normalizedDirection.y < 0.0f ? -1 : 0),
+        normalizedDirection.z > 0.0f ? 1 : (normalizedDirection.z < 0.0f ? -1 : 0));
+    const auto firstBoundaryDistance =
+        [kInfinity](const float originCoord, const float directionCoord, const int cellCoord)
+    {
+        if (directionCoord > 0.0f)
+        {
+            return (static_cast<float>(cellCoord + 1) - originCoord) / directionCoord;
+        }
+        if (directionCoord < 0.0f)
+        {
+            return (originCoord - static_cast<float>(cellCoord)) / -directionCoord;
+        }
+        return kInfinity;
+    };
+    const auto deltaDistance = [kInfinity](const float directionCoord)
+    {
+        return directionCoord != 0.0f ? 1.0f / std::abs(directionCoord) : kInfinity;
+    };
+
+    float nextX = firstBoundaryDistance(origin.x, normalizedDirection.x, cell.x);
+    float nextY = firstBoundaryDistance(origin.y, normalizedDirection.y, cell.y);
+    float nextZ = firstBoundaryDistance(origin.z, normalizedDirection.z, cell.z);
+    const float deltaX = deltaDistance(normalizedDirection.x);
+    const float deltaY = deltaDistance(normalizedDirection.y);
+    const float deltaZ = deltaDistance(normalizedDirection.z);
+
+    while (true)
+    {
+        const float travelDistance = std::min(nextX, std::min(nextY, nextZ));
+        if (travelDistance > maxDistance)
+        {
+            break;
+        }
+
+        previousCell = cell;
+        if (nextX <= nextY && nextX <= nextZ)
+        {
+            cell.x += step.x;
+            nextX += deltaX;
+        }
+        else if (nextY <= nextZ)
+        {
+            cell.y += step.y;
+            nextY += deltaY;
+        }
+        else
+        {
+            cell.z += step.z;
+            nextZ += deltaZ;
+        }
 
         const BlockType blockType = blockAt(cell.x, cell.y, cell.z);
         if (isSolid(blockType))
@@ -376,8 +441,6 @@ std::optional<RaycastHit> World::raycast(
                 .blockType = blockType,
             };
         }
-
-        previousCell = cell;
     }
 
     return std::nullopt;

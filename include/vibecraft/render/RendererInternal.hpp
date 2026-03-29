@@ -16,7 +16,8 @@ inline constexpr std::uint32_t kDefaultResetFlags = BGFX_RESET_VSYNC;
 /// Dusk sky tint (RGBA8 for bgfx clear: 0xRRGGBBAA).
 inline constexpr std::uint32_t kMainMenuClearColor = 0xff6a4fff;
 inline constexpr std::uint64_t kChunkRenderState =
-    BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
+    BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+    | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ALPHA;
 inline constexpr std::uint16_t kChunkAtlasWidth = vibecraft::kChunkAtlasWidthPx;
 inline constexpr std::uint16_t kChunkAtlasHeight = vibecraft::kChunkAtlasHeightPx;
 

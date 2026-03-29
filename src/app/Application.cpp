@@ -676,6 +676,8 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
     {
     case EquippedItem::DiamondSword:
         return HIK::DiamondSword;
+    case EquippedItem::Stick:
+        return HIK::Stick;
     case EquippedItem::RottenFlesh:
         return HIK::RottenFlesh;
     case EquippedItem::Leather:
@@ -697,6 +699,8 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
     using BK = world::BlockType;
     switch (equippedItem)
     {
+    case EquippedItem::Stick:
+        return BK::TreeTrunk;
     case EquippedItem::RottenFlesh:
         return BK::CoalOre;
     case EquippedItem::Leather:
@@ -834,6 +838,63 @@ void mergeOrSwapInventorySlot(
     }
 
     std::swap(carriedSlot, targetSlot);
+}
+
+void rightClickInventorySlot(
+    InventorySlot& carriedSlot,
+    InventorySlot& targetSlot,
+    const bool allowPlacedEquippedItem)
+{
+    if (!allowPlacedEquippedItem && !isInventorySlotEmpty(carriedSlot)
+        && carriedSlot.equippedItem != EquippedItem::None)
+    {
+        return;
+    }
+    if (!allowPlacedEquippedItem && !isInventorySlotEmpty(targetSlot)
+        && targetSlot.equippedItem != EquippedItem::None)
+    {
+        return;
+    }
+
+    if (isInventorySlotEmpty(carriedSlot))
+    {
+        if (isInventorySlotEmpty(targetSlot))
+        {
+            return;
+        }
+
+        carriedSlot = targetSlot;
+        carriedSlot.count = (targetSlot.count + 1U) / 2U;
+        targetSlot.count -= carriedSlot.count;
+        if (targetSlot.count == 0)
+        {
+            clearInventorySlot(targetSlot);
+        }
+        return;
+    }
+
+    if (isInventorySlotEmpty(targetSlot))
+    {
+        targetSlot.blockType = carriedSlot.blockType;
+        targetSlot.equippedItem = carriedSlot.equippedItem;
+        targetSlot.count = 1;
+        --carriedSlot.count;
+        if (carriedSlot.count == 0)
+        {
+            clearInventorySlot(carriedSlot);
+        }
+        return;
+    }
+
+    if (canMergeInventorySlots(carriedSlot, targetSlot) && targetSlot.count < kMaxStackSize)
+    {
+        ++targetSlot.count;
+        --carriedSlot.count;
+        if (carriedSlot.count == 0)
+        {
+            clearInventorySlot(carriedSlot);
+        }
+    }
 }
 
 void trimInPlace(std::string& value)
@@ -1722,6 +1783,10 @@ void Application::processInput(const float deltaTimeSeconds)
         {
             handleCraftingMenuClick();
         }
+        if (inputState_.rightMousePressed)
+        {
+            handleCraftingMenuRightClick();
+        }
         return;
     }
 
@@ -2315,8 +2380,8 @@ void Application::openCraftingMenu(
     craftingMenuState_.usesWorkbench = useWorkbench;
     craftingMenuState_.workbenchBlockPosition = workbenchBlockPosition;
     craftingMenuState_.hint = useWorkbench
-        ? "Logs make planks. Four planks make a crafting table."
-        : "Press E anywhere for 2x2 crafting. Place and open a crafting table for 3x3.";
+        ? "2x2 planks make a table. Two planks stacked make sticks."
+        : "Press E for 2x2 crafting. Logs make planks, and two planks stacked make sticks.";
     mouseCaptured_ = false;
     window_.setRelativeMouseMode(false);
     inputState_.clearMouseMotion();
@@ -2499,6 +2564,54 @@ void Application::handleCraftingMenuClick()
     }
 
     mergeOrSwapInventorySlot(
+        craftingMenuState_.carriedSlot,
+        *targetSlot,
+        !isCraftingGridSlot);
+}
+
+void Application::handleCraftingMenuRightClick()
+{
+    const int hit = render::Renderer::hitTestCraftingMenu(
+        inputState_.mouseWindowX,
+        inputState_.mouseWindowY,
+        window_.width(),
+        window_.height(),
+        craftingMenuState_.usesWorkbench);
+    if (hit < 0 || hit == render::Renderer::kCraftingResultHit)
+    {
+        return;
+    }
+
+    InventorySlot* targetSlot = nullptr;
+    bool isCraftingGridSlot = false;
+    if (hit >= render::Renderer::kCraftingGridHitBase && hit < render::Renderer::kCraftingGridHitBase + 9)
+    {
+        targetSlot = &craftingMenuState_.gridSlots[static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase)];
+        isCraftingGridSlot = true;
+    }
+    else if (hit >= render::Renderer::kCraftingHotbarHitBase
+             && hit < render::Renderer::kCraftingHotbarHitBase + static_cast<int>(hotbarSlots_.size()))
+    {
+        targetSlot = &hotbarSlots_[static_cast<std::size_t>(hit - render::Renderer::kCraftingHotbarHitBase)];
+    }
+    else if (hit >= render::Renderer::kCraftingBagHitBase
+             && hit < render::Renderer::kCraftingBagHitBase + static_cast<int>(bagSlots_.size()))
+    {
+        targetSlot = &bagSlots_[static_cast<std::size_t>(hit - render::Renderer::kCraftingBagHitBase)];
+    }
+
+    if (targetSlot == nullptr)
+    {
+        return;
+    }
+
+    if (isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
+        && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+    {
+        return;
+    }
+
+    rightClickInventorySlot(
         craftingMenuState_.carriedSlot,
         *targetSlot,
         !isCraftingGridSlot);

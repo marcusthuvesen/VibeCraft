@@ -23,5 +23,5 @@ void main()
     lighting = clamp(lighting, vec3(0.0, 0.0, 0.0), vec3(1.6, 1.6, 1.6));
     vec4 atlasColor = texture2D(s_chunkAtlas, v_uv);
     vec3 litColor = atlasColor.rgb * v_color0.rgb * lighting;
-    gl_FragColor = vec4(litColor, v_color0.a);
+    gl_FragColor = vec4(litColor, atlasColor.a * v_color0.a);
 }

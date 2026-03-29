@@ -13,7 +13,7 @@ struct RecipeDefinition
     std::uint8_t width = 0;
     std::uint8_t height = 0;
     bool requiresWorkbench = false;
-    std::array<vibecraft::world::BlockType, 9> pattern{};
+    std::array<InventorySlot, 9> pattern{};
     InventorySlot output{};
 };
 
@@ -25,7 +25,7 @@ struct RecipeDefinition
     return y * width + x;
 }
 
-[[nodiscard]] vibecraft::world::BlockType ingredientTypeAt(
+[[nodiscard]] InventorySlot normalizedIngredientAt(
     const CraftingGridSlots& gridSlots,
     const std::size_t x,
     const std::size_t y)
@@ -33,12 +33,16 @@ struct RecipeDefinition
     const InventorySlot& slot = gridSlots[y * 3 + x];
     if (!isCraftingIngredientSlot(slot))
     {
-        return vibecraft::world::BlockType::Air;
+        return {};
     }
-    return slot.blockType;
+    return InventorySlot{
+        .blockType = slot.blockType,
+        .count = 1,
+        .equippedItem = slot.equippedItem,
+    };
 }
 
-[[nodiscard]] constexpr std::array<RecipeDefinition, 2> recipeDefinitions()
+[[nodiscard]] constexpr std::array<RecipeDefinition, 3> recipeDefinitions()
 {
     using vibecraft::world::BlockType;
     return {{
@@ -46,7 +50,11 @@ struct RecipeDefinition
             .width = 1,
             .height = 1,
             .requiresWorkbench = false,
-            .pattern = {BlockType::TreeTrunk},
+            .pattern = {InventorySlot{
+                .blockType = BlockType::TreeTrunk,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            }},
             .output = InventorySlot{
                 .blockType = BlockType::OakPlanks,
                 .count = 4,
@@ -58,13 +66,29 @@ struct RecipeDefinition
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
-                BlockType::OakPlanks, BlockType::OakPlanks,
-                BlockType::OakPlanks, BlockType::OakPlanks,
+                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
+                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
+                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
+                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
             },
             .output = InventorySlot{
                 .blockType = BlockType::CraftingTable,
                 .count = 1,
                 .equippedItem = EquippedItem::None,
+            },
+        },
+        RecipeDefinition{
+            .width = 1,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
+                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 4,
+                .equippedItem = EquippedItem::Stick,
             },
         },
     }};
@@ -96,8 +120,7 @@ bool canMergeInventorySlots(const InventorySlot& a, const InventorySlot& b)
 bool isCraftingIngredientSlot(const InventorySlot& slot)
 {
     return slot.count > 0
-        && slot.equippedItem == EquippedItem::None
-        && slot.blockType != vibecraft::world::BlockType::Air;
+        && (slot.equippedItem != EquippedItem::None || slot.blockType != vibecraft::world::BlockType::Air);
 }
 
 std::optional<CraftingMatch> evaluateCraftingGrid(
@@ -136,16 +159,17 @@ std::optional<CraftingMatch> evaluateCraftingGrid(
                         const bool insideRecipe =
                             x >= offsetX && x < offsetX + recipe.width
                             && y >= offsetY && y < offsetY + recipe.height;
-                        const vibecraft::world::BlockType expectedType = insideRecipe
+                        const InventorySlot expectedSlot = insideRecipe
                             ? recipe.pattern[patternIndex(x - offsetX, y - offsetY, recipe.width)]
-                            : vibecraft::world::BlockType::Air;
-                        const vibecraft::world::BlockType actualType = ingredientTypeAt(gridSlots, x, y);
-                        if (actualType != expectedType)
+                            : InventorySlot{};
+                        const InventorySlot actualSlot = normalizedIngredientAt(gridSlots, x, y);
+                        if (actualSlot.blockType != expectedSlot.blockType
+                            || actualSlot.equippedItem != expectedSlot.equippedItem)
                         {
                             matches = false;
                             break;
                         }
-                        if (insideRecipe && expectedType != vibecraft::world::BlockType::Air)
+                        if (insideRecipe && !isInventorySlotEmpty(expectedSlot))
                         {
                             craftingMatch.consumedSlotIndices[craftingMatch.consumedSlotCount++] = y * 3 + x;
                         }

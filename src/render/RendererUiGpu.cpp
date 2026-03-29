@@ -108,7 +108,6 @@ struct ModelPartSpec
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 12.0f, 4.0f),
             .snout = makeCuboidUvSet(kTexW, kTexH, 0.0f, 22.0f, 4.0f, 3.0f, 2.0f),
             .horn = makeCuboidUvSet(kTexW, kTexH, 22.0f, 0.0f, 1.0f, 3.0f, 1.0f),
-            .wattle = makeCuboidUvSet(kTexW, kTexH, 52.0f, 0.0f, 2.0f, 8.0f, 2.0f),
         };
     case MK::Pig:
         return {
@@ -116,8 +115,6 @@ struct ModelPartSpec
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 6.0f, 4.0f),
             .snout = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 4.0f, 3.0f, 2.0f),
-            .horn = makeCuboidUvSet(kTexW, kTexH, 12.0f, 0.0f, 2.0f, 2.0f, 1.0f),
-            .wattle = makeCuboidUvSet(kTexW, kTexH, 46.0f, 16.0f, 1.0f, 3.0f, 1.0f),
         };
     case MK::Sheep:
         return {
@@ -346,6 +343,8 @@ void Renderer::drawInventoryItemIcons(
         {
         case HudItemKind::DiamondSword:
             return diamondSwordTextureHandle_;
+        case HudItemKind::Stick:
+            return stickTextureHandle_;
         case HudItemKind::RottenFlesh:
             return rottenFleshTextureHandle_;
         case HudItemKind::Leather:
@@ -361,27 +360,43 @@ void Renderer::drawInventoryItemIcons(
             return static_cast<std::uint16_t>(UINT16_MAX);
         }
     };
-    const auto drawHudSlotIcon = [&](const FrameDebugData::HotbarSlotHud& slotHud,
-                                     const float centerX,
-                                     const float centerY,
-                                     const float iconSize)
+    const auto drawHudSlotIconInRect = [&](const FrameDebugData::HotbarSlotHud& slotHud,
+                                           const float x0,
+                                           const float y0,
+                                           const float x1,
+                                           const float y1)
     {
+        if (slotHud.count == 0)
+        {
+            return;
+        }
+
+        const float slotW = std::max(0.0f, x1 - x0);
+        const float slotH = std::max(0.0f, y1 - y0);
+        const float iconInset = std::max(2.0f, std::round(std::min(slotW, slotH) * 0.12f));
+        const float ix0 = x0 + iconInset;
+        const float iy0 = y0 + iconInset;
+        const float ix1 = x1 - iconInset;
+        const float iy1 = y1 - iconInset;
         const std::uint16_t textureHandle = itemTextureHandle(slotHud.itemKind);
         if (textureHandle != UINT16_MAX)
         {
-            drawUiTextureRect(
-                centerX - iconSize * 0.5f,
-                centerY - iconSize * 0.5f,
-                centerX + iconSize * 0.5f,
-                centerY + iconSize * 0.5f,
-                textureHandle);
+            drawUiTextureRect(ix0, iy0, ix1, iy1, textureHandle);
+            return;
+        }
+        if (slotHud.blockType == vibecraft::world::BlockType::Air)
+        {
             return;
         }
 
         const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
             slotHud.blockType,
             vibecraft::world::BlockFace::Side);
-        drawAtlasIcon(centerX, centerY, iconSize, tileIndex);
+        drawAtlasIcon(
+            std::floor((ix0 + ix1) * 0.5f),
+            std::floor((iy0 + iy1) * 0.5f),
+            std::max(1.0f, std::min(ix1 - ix0, iy1 - iy0)),
+            tileIndex);
     };
 
     if (canDrawSolid && hotbarLayout.slotSize > 0.0f)
@@ -447,7 +462,7 @@ void Renderer::drawInventoryItemIcons(
             const float clampedMaxHealth = std::max(0.0f, frameDebugData.maxHealth);
             const float clampedHealth = std::clamp(frameDebugData.health, 0.0f, clampedMaxHealth);
             const int heartCount = std::max(1, static_cast<int>(std::ceil(clampedMaxHealth * 0.5f)));
-            const float heartSize = std::clamp(std::round(slot * 0.72f), 22.0f, 42.0f);
+            const float heartSize = std::clamp(std::round(slot * 0.72f), 28.0f, 92.0f);
             const float heartGap = std::max(2.0f, std::round(heartSize * 0.08f));
             const float totalHeartsWidth =
                 static_cast<float>(heartCount) * heartSize + static_cast<float>(std::max(0, heartCount - 1)) * heartGap;
@@ -501,7 +516,7 @@ void Renderer::drawInventoryItemIcons(
     }
 
     const float iconBase = hotbarLayout.slotSize > 0.0f
-        ? std::clamp(std::floor(hotbarLayout.slotSize * 0.78f), 24.0f, 58.0f)
+        ? std::clamp(std::floor(hotbarLayout.slotSize * 0.78f), 36.0f, 112.0f)
         : 13.0f;
 
     if (hotbarLayout.slotSize > 0.0f)
@@ -521,7 +536,13 @@ void Renderer::drawInventoryItemIcons(
             const float centerY = sy0 + slot * 0.5f;
             const float iconScale = slotIndex == frameDebugData.hotbarSelectedIndex ? 1.06f : 1.0f;
             const float iconSize = iconBase * iconScale;
-            drawHudSlotIcon(slotHud, centerX, centerY, iconSize);
+            const float iconHalf = iconSize * 0.5f;
+            drawHudSlotIconInRect(
+                slotHud,
+                centerX - iconHalf,
+                centerY - iconHalf,
+                centerX + iconHalf,
+                centerY + iconHalf);
         }
     }
     else
@@ -539,7 +560,13 @@ void Renderer::drawInventoryItemIcons(
             const float centerY = static_cast<float>(hotbarRow) * charHeightPx + charHeightPx * 0.42f;
             const float iconSize =
                 slotIndex == frameDebugData.hotbarSelectedIndex ? 14.0f : 13.0f;
-            drawHudSlotIcon(slotHud, centerX, centerY, iconSize);
+            const float iconHalf = iconSize * 0.5f;
+            drawHudSlotIconInRect(
+                slotHud,
+                centerX - iconHalf,
+                centerY - iconHalf,
+                centerX + iconHalf,
+                centerY + iconHalf);
         }
     }
 
@@ -562,7 +589,13 @@ void Renderer::drawInventoryItemIcons(
             const float centerX = (cellCol + static_cast<float>(kBagCellChars) * 0.5f) * charWidthPx;
             const float centerY = static_cast<float>(bagRows[row]) * charHeightPx + charHeightPx * 0.42f;
             const float iconSize = std::clamp(charHeightPx * 0.95f, 13.0f, 24.0f);
-            drawHudSlotIcon(slotHud, centerX, centerY, iconSize);
+            const float iconHalf = iconSize * 0.5f;
+            drawHudSlotIconInRect(
+                slotHud,
+                centerX - iconHalf,
+                centerY - iconHalf,
+                centerX + iconHalf,
+                centerY + iconHalf);
         }
     }
 }
@@ -712,6 +745,9 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         case HudItemKind::DiamondSword:
             textureHandle = diamondSwordTextureHandle_;
             break;
+        case HudItemKind::Stick:
+            textureHandle = stickTextureHandle_;
+            break;
         case HudItemKind::RottenFlesh:
             textureHandle = rottenFleshTextureHandle_;
             break;
@@ -789,7 +825,8 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     drawSlotFrame(layout.resultSlotX, layout.resultSlotY, frameDebugData.craftingResultSlot.count > 0);
     drawSlotContents(frameDebugData.craftingResultSlot, layout.resultSlotX, layout.resultSlotY);
 
-    for (int row = 0; row < 9; ++row)
+    constexpr int kVisibleBagRows = 3;
+    for (int row = 0; row < kVisibleBagRows; ++row)
     {
         for (int col = 0; col < 9; ++col)
         {
@@ -804,7 +841,7 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     for (int slotIndex = 0; slotIndex < 9; ++slotIndex)
     {
         const float slotX = layout.inventoryOriginX + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-        const float slotY = layout.inventoryOriginY + 9.0f * (layout.slotSize + layout.slotGap);
+        const float slotY = layout.inventoryOriginY + static_cast<float>(kVisibleBagRows) * (layout.slotSize + layout.slotGap);
         const bool selected = static_cast<std::size_t>(slotIndex) == frameDebugData.hotbarSelectedIndex;
         drawSlotFrame(slotX, slotY, selected);
         drawSlotContents(frameDebugData.hotbarSlots[static_cast<std::size_t>(slotIndex)], slotX, slotY);
@@ -844,6 +881,9 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
         float maxV = 1.0f;
         switch (pickup.itemKind)
         {
+        case HudItemKind::Stick:
+            textureHandle = stickTextureHandle_;
+            break;
         case HudItemKind::RottenFlesh:
             textureHandle = rottenFleshTextureHandle_;
             break;
@@ -1149,6 +1189,35 @@ void Renderer::drawWorldMobSprites(
                 forward,
                 uvSet);
         };
+        const auto submitHorizontalBody = [&](const glm::vec3& centerOffsetPx,
+                                              const glm::vec3& halfExtentsPx,
+                                              const CuboidUvSet& uvSet)
+        {
+            const glm::vec3 center = mob.feetPosition
+                + right * (centerOffsetPx.x * sx)
+                + glm::vec3(0.0f, centerOffsetPx.y * sy, 0.0f)
+                + forward * (centerOffsetPx.z * sz);
+            const glm::vec3 dx = right * (halfExtentsPx.x * sx);
+            const glm::vec3 dy(0.0f, halfExtentsPx.z * sy, 0.0f);
+            const glm::vec3 dz = forward * (halfExtentsPx.y * sz);
+
+            const glm::vec3 lbf = center - dx - dy + dz;
+            const glm::vec3 rbf = center + dx - dy + dz;
+            const glm::vec3 lbb = center - dx - dy - dz;
+            const glm::vec3 rbb = center + dx - dy - dz;
+            const glm::vec3 ltf = center - dx + dy + dz;
+            const glm::vec3 rtf = center + dx + dy + dz;
+            const glm::vec3 ltb = center - dx + dy - dz;
+            const glm::vec3 rtb = center + dx + dy - dz;
+
+            if (!submitFace(lbf, rbf, rtf, ltf, uvSet.top, toAbgrShade(1.0f), mobTextureHandle)) return false;
+            if (!submitFace(rbb, lbb, ltb, rtb, uvSet.bottom, toAbgrShade(0.82f), mobTextureHandle)) return false;
+            if (!submitFace(lbb, lbf, ltf, ltb, uvSet.left, toAbgrShade(0.74f), mobTextureHandle)) return false;
+            if (!submitFace(rbf, rbb, rtb, rtf, uvSet.right, toAbgrShade(0.74f), mobTextureHandle)) return false;
+            if (!submitFace(ltf, rtf, rtb, ltb, uvSet.back, toAbgrShade(0.92f), mobTextureHandle)) return false;
+            if (!submitFace(lbb, rbb, rbf, lbf, uvSet.front, toAbgrShade(0.62f), mobTextureHandle)) return false;
+            return true;
+        };
 
         using MK = vibecraft::game::MobKind;
         switch (mob.mobKind)
@@ -1162,12 +1231,9 @@ void Renderer::drawWorldMobSprites(
             if (!submitCuboid(glm::vec3(2.0f, 6.0f, 0.0f), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
             break;
         case MK::Cow:
-            if (!submitOrientedCuboid(
+            if (!submitHorizontalBody(
                     glm::vec3(0.0f, 13.8f, 0.3f),
-                    glm::vec3(6.0f * sx, 9.0f * sz, 5.0f * sy),
-                    right,
-                    forward,
-                    glm::vec3(0.0f, -1.0f, 0.0f),
+                    glm::vec3(6.0f, 9.0f, 5.0f),
                     uv.body))
             {
                 break;
@@ -1176,32 +1242,25 @@ void Renderer::drawWorldMobSprites(
             if (!submitCuboid(glm::vec3(0.0f, 13.0f, 12.3f), glm::vec3(2.2f, 1.6f, 1.4f), uv.snout)) break;
             if (!submitCuboid(glm::vec3(-2.5f, 19.2f, 8.6f), glm::vec3(0.5f, 1.3f, 0.5f), uv.horn)) break;
             if (!submitCuboid(glm::vec3(2.5f, 19.2f, 8.6f), glm::vec3(0.5f, 1.3f, 0.5f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 13.4f, -9.0f), glm::vec3(0.5f, 3.1f, 0.5f), uv.wattle)) break;
             if (!submitCuboid(glm::vec3(-4.2f, 6.0f, 4.5f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(4.2f, 6.0f, 4.5f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(-4.2f, 6.0f, -4.8f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(4.2f, 6.0f, -4.8f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             break;
         case MK::Pig:
-            if (!submitOrientedCuboid(
-                    glm::vec3(0.0f, 8.8f, 0.2f),
-                    glm::vec3(5.0f * sx, 8.0f * sz, 4.0f * sy),
-                    right,
-                    forward,
-                    glm::vec3(0.0f, -1.0f, 0.0f),
+            if (!submitHorizontalBody(
+                    glm::vec3(0.0f, 8.8f, 0.0f),
+                    glm::vec3(5.0f, 8.0f, 4.0f),
                     uv.body))
             {
                 break;
             }
-            if (!submitCuboid(glm::vec3(0.0f, 8.8f, 8.1f), glm::vec3(4.0f, 4.0f, 4.0f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 8.0f, 12.6f), glm::vec3(2.0f, 1.5f, 1.4f), uv.snout)) break;
-            if (!submitCuboid(glm::vec3(-2.1f, 12.6f, 7.8f), glm::vec3(0.8f, 0.7f, 0.7f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(2.1f, 12.6f, 7.8f), glm::vec3(0.8f, 0.7f, 0.7f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 8.9f, -8.2f), glm::vec3(0.4f, 1.0f, 0.4f), uv.wattle)) break;
-            if (!submitCuboid(glm::vec3(-3.1f, 3.0f, 5.1f), glm::vec3(1.6f, 3.0f, 1.6f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(3.1f, 3.0f, 5.1f), glm::vec3(1.6f, 3.0f, 1.6f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(-3.1f, 3.0f, -5.1f), glm::vec3(1.6f, 3.0f, 1.6f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(3.1f, 3.0f, -5.1f), glm::vec3(1.6f, 3.0f, 1.6f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 8.7f, 8.6f), glm::vec3(4.0f, 4.0f, 4.0f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 8.1f, 12.8f), glm::vec3(2.1f, 1.5f, 1.2f), uv.snout)) break;
+            if (!submitCuboid(glm::vec3(-3.0f, 3.0f, 4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(3.0f, 3.0f, 4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-3.0f, 3.0f, -4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(3.0f, 3.0f, -4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
             break;
         case MK::Sheep:
             if (!submitOrientedCuboid(
@@ -1628,6 +1687,9 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
     {
         switch (selectedSlot.itemKind)
         {
+        case HudItemKind::Stick:
+            textureHandle = stickTextureHandle_;
+            break;
         case HudItemKind::RottenFlesh:
             textureHandle = rottenFleshTextureHandle_;
             break;

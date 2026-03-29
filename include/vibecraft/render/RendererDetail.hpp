@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -41,6 +42,38 @@ constexpr int kJoinPortFieldRow = 15;
 constexpr int kJoinConnectRow = 22;
 constexpr int kJoinBackRow = 29;
 }  // namespace MultiplayerMenuLayout
+
+/// Pause menu dbg-text grid; must match `drawPauseMenuOverlay` and pause hit tests.
+namespace PauseMenuLayout
+{
+constexpr int kWideChars = 96;
+/// Framed control height: top rule, label, bottom rule (one text line per button).
+constexpr int kButtonRowSpan = 3;
+constexpr int kButtonGapRows = 2;
+constexpr int kButtonPitch = kButtonRowSpan + kButtonGapRows;
+constexpr int kMainButtonCount = 5;
+
+[[nodiscard]] inline int mainPauseMenuTotalRows()
+{
+    return kMainButtonCount * kButtonRowSpan + (kMainButtonCount - 1) * kButtonGapRows;
+}
+
+[[nodiscard]] inline int mainPauseMenuFirstButtonRow(const int textHeight)
+{
+    const int total = mainPauseMenuTotalRows();
+    const int maxFirst = std::max(5, textHeight - total - 2);
+    return std::clamp((textHeight - total) / 2, 5, maxFirst);
+}
+
+constexpr int kSoundTitleRow = 3;
+constexpr int kSoundMusicButtonRow = 6;
+constexpr int kSoundSfxButtonRow = kSoundMusicButtonRow + kButtonPitch;
+constexpr int kSoundBackButtonRow = kSoundSfxButtonRow + kButtonPitch;
+
+constexpr int kGameTitleRow = 3;
+constexpr int kGameMobButtonRow = 6;
+constexpr int kGameBackButtonRow = kGameMobButtonRow + kButtonPitch;
+}  // namespace PauseMenuLayout
 
 struct MainMenuComputedLayout
 {
