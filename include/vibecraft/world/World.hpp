@@ -47,6 +47,8 @@ class World
   public:
     using ChunkMap = std::unordered_map<ChunkCoord, Chunk, ChunkCoordHash>;
 
+    [[nodiscard]] std::uint32_t generationSeed() const;
+    void setGenerationSeed(std::uint32_t generationSeed);
     void generateRadius(const TerrainGenerator& terrainGenerator, int chunkRadius);
     void generateMissingChunksAround(
         const TerrainGenerator& terrainGenerator,
@@ -82,6 +84,7 @@ class World
     Chunk& ensureChunk(const ChunkCoord& coord);
     void markChunkDirty(const ChunkCoord& coord);
 
+    std::uint32_t generationSeed_ = 0;
     ChunkMap chunks_;
     std::unordered_map<ChunkCoord, ChunkMeshStats, ChunkCoordHash> meshStats_;
     std::unordered_set<ChunkCoord, ChunkCoordHash> dirtyChunks_;

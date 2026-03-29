@@ -379,6 +379,27 @@ struct BlockMetadata
             .hardness = 0.2f,
             .breakable = true,
         };
+    case BlockType::JunglePlanks:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 65, .bottom = 65, .side = 65},
+            .hardness = 1.5f,
+            .breakable = true,
+        };
+    case BlockType::MossBlock:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 66, .bottom = 66, .side = 66},
+            .hardness = 0.2f,
+            .breakable = true,
+        };
+    case BlockType::MossyCobblestone:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 67, .bottom = 67, .side = 67},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
     case BlockType::Air:
     default:
         return {};

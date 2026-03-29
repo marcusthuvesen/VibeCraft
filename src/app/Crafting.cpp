@@ -190,7 +190,7 @@ struct RecipeDefinition
             .requiresWorkbench = false,
             .pattern = {ingredientBlock(BlockType::JungleTreeTrunk)},
             .output = InventorySlot{
-                .blockType = BlockType::OakPlanks,
+                .blockType = BlockType::JunglePlanks,
                 .count = 4,
                 .equippedItem = EquippedItem::None,
             },
@@ -201,7 +201,7 @@ struct RecipeDefinition
             .requiresWorkbench = false,
             .pattern = {ingredientBlock(BlockType::JungleTreeCrown)},
             .output = InventorySlot{
-                .blockType = BlockType::OakPlanks,
+                .blockType = BlockType::JunglePlanks,
                 .count = 1,
                 .equippedItem = EquippedItem::None,
             },
@@ -245,12 +245,42 @@ struct RecipeDefinition
             },
         });
         r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::CraftingTable,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
             .width = 1,
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
                 ingredientBlock(BlockType::OakPlanks),
                 ingredientBlock(BlockType::OakPlanks),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 4,
+                .equippedItem = EquippedItem::Stick,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
             },
             .output = InventorySlot{
                 .blockType = BlockType::Air,
@@ -366,6 +396,27 @@ struct RecipeDefinition
             },
         });
         r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+                InventorySlot{},
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+                ingredientBlock(BlockType::JunglePlanks),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Chest,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
             .width = 1,
             .height = 2,
             .requiresWorkbench = false,
@@ -418,6 +469,7 @@ struct RecipeDefinition
         });
 
         r.push_back(makeSwordRecipe(BlockType::OakPlanks, EquippedItem::WoodSword, true));
+        r.push_back(makeSwordRecipe(BlockType::JunglePlanks, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::TreeTrunk, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodSword, true));
@@ -430,6 +482,7 @@ struct RecipeDefinition
         r.push_back(makeSwordRecipe(BlockType::DiamondOre, EquippedItem::DiamondSword, true));
 
         r.push_back(makePickaxeRecipe(BlockType::OakPlanks, EquippedItem::WoodPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::JunglePlanks, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::TreeTrunk, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodPickaxe));
@@ -442,6 +495,8 @@ struct RecipeDefinition
 
         r.push_back(makeAxeRecipe(BlockType::OakPlanks, EquippedItem::WoodAxe, false));
         r.push_back(makeAxeRecipe(BlockType::OakPlanks, EquippedItem::WoodAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::JunglePlanks, EquippedItem::WoodAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::JunglePlanks, EquippedItem::WoodAxe, true));
         r.push_back(makeAxeRecipe(BlockType::TreeTrunk, EquippedItem::WoodAxe, false));
         r.push_back(makeAxeRecipe(BlockType::TreeTrunk, EquippedItem::WoodAxe, true));
         r.push_back(makeAxeRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodAxe, false));

@@ -26,6 +26,17 @@ constexpr int kLowlandPondMaxHeightAboveSea = 3;
 constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
 constexpr int kSandstoneStratumDepth = 6;
 
+[[nodiscard]] constexpr std::uint32_t mixedSeed(const std::uint32_t baseSeed, const std::uint32_t worldSeed)
+{
+    std::uint32_t mixed = baseSeed ^ (worldSeed + 0x9e3779b9U + (baseSeed << 6U) + (baseSeed >> 2U));
+    mixed ^= mixed >> 16U;
+    mixed *= 0x7feb352dU;
+    mixed ^= mixed >> 15U;
+    mixed *= 0x846ca68bU;
+    mixed ^= mixed >> 16U;
+    return mixed;
+}
+
 enum class ColumnBiome : std::uint8_t
 {
     TemperateGrassland,
@@ -52,23 +63,26 @@ struct ColumnContext
     return y <= kBedrockFloorMaxY;
 }
 
-[[nodiscard]] int topsoilDepthAt(const int worldX, const int worldZ)
+[[nodiscard]] int topsoilDepthAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
 {
     const double depthNoise = noise::valueNoise2d(
         static_cast<double>(worldX),
         static_cast<double>(worldZ),
         48.0,
-        0x4f1bbcdcU);
+        mixedSeed(0x4f1bbcdcU, worldSeed));
     return kTopsoilDepth + static_cast<int>(depthNoise * 2.0);
 }
 
-[[nodiscard]] double transitionBandNoise(const int worldX, const int worldZ)
+[[nodiscard]] double transitionBandNoise(const int worldX, const int worldZ, const std::uint32_t worldSeed)
 {
-    return 0.5 + 0.25 * std::sin(static_cast<double>(worldX) * 0.07 + static_cast<double>(worldZ) * 0.05) +
-        0.25 * std::cos(static_cast<double>(worldX - worldZ) * 0.04);
+    const double phase = static_cast<double>(mixedSeed(0x6a0f91e3U, worldSeed) & 0xffffU) / 65535.0 * 6.283185307179586;
+    const double phaseB =
+        static_cast<double>((mixedSeed(0x1f2e3d4cU, worldSeed) >> 8U) & 0xffffU) / 65535.0 * 6.283185307179586;
+    return 0.5 + 0.25 * std::sin(static_cast<double>(worldX) * 0.07 + static_cast<double>(worldZ) * 0.05 + phase)
+        + 0.25 * std::cos(static_cast<double>(worldX - worldZ) * 0.04 + phaseB);
 }
 
-[[nodiscard]] BlockType undergroundBlockTypeAt(const int worldX, const int y, const int worldZ)
+[[nodiscard]] BlockType undergroundBlockTypeAt(const int worldX, const int y, const int worldZ, const std::uint32_t worldSeed)
 {
     if (y <= kDeepslateFullStartY)
     {
@@ -82,16 +96,22 @@ struct ColumnContext
 
     const double transitionBias = static_cast<double>(kDeepslateTransitionEndY - y) /
         static_cast<double>(kDeepslateTransitionEndY - kDeepslateFullStartY);
-    return transitionBandNoise(worldX, worldZ) < transitionBias ? BlockType::Deepslate : BlockType::Stone;
+    return transitionBandNoise(worldX, worldZ, worldSeed) < transitionBias ? BlockType::Deepslate : BlockType::Stone;
 }
 
-[[nodiscard]] double biomeTemperatureAt(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] double biomeTemperatureAt(
+    const int worldX,
+    const int worldZ,
+    const int surfaceHeight,
+    const std::uint32_t worldSeed)
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
     // Broader climate scales create larger contiguous biome regions (closer to Minecraft feel).
-    const double baseTemperature = noise::fbmNoise2d(worldXd, worldZd, 360.0, 4, 0x8b4d1e29U) * 2.0 - 1.0;
-    const double variation = noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 180.0, 3, 0x1c0f3aa7U) * 2.0 - 1.0;
+    const double baseTemperature =
+        noise::fbmNoise2d(worldXd, worldZd, 4000.0, 4, mixedSeed(0x8b4d1e29U, worldSeed)) * 2.0 - 1.0;
+    const double variation =
+        noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 1800.0, 3, mixedSeed(0x1c0f3aa7U, worldSeed)) * 2.0 - 1.0;
     const double altitudeCooling = std::clamp(
         static_cast<double>(surfaceHeight - kSeaLevel) / 120.0,
         0.0,
@@ -99,22 +119,27 @@ struct ColumnContext
     return baseTemperature + variation * 0.33 - altitudeCooling;
 }
 
-[[nodiscard]] double biomeHumidityAt(const int worldX, const int worldZ)
+[[nodiscard]] double biomeHumidityAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 340.0, 4, 0x32a7f1c4U) * 2.0 - 1.0;
+    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 3800.0, 4, mixedSeed(0x32a7f1c4U, worldSeed)) * 2.0
+        - 1.0;
 }
 
-[[nodiscard]] ColumnBiome columnBiomeAt(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] ColumnBiome columnBiomeAt(
+    const int worldX,
+    const int worldZ,
+    const int surfaceHeight,
+    const std::uint32_t worldSeed)
 {
     if (surfaceHeight <= kSeaLevel + kBeachMaxHeightAboveSea)
     {
         return ColumnBiome::Sandy;
     }
 
-    const double temperature = biomeTemperatureAt(worldX, worldZ, surfaceHeight);
-    const double humidity = biomeHumidityAt(worldX, worldZ);
+    const double temperature = biomeTemperatureAt(worldX, worldZ, surfaceHeight, worldSeed);
+    const double humidity = biomeHumidityAt(worldX, worldZ, worldSeed);
     if (surfaceHeight <= kSandSurfaceMaxHeight && temperature > 0.22 && humidity < -0.04)
     {
         return ColumnBiome::Sandy;
@@ -167,7 +192,11 @@ struct ColumnContext
     return surfaceHeight >= kMountainStoneCapStartY && y >= surfaceHeight - kMountainStoneCapThickness;
 }
 
-[[nodiscard]] bool shouldFloodLowlandColumn(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] bool shouldFloodLowlandColumn(
+    const int worldX,
+    const int worldZ,
+    const int surfaceHeight,
+    const std::uint32_t worldSeed)
 {
     if (surfaceHeight < kSeaLevel || surfaceHeight > kSeaLevel + kLowlandPondMaxHeightAboveSea)
     {
@@ -179,16 +208,20 @@ struct ColumnContext
         static_cast<double>(worldZ),
         88.0,
         3,
-        kPondNoiseSeed);
+        mixedSeed(kPondNoiseSeed, worldSeed));
     return floodNoise > 0.66;
 }
 
-[[nodiscard]] ColumnContext buildColumnContext(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] ColumnContext buildColumnContext(
+    const int worldX,
+    const int worldZ,
+    const int surfaceHeight,
+    const std::uint32_t worldSeed)
 {
-    const int topsoilDepth = topsoilDepthAt(worldX, worldZ);
-    const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight);
+    const int topsoilDepth = topsoilDepthAt(worldX, worldZ, worldSeed);
+    const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight, worldSeed);
     const int columnWaterLevel = floodLowland ? surfaceHeight + 1 : kSeaLevel;
-    const ColumnBiome biome = columnBiomeAt(worldX, worldZ, surfaceHeight);
+    const ColumnBiome biome = columnBiomeAt(worldX, worldZ, surfaceHeight, worldSeed);
     const bool usesSandStrata = columnUsesSandStrata(biome);
     const int stratumTopExclusive = surfaceHeight - topsoilDepth;
     return ColumnContext{
@@ -224,7 +257,8 @@ struct ColumnContext
     const int worldX,
     const int y,
     const int worldZ,
-    const ColumnContext& columnContext)
+    const ColumnContext& columnContext,
+    const std::uint32_t worldSeed)
 {
     if (shouldPlaceBedrock(y))
     {
@@ -257,7 +291,7 @@ struct ColumnContext
         return BlockType::Sandstone;
     }
 
-    const BlockType hostBlockType = undergroundBlockTypeAt(worldX, y, worldZ);
+    const BlockType hostBlockType = undergroundBlockTypeAt(worldX, y, worldZ, worldSeed);
     if (const std::optional<BlockType> ore = underground::selectOreVeinBlock(
             worldX, y, worldZ, columnContext.surfaceHeight, hostBlockType))
     {
@@ -267,14 +301,27 @@ struct ColumnContext
 }
 }  // namespace
 
+std::uint32_t TerrainGenerator::worldSeed() const
+{
+    return worldSeed_;
+}
+
+void TerrainGenerator::setWorldSeed(const std::uint32_t worldSeed)
+{
+    worldSeed_ = worldSeed;
+}
+
 int TerrainGenerator::surfaceHeightAt(const int worldX, const int worldZ) const
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    const double continents = noise::fbmNoise2d(worldXd, worldZd, 220.0, 4, 0x1234abcdU) * 2.0 - 1.0;
-    const double ridges = noise::ridgeNoise2d(worldXd, worldZd, 110.0, 0x4422aa11U);
-    const double hills = noise::fbmNoise2d(worldXd, worldZd, 72.0, 4, 0x90f0c55aU) * 2.0 - 1.0;
-    const double detail = noise::fbmNoise2d(worldXd, worldZd, 28.0, 3, 0x7a0f3e19U) * 2.0 - 1.0;
+    const double continents =
+        noise::fbmNoise2d(worldXd, worldZd, 220.0, 4, mixedSeed(0x1234abcdU, worldSeed_)) * 2.0 - 1.0;
+    const double ridges = noise::ridgeNoise2d(worldXd, worldZd, 110.0, mixedSeed(0x4422aa11U, worldSeed_));
+    const double hills =
+        noise::fbmNoise2d(worldXd, worldZd, 72.0, 4, mixedSeed(0x90f0c55aU, worldSeed_)) * 2.0 - 1.0;
+    const double detail =
+        noise::fbmNoise2d(worldXd, worldZd, 28.0, 3, mixedSeed(0x7a0f3e19U, worldSeed_)) * 2.0 - 1.0;
 
     const double terrainHeight = static_cast<double>(kSeaLevel)
         - 8.0
@@ -288,13 +335,18 @@ int TerrainGenerator::surfaceHeightAt(const int worldX, const int worldZ) const
 SurfaceBiome TerrainGenerator::surfaceBiomeAt(const int worldX, const int worldZ) const
 {
     const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
-    return toSurfaceBiome(columnBiomeAt(worldX, worldZ, surfaceHeight));
+    return toSurfaceBiome(columnBiomeAt(worldX, worldZ, surfaceHeight, worldSeed_));
 }
 
 BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int worldZ) const
 {
     const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
-    return blockTypeAtWithContext(worldX, y, worldZ, buildColumnContext(worldX, worldZ, surfaceHeight));
+    return blockTypeAtWithContext(
+        worldX,
+        y,
+        worldZ,
+        buildColumnContext(worldX, worldZ, surfaceHeight, worldSeed_),
+        worldSeed_);
 }
 
 void TerrainGenerator::fillColumn(const int worldX, const int worldZ, BlockType* const outColumnBlocks) const
@@ -307,7 +359,7 @@ void TerrainGenerator::fillColumn(const int worldX, const int worldZ, BlockType*
     std::fill(outColumnBlocks, outColumnBlocks + kWorldHeight, BlockType::Air);
 
     const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
-    const ColumnContext columnContext = buildColumnContext(worldX, worldZ, surfaceHeight);
+    const ColumnContext columnContext = buildColumnContext(worldX, worldZ, surfaceHeight, worldSeed_);
     const int surfaceIndex = surfaceHeight - kWorldMinY;
 
     for (int y = kWorldMinY; y <= kBedrockFloorMaxY; ++y)
@@ -354,7 +406,7 @@ void TerrainGenerator::fillColumn(const int worldX, const int worldZ, BlockType*
     const int undergroundEnd = std::min(surfaceHeight - columnContext.topsoilDepth - 1, kWorldMaxY);
     for (int y = kUndergroundStartY; y <= undergroundEnd; ++y)
     {
-        outColumnBlocks[y - kWorldMinY] = blockTypeAtWithContext(worldX, y, worldZ, columnContext);
+        outColumnBlocks[y - kWorldMinY] = blockTypeAtWithContext(worldX, y, worldZ, columnContext, worldSeed_);
     }
 }
 }  // namespace vibecraft::world

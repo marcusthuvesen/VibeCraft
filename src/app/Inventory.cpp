@@ -191,6 +191,12 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Melon";
     case vibecraft::world::BlockType::Bamboo:
         return "Bamboo";
+    case vibecraft::world::BlockType::JunglePlanks:
+        return "Jungle Planks";
+    case vibecraft::world::BlockType::MossBlock:
+        return "Moss Block";
+    case vibecraft::world::BlockType::MossyCobblestone:
+        return "Mossy Cobblestone";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

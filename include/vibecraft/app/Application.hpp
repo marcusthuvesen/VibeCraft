@@ -280,8 +280,6 @@ class Application
     bool clientJoinLoggedFirstChunkSummary_ = false;
     std::uint8_t clientJoinAuthoritativeSnapLogsRemaining_ = 0;
     CraftingMenuState craftingMenuState_{};
-    /// Run-loop frame index (used to delay main-menu mouse activation until layout is stable).
-    std::uint32_t runFrameIndex_ = 0;
     bool showWorldOriginGuides_ = false;
     bool debugF3KeyWasDown_ = false;
 };

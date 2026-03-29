@@ -51,6 +51,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::CocoaPod:
     case BlockType::Melon:
     case BlockType::Bamboo:
+    case BlockType::MossBlock:
         return {
             "block/grass/break1.ogg",
             "block/grass/break2.ogg",
@@ -76,6 +77,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleTreeTrunk:
     case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
+    case BlockType::JunglePlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
     case BlockType::Torch:
@@ -101,6 +103,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
+    case BlockType::MossyCobblestone:
     case BlockType::Oven:
     case BlockType::Bricks:
     case BlockType::Glowstone:
@@ -147,6 +150,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::CocoaPod:
     case BlockType::Melon:
     case BlockType::Bamboo:
+    case BlockType::MossBlock:
         return {"block/grass/hit1.ogg", "block/grass/hit2.ogg", "block/grass/hit3.ogg", "block/grass/hit4.ogg"};
     case BlockType::Sand:
     case BlockType::Sandstone:
@@ -156,6 +160,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleTreeTrunk:
     case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
+    case BlockType::JunglePlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
     case BlockType::Torch:
@@ -173,6 +178,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
+    case BlockType::MossyCobblestone:
     case BlockType::Oven:
     case BlockType::Bricks:
     case BlockType::Glowstone:
@@ -212,6 +218,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::CocoaPod:
     case BlockType::Melon:
     case BlockType::Bamboo:
+    case BlockType::MossBlock:
         step.assign(
             {"block/grass/step1.ogg",
              "block/grass/step2.ogg",
@@ -266,6 +273,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleTreeTrunk:
     case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
+    case BlockType::JunglePlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
     case BlockType::Torch:
@@ -296,6 +304,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
+    case BlockType::MossyCobblestone:
     case BlockType::Oven:
     case BlockType::Bricks:
     case BlockType::Glowstone:
@@ -352,6 +361,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::CocoaPod:
     case BlockType::Melon:
     case BlockType::Bamboo:
+    case BlockType::MossBlock:
         return {
             "block/grass/place1.ogg",
             "block/grass/place2.ogg",
@@ -377,6 +387,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleTreeTrunk:
     case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
+    case BlockType::JunglePlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
     case BlockType::Torch:
@@ -402,6 +413,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
+    case BlockType::MossyCobblestone:
     case BlockType::Oven:
     case BlockType::Bricks:
     case BlockType::Glowstone:

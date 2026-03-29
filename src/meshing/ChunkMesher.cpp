@@ -212,10 +212,13 @@ ChunkMeshData ChunkMesher::buildMesh(
                 if (usesCrossPlantMesh(blockType))
                 {
                     // Flora meshes are centered crossed quads instead of a full cube.
-                    constexpr float kInset = 0.146f;
-                    constexpr std::array<std::array<std::array<float, 3>, 4>, 2> kPlantCrossQuads{{
-                        {{{kInset, 0.0f, kInset}, {kInset, 1.0f, kInset}, {1.0f - kInset, 1.0f, 1.0f - kInset}, {1.0f - kInset, 0.0f, 1.0f - kInset}}},
-                        {{{1.0f - kInset, 0.0f, kInset}, {1.0f - kInset, 1.0f, kInset}, {kInset, 1.0f, 1.0f - kInset}, {kInset, 0.0f, 1.0f - kInset}}},
+                    // Larger inset narrows the quads (smaller apparent stem diameter); bamboo uses a
+                    // thinner stalk than flowers/mushrooms.
+                    const float inset =
+                        blockType == BlockType::Bamboo ? 0.33f : 0.146f;
+                    const std::array<std::array<std::array<float, 3>, 4>, 2> plantCrossQuads{{
+                        {{{inset, 0.0f, inset}, {inset, 1.0f, inset}, {1.0f - inset, 1.0f, 1.0f - inset}, {1.0f - inset, 0.0f, 1.0f - inset}}},
+                        {{{1.0f - inset, 0.0f, inset}, {1.0f - inset, 1.0f, inset}, {inset, 1.0f, 1.0f - inset}, {inset, 0.0f, 1.0f - inset}}},
                     }};
                     constexpr std::array<std::array<float, 2>, 4> kPlantUv{{
                         {0.0f, 1.0f},
@@ -227,7 +230,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                     const auto metadata = vibecraft::world::blockMetadata(blockType);
                     const std::uint8_t tileIndex =
                         vibecraft::world::textureTileIndex(blockType, vibecraft::world::BlockFace::Side);
-                    for (const auto& quad : kPlantCrossQuads)
+                    for (const auto& quad : plantCrossQuads)
                     {
                         const std::uint32_t baseIndex = static_cast<std::uint32_t>(meshData.vertices.size());
                         for (std::size_t vertexIndex = 0; vertexIndex < quad.size(); ++vertexIndex)

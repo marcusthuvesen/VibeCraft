@@ -291,6 +291,21 @@ elif [[ -f "${MAT}/bamboo.png" ]]; then
 else
   decorative_cutout_tile "${MAT}/vine.png" "${TMP}/t64.png"
 fi
+if [[ -f "${MAT}/jungle_planks.png" ]]; then
+  resize_tile "${MAT}/jungle_planks.png" "${TMP}/t65.png"
+else
+  resize_tile "${MAT}/oak_planks.png" "${TMP}/t65.png"
+fi
+if [[ -f "${MAT}/moss_block.png" ]]; then
+  resize_tile "${MAT}/moss_block.png" "${TMP}/t66.png"
+else
+  tint_tile_green "${MAT}/grass_block_top.png" "${TMP}/t66.png" 78
+fi
+if [[ -f "${MAT}/mossy_cobblestone.png" ]]; then
+  resize_tile "${MAT}/mossy_cobblestone.png" "${TMP}/t67.png"
+else
+  resize_tile "${MAT}/cobblestone.png" "${TMP}/t67.png"
+fi
 
 magick montage \
   "${TMP}/t00.png" "${TMP}/t01.png" "${TMP}/t02.png" "${TMP}/t03.png" "${TMP}/t04.png" "${TMP}/t05.png" \
@@ -302,7 +317,7 @@ magick montage \
   "${TMP}/t40.png" "${TMP}/t41.png" "${TMP}/t42.png" "${TMP}/t43.png" "${TMP}/t44.png" "${TMP}/t45.png" "${TMP}/t46.png" "${TMP}/t47.png" \
   "${TMP}/t48.png" "${TMP}/t49.png" "${TMP}/t50.png" "${TMP}/t51.png" "${TMP}/t52.png" "${TMP}/t53.png" "${TMP}/t54.png" "${TMP}/t55.png" \
   "${TMP}/t56.png" "${TMP}/t57.png" "${TMP}/t58.png" "${TMP}/t59.png" "${TMP}/t60.png" "${TMP}/t61.png" "${TMP}/t62.png" "${TMP}/t63.png" \
-  "${TMP}/t64.png" \
+  "${TMP}/t64.png" "${TMP}/t65.png" "${TMP}/t66.png" "${TMP}/t67.png" \
   -tile 8x9 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
 
 magick "${OUT}/chunk_atlas.png" -depth 8 "BGRA:${OUT}/chunk_atlas.bgra"

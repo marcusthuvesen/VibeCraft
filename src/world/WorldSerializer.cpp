@@ -9,7 +9,7 @@ namespace vibecraft::world
 namespace
 {
 constexpr std::uint32_t kWorldMagic = 0x56494245;
-constexpr std::uint32_t kWorldVersion = 1;
+constexpr std::uint32_t kWorldVersion = 2;
 }
 
 bool WorldSerializer::save(const World& world, const std::filesystem::path& outputPath)
@@ -25,6 +25,8 @@ bool WorldSerializer::save(const World& world, const std::filesystem::path& outp
     const std::uint32_t chunkCount = static_cast<std::uint32_t>(world.chunks().size());
     output.write(reinterpret_cast<const char*>(&kWorldMagic), sizeof(kWorldMagic));
     output.write(reinterpret_cast<const char*>(&kWorldVersion), sizeof(kWorldVersion));
+    const std::uint32_t generationSeed = world.generationSeed();
+    output.write(reinterpret_cast<const char*>(&generationSeed), sizeof(generationSeed));
     output.write(reinterpret_cast<const char*>(&chunkCount), sizeof(chunkCount));
 
     for (const auto& [coord, chunk] : world.chunks())
@@ -51,17 +53,22 @@ bool WorldSerializer::load(World& world, const std::filesystem::path& inputPath)
 
     std::uint32_t magic = 0;
     std::uint32_t version = 0;
+    std::uint32_t generationSeed = 0;
     std::uint32_t chunkCount = 0;
 
     input.read(reinterpret_cast<char*>(&magic), sizeof(magic));
     input.read(reinterpret_cast<char*>(&version), sizeof(version));
-    input.read(reinterpret_cast<char*>(&chunkCount), sizeof(chunkCount));
 
-    if (magic != kWorldMagic || version != kWorldVersion)
+    if (magic != kWorldMagic || (version != 1 && version != kWorldVersion))
     {
         return false;
     }
 
+    if (version >= 2)
+    {
+        input.read(reinterpret_cast<char*>(&generationSeed), sizeof(generationSeed));
+    }
+    input.read(reinterpret_cast<char*>(&chunkCount), sizeof(chunkCount));
     World::ChunkMap chunks;
     for (std::uint32_t chunkIndex = 0; chunkIndex < chunkCount; ++chunkIndex)
     {
@@ -83,6 +90,7 @@ bool WorldSerializer::load(World& world, const std::filesystem::path& inputPath)
         chunks.emplace(coord, chunk);
     }
 
+    world.setGenerationSeed(generationSeed);
     world.replaceChunks(std::move(chunks));
     return true;
 }

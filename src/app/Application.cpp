@@ -15,6 +15,7 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <random>
 #include <unordered_set>
 #include <vector>
 
@@ -96,6 +97,11 @@ struct PlayerMovementSettings
     float maxStepHeight = 0.6f;
     float collisionSweepStep = 0.2f;
     float groundProbeDistance = 0.05f;
+    /// Minecraft-style liana climb in jungle (BlockType::Vines); blocks/sec along Y.
+    float vineClimbSpeed = 2.45f;
+    float vineDescendSpeed = 3.1f;
+    /// Gravity multiplier while sliding down vines without input.
+    float vineIdleFallGravityMultiplier = 0.14f;
 };
 
 constexpr WindowSettings kWindowSettings{};
@@ -104,6 +110,19 @@ constexpr InputTuning kInputTuning{};
 constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
 constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
+
+[[nodiscard]] std::uint32_t generateRandomWorldSeed()
+{
+    std::random_device randomDevice;
+    const std::uint32_t deviceSeed = randomDevice();
+    const std::uint64_t ticks = SDL_GetTicksNS();
+    std::uint32_t seed = deviceSeed ^ static_cast<std::uint32_t>(ticks) ^ static_cast<std::uint32_t>(ticks >> 32U);
+    if (seed == 0)
+    {
+        seed = 0x6d2b79f5U;
+    }
+    return seed;
+}
 
 [[nodiscard]] float normalizeDegrees(float degrees)
 {
@@ -136,6 +155,7 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
     return blockType == world::BlockType::Grass || blockType == world::BlockType::Dirt
         || blockType == world::BlockType::Sand || blockType == world::BlockType::SnowGrass
         || blockType == world::BlockType::JungleGrass || blockType == world::BlockType::Gravel
+        || blockType == world::BlockType::MossBlock
         || blockType == world::BlockType::Cactus || blockType == world::BlockType::Dandelion
         || blockType == world::BlockType::Poppy || blockType == world::BlockType::BlueOrchid
         || blockType == world::BlockType::Allium || blockType == world::BlockType::OxeyeDaisy
@@ -152,6 +172,7 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         || blockType == world::BlockType::GoldOre || blockType == world::BlockType::DiamondOre
         || blockType == world::BlockType::EmeraldOre || blockType == world::BlockType::Bricks
         || blockType == world::BlockType::Glowstone || blockType == world::BlockType::Obsidian
+        || blockType == world::BlockType::MossyCobblestone
         || blockType == world::BlockType::Glass;
 }
 
@@ -162,7 +183,7 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         || blockType == world::BlockType::JungleTreeCrown
         || blockType == world::BlockType::SnowTreeTrunk
         || blockType == world::BlockType::SnowTreeCrown
-        || blockType == world::BlockType::Bookshelf;
+        || blockType == world::BlockType::Bookshelf || blockType == world::BlockType::JunglePlanks;
 }
 
 [[nodiscard]] bool isPickaxeEffectiveTarget(const world::BlockType targetBlockType)
@@ -175,6 +196,7 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
 [[nodiscard]] bool isAxeEffectiveTarget(const world::BlockType targetBlockType)
 {
     return isWoodFamilyBlockType(targetBlockType) || targetBlockType == world::BlockType::OakPlanks
+        || targetBlockType == world::BlockType::JunglePlanks
         || targetBlockType == world::BlockType::CraftingTable || targetBlockType == world::BlockType::Chest
         || targetBlockType == world::BlockType::Bookshelf;
 }
@@ -1447,7 +1469,6 @@ int Application::run()
         window_.pollEvents(inputState_);
         processInput(deltaTimeSeconds);
         update(deltaTimeSeconds);
-        ++runFrameIndex_;
     }
 
     saveAudioPrefs();
@@ -2064,9 +2085,8 @@ void Application::processInput(const float deltaTimeSeconds)
         creativeToggleKeyWasDown_ = creativeToggleKeyDown;
         spawnPresetToggleKeyWasDown_ = spawnPresetToggleKeyDown;
 
-        // Ignore early frames: launch/focus can deliver spurious releases, and dbg-text dimensions may
-        // not match the first rendered menu until a couple of frames have passed.
-        if (inputState_.leftMouseClicked && runFrameIndex_ >= 2)
+        // Hit tests use the same dbg-text dimensions as rendering (including bgfx stats fallbacks).
+        if (inputState_.leftMouseClicked)
         {
             if (mainMenuSoundSettingsOpen_)
             {
@@ -2695,6 +2715,11 @@ void Application::processInput(const float deltaTimeSeconds)
     }
     jumpWasHeld_ = jumpHeld;
 
+    const game::Aabb playerBodyForVines = playerAabbAt(playerFeetPosition_, colliderHeight);
+    const bool touchingClimbableVines =
+        !inWaterForMovement
+        && aabbTouchesBlockType(world_, playerBodyForVines, world::BlockType::Vines);
+
     if (inWaterForMovement)
     {
         // Buoyancy vs gravity: equal by default → no constant sink (Minecraft-style neutral swim).
@@ -2713,6 +2738,34 @@ void Application::processInput(const float deltaTimeSeconds)
             -kPlayerMovementSettings.waterTerminalFallVelocity,
             kPlayerMovementSettings.waterTerminalRiseVelocity);
         verticalVelocity_ *= std::exp(-kPlayerMovementSettings.waterVerticalDrag * deltaTimeSeconds);
+    }
+    else if (touchingClimbableVines)
+    {
+        const float kVine = kPlayerMovementSettings.vineClimbSpeed;
+        const float kDesc = kPlayerMovementSettings.vineDescendSpeed;
+        if (sneaking)
+        {
+            verticalVelocity_ = -kDesc;
+        }
+        else
+        {
+            // Do not cancel a strong upward impulse from jumping off solid ground.
+            const bool canLatchClimbSpeed = verticalVelocity_ <= kVine + 0.55f;
+            const bool forwardClimb =
+                inputState_.isKeyDown(SDL_SCANCODE_W) && canLatchClimbSpeed;
+            const bool jumpClimb =
+                jumpHeld && !isGrounded_ && canLatchClimbSpeed;
+            if (forwardClimb || jumpClimb)
+            {
+                verticalVelocity_ = kVine;
+            }
+            else
+            {
+                verticalVelocity_ -= kPlayerMovementSettings.gravity
+                    * kPlayerMovementSettings.vineIdleFallGravityMultiplier * deltaTimeSeconds;
+                verticalVelocity_ = std::max(verticalVelocity_, -kDesc * 1.25f);
+            }
+        }
     }
     else
     {
@@ -2748,6 +2801,12 @@ void Application::processInput(const float deltaTimeSeconds)
 
     const game::EnvironmentalHazards previousHazards = playerHazards_;
     playerHazards_ = samplePlayerHazards(world_, playerFeetPosition_, colliderHeight, eyeHeight);
+    const bool bodyInClimbableVines =
+        !playerHazards_.bodyInWater
+        && aabbTouchesBlockType(
+            world_,
+            playerAabbAt(playerFeetPosition_, colliderHeight),
+            world::BlockType::Vines);
     if (!previousHazards.bodyInWater && playerHazards_.bodyInWater)
     {
         soundEffects_.playWaterEnter();
@@ -2756,7 +2815,7 @@ void Application::processInput(const float deltaTimeSeconds)
     {
         soundEffects_.playWaterExit();
     }
-    if (verticalDisplacement < 0.0f && !playerHazards_.bodyInWater)
+    if (verticalDisplacement < 0.0f && !playerHazards_.bodyInWater && !bodyInClimbableVines)
     {
         accumulatedFallDistance_ += std::max(0.0f, verticalStartPosition.y - playerFeetPosition_.y);
     }
@@ -2784,6 +2843,10 @@ void Application::processInput(const float deltaTimeSeconds)
         footstepDistanceAccumulator_ = 0.0f;
     }
     else if (playerHazards_.bodyInWater)
+    {
+        accumulatedFallDistance_ = 0.0f;
+    }
+    else if (bodyInClimbableVines)
     {
         accumulatedFallDistance_ = 0.0f;
     }
@@ -4611,6 +4674,10 @@ void Application::beginSingleplayerLoad()
     respawnNotice_.clear();
     dayNightCycle_.setElapsedSeconds(70.0f);
     weatherSystem_.setElapsedSeconds(0.0f);
+    const std::uint32_t worldSeed = generateRandomWorldSeed();
+    world_.setGenerationSeed(worldSeed);
+    terrainGenerator_.setWorldSeed(worldSeed);
+    core::logInfo(fmt::format("Starting new singleplayer world with seed {}", worldSeed));
 }
 
 void Application::updateSingleplayerLoad()

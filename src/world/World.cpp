@@ -20,10 +20,20 @@
 
 namespace vibecraft::world
 {
+std::uint32_t World::generationSeed() const
+{
+    return generationSeed_;
+}
+
+void World::setGenerationSeed(const std::uint32_t generationSeed)
+{
+    generationSeed_ = generationSeed;
+}
+
 namespace
 {
 constexpr int kTreeCellSize = 6;
-constexpr int kTreeMaxCrownRadius = 4;
+constexpr int kTreeMaxCrownRadius = 7;
 constexpr int kTreeMinSurfaceY = 27;
 constexpr std::uint32_t kTreeSeed = 0x0ea52f4dU;
 constexpr std::uint32_t kTreeChanceSeed = 0x6f4a31deU;
@@ -43,6 +53,8 @@ constexpr std::uint32_t kJungleTrunkVineSeed = 0xc8407b5fU;
 constexpr std::uint32_t kJungleCocoaSeed = 0xd9518c60U;
 constexpr std::uint32_t kJungleDenseTreeSeed = 0xea629d71U;
 constexpr std::uint32_t kJungleDenseTreeRollSeed = 0xfb73ae82U;
+constexpr std::uint32_t kJungleMossPatchSeed = 0x0c84bf93U;
+constexpr std::uint32_t kJungleStoneSeed = 0x1d95d0a4U;
 constexpr double kFloraFlowerPatchScale = 21.0;
 constexpr double kFloraMushroomPatchScale = 29.0;
 constexpr double kFloraWetScale = 46.0;
@@ -77,18 +89,27 @@ struct TreeBiomeSettings
     const int worldZ,
     const int surfaceY,
     const int trunkHeight,
-    const int crownRadius)
+    const int crownRadius,
+    const int trunkWidth)
 {
     if (surfaceY < kTreeMinSurfaceY)
     {
         return false;
     }
-    const BlockType surfaceBlock = terrainGenerator.blockTypeAt(worldX, surfaceY, worldZ);
-    if (surfaceBlock != BlockType::Grass
-        && surfaceBlock != BlockType::JungleGrass
-        && surfaceBlock != BlockType::SnowGrass)
+
+    for (int trunkZ = 0; trunkZ < trunkWidth; ++trunkZ)
     {
-        return false;
+        for (int trunkX = 0; trunkX < trunkWidth; ++trunkX)
+        {
+            const BlockType surfaceBlock =
+                terrainGenerator.blockTypeAt(worldX + trunkX, surfaceY, worldZ + trunkZ);
+            if (surfaceBlock != BlockType::Grass
+                && surfaceBlock != BlockType::JungleGrass
+                && surfaceBlock != BlockType::SnowGrass)
+            {
+                return false;
+            }
+        }
     }
 
     const int canopyTopY = surfaceY + trunkHeight + crownRadius + 1;
@@ -99,9 +120,15 @@ struct TreeBiomeSettings
 
     for (int y = surfaceY + 1; y <= canopyTopY; ++y)
     {
-        if (terrainGenerator.blockTypeAt(worldX, y, worldZ) != BlockType::Air)
+        for (int trunkZ = 0; trunkZ < trunkWidth; ++trunkZ)
         {
-            return false;
+            for (int trunkX = 0; trunkX < trunkWidth; ++trunkX)
+            {
+                if (terrainGenerator.blockTypeAt(worldX + trunkX, y, worldZ + trunkZ) != BlockType::Air)
+                {
+                    return false;
+                }
+            }
         }
     }
 
@@ -278,6 +305,7 @@ void placeTreeForColumn(
         + static_cast<int>(treeHash
                             % static_cast<std::uint32_t>(settings.maxTrunkHeight - settings.minTrunkHeight + 1));
     int crownRadius = settings.crownRadius;
+    int trunkWidth = 1;
 
     // Spawn occasional giant variants so some trees are dramatically larger.
     if (settings.crownBlock == BlockType::JungleTreeCrown
@@ -286,6 +314,11 @@ void placeTreeForColumn(
         const std::uint32_t giantHash = noise::hashCoordinates(treeX, treeZ, kTreeShapeSeed + 0x319U);
         trunkHeight += 8 + static_cast<int>(giantHash % 8U);
         crownRadius += 2;
+        if ((giantHash & 1U) == 0U)
+        {
+            trunkWidth = 2;
+            crownRadius += 1;
+        }
     }
     else if (settings.crownBlock == BlockType::TreeCrown
              && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x41BU) < 0.06)
@@ -295,16 +328,24 @@ void placeTreeForColumn(
         crownRadius += 1;
     }
 
-    if (!canGrowTreeAt(terrainGenerator, treeX, treeZ, surfaceY, trunkHeight, crownRadius))
+    if (!canGrowTreeAt(terrainGenerator, treeX, treeZ, surfaceY, trunkHeight, crownRadius, trunkWidth))
     {
         return;
     }
 
     for (int y = surfaceY + 1; y <= surfaceY + trunkHeight; ++y)
     {
-        placeBlockIfInsideChunk(chunk, coord, treeX, y, treeZ, settings.trunkBlock);
+        for (int trunkZ = 0; trunkZ < trunkWidth; ++trunkZ)
+        {
+            for (int trunkX = 0; trunkX < trunkWidth; ++trunkX)
+            {
+                placeBlockIfInsideChunk(chunk, coord, treeX + trunkX, y, treeZ + trunkZ, settings.trunkBlock);
+            }
+        }
     }
 
+    const int crownCenterX = treeX + (trunkWidth - 1) / 2;
+    const int crownCenterZ = treeZ + (trunkWidth - 1) / 2;
     const int crownCenterY = surfaceY + trunkHeight;
     for (int dy = -crownRadius; dy <= 1; ++dy)
     {
@@ -318,9 +359,9 @@ void placeTreeForColumn(
                     continue;
                 }
 
-                const int crownX = treeX + dx;
+                const int crownX = crownCenterX + dx;
                 const int crownY = crownCenterY + dy;
-                const int crownZ = treeZ + dz;
+                const int crownZ = crownCenterZ + dz;
                 const bool outerCorner = std::abs(dx) == radius && std::abs(dz) == radius;
                 if (outerCorner
                     && noise::random01(crownX, crownZ, kTreeShapeSeed + static_cast<std::uint32_t>(crownY))
@@ -333,10 +374,10 @@ void placeTreeForColumn(
         }
     }
 
-    placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 2, treeZ, settings.crownBlock);
+    placeBlockIfInsideChunk(chunk, coord, crownCenterX, crownCenterY + 2, crownCenterZ, settings.crownBlock);
     if (crownRadius >= 3)
     {
-        placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 3, treeZ, settings.crownBlock);
+        placeBlockIfInsideChunk(chunk, coord, crownCenterX, crownCenterY + 3, crownCenterZ, settings.crownBlock);
     }
 
     if (settings.crownBlock == BlockType::JungleTreeCrown)
@@ -353,17 +394,17 @@ void placeTreeForColumn(
                     {
                         continue;
                     }
-                    const int vineX = treeX + dx;
-                    const int vineZ = treeZ + dz;
+                    const int vineX = crownCenterX + dx;
+                    const int vineZ = crownCenterZ + dz;
                     const int vineStartY = crownCenterY + dy - 1;
                     const std::uint32_t ySeed = static_cast<std::uint32_t>(vineStartY - kWorldMinY);
-                    if (noise::random01(vineX, vineZ, kJungleCanopyVineSeed + ySeed) > 0.45)
+                    if (noise::random01(vineX, vineZ, kJungleCanopyVineSeed + ySeed) > 0.16)
                     {
                         continue;
                     }
                     const std::uint32_t lengthHash =
                         noise::hashCoordinates(vineX, vineZ, kJungleCanopyVineSeed + ySeed + 17U);
-                    const int vineLength = 3 + static_cast<int>(lengthHash % 9U);
+                    const int vineLength = 2 + static_cast<int>(lengthHash % 5U);
                     for (int i = 0; i < vineLength; ++i)
                     {
                         placeBlockIfInsideChunk(chunk, coord, vineX, vineStartY - i, vineZ, BlockType::Vines);
@@ -372,10 +413,10 @@ void placeTreeForColumn(
             }
         }
 
-        constexpr std::array<std::array<int, 2>, 4> kTrunkSides{{
-            {{1, 0}},
+        const std::array<std::array<int, 2>, 4> kTrunkSides{{
+            {{trunkWidth, 0}},
             {{-1, 0}},
-            {{0, 1}},
+            {{0, trunkWidth}},
             {{0, -1}},
         }};
         const int trunkVineStartY = surfaceY + trunkHeight / 2;
@@ -384,13 +425,13 @@ void placeTreeForColumn(
             const std::uint32_t ySeed = static_cast<std::uint32_t>(y - kWorldMinY);
             for (const auto& side : kTrunkSides)
             {
-                const int sideX = treeX + side[0];
-                const int sideZ = treeZ + side[1];
-                if (noise::random01(sideX, sideZ, kJungleTrunkVineSeed + ySeed) < 0.17)
+                const int sideX = crownCenterX + side[0];
+                const int sideZ = crownCenterZ + side[1];
+                if (noise::random01(sideX, sideZ, kJungleTrunkVineSeed + ySeed) < 0.045)
                 {
                     const std::uint32_t vineLenHash =
                         noise::hashCoordinates(sideX, sideZ, kJungleTrunkVineSeed + ySeed + 23U);
-                    const int vineLength = 2 + static_cast<int>(vineLenHash % 6U);
+                    const int vineLength = 2 + static_cast<int>(vineLenHash % 3U);
                     for (int i = 0; i < vineLength; ++i)
                     {
                         placeBlockIfInsideChunk(chunk, coord, sideX, y - i, sideZ, BlockType::Vines);
@@ -486,7 +527,7 @@ void populateSurfaceFloraForChunk(
                 continue;
             }
 
-            const BlockType surfaceBlock = chunk.blockAt(localX, surfaceY, localZ);
+            BlockType surfaceBlock = chunk.blockAt(localX, surfaceY, localZ);
             const SurfaceBiome biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
             if (biome == SurfaceBiome::Sandy)
             {
@@ -515,12 +556,30 @@ void populateSurfaceFloraForChunk(
 
             if (biome == SurfaceBiome::Jungle)
             {
+                const double mossPatch = noise::fbmNoise2d(
+                    static_cast<double>(worldX) + 19.0,
+                    static_cast<double>(worldZ) - 13.0,
+                    34.0,
+                    2,
+                    kJungleMossPatchSeed);
+                if (surfaceBlock == BlockType::JungleGrass && mossPatch > 0.67)
+                {
+                    chunk.setBlock(localX, surfaceY, localZ, BlockType::MossBlock);
+                    surfaceBlock = BlockType::MossBlock;
+                }
+
                 const double jungleFeature = noise::fbmNoise2d(
                     static_cast<double>(worldX),
                     static_cast<double>(worldZ),
                     kJungleFeaturePatchScale,
                     2,
                     kJungleFeatureNoiseSeed);
+                if (jungleFeature > 0.82
+                    && noise::random01(worldX, worldZ, kJungleStoneSeed) < 0.075)
+                {
+                    chunk.setBlock(localX, surfaceY + 1, localZ, BlockType::MossyCobblestone);
+                    continue;
+                }
                 if (jungleFeature > 0.70
                     && noise::random01(worldX, worldZ, kJungleFeatureRollSeed) < 0.20)
                 {

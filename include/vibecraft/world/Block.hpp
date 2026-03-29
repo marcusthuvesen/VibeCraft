@@ -54,7 +54,10 @@ enum class BlockType : std::uint8_t
     Vines,
     CocoaPod,
     Melon,
-    Bamboo
+    Bamboo,
+    JunglePlanks,
+    MossBlock,
+    MossyCobblestone
 };
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)

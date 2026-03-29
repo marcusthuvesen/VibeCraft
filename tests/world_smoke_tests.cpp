@@ -184,6 +184,9 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     CHECK(vibecraft::world::textureTileIndex(BlockType::SnowGrass, BlockFace::Side) == 31);
     CHECK(vibecraft::world::textureTileIndex(BlockType::JungleGrass, BlockFace::Top) == 32);
     CHECK(vibecraft::world::textureTileIndex(BlockType::JungleGrass, BlockFace::Side) == 33);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::JunglePlanks, BlockFace::Side) == 65);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::MossBlock, BlockFace::Top) == 66);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::MossyCobblestone, BlockFace::Side) == 67);
     CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xffffffff);
 }
 
@@ -223,6 +226,16 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     REQUIRE(planksMatch.has_value());
     CHECK(planksMatch->output.blockType == BlockType::OakPlanks);
     CHECK(planksMatch->output.count == 4);
+
+    CraftingGridSlots junglePlanksGrid{};
+    junglePlanksGrid[0].blockType = BlockType::JungleTreeTrunk;
+    junglePlanksGrid[0].count = 1;
+    const auto junglePlanksMatch = vibecraft::app::evaluateCraftingGrid(
+        junglePlanksGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(junglePlanksMatch.has_value());
+    CHECK(junglePlanksMatch->output.blockType == BlockType::JunglePlanks);
+    CHECK(junglePlanksMatch->output.count == 4);
 
     CraftingGridSlots tableGrid{};
     tableGrid[0].blockType = BlockType::OakPlanks;
@@ -310,6 +323,46 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     CHECK(swordWithWorkbench->output.equippedItem == EquippedItem::DiamondSword);
     CHECK(swordWithWorkbench->output.count == 1);
 
+    // Pickaxe (3x3 workbench): top row material, sticks in center column — Minecraft "T" head + handle.
+    CraftingGridSlots woodPickaxeGrid{};
+    woodPickaxeGrid[0].blockType = BlockType::OakPlanks;
+    woodPickaxeGrid[0].count = 1;
+    woodPickaxeGrid[1].blockType = BlockType::OakPlanks;
+    woodPickaxeGrid[1].count = 1;
+    woodPickaxeGrid[2].blockType = BlockType::OakPlanks;
+    woodPickaxeGrid[2].count = 1;
+    woodPickaxeGrid[4].equippedItem = EquippedItem::Stick;
+    woodPickaxeGrid[4].count = 1;
+    woodPickaxeGrid[7].equippedItem = EquippedItem::Stick;
+    woodPickaxeGrid[7].count = 1;
+    const auto woodPickaxeNoBench = vibecraft::app::evaluateCraftingGrid(
+        woodPickaxeGrid,
+        CraftingMode::Inventory2x2);
+    CHECK_FALSE(woodPickaxeNoBench.has_value());
+    const auto woodPickaxeBench = vibecraft::app::evaluateCraftingGrid(
+        woodPickaxeGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(woodPickaxeBench.has_value());
+    CHECK(woodPickaxeBench->output.equippedItem == EquippedItem::WoodPickaxe);
+    CHECK(woodPickaxeBench->output.count == 1);
+
+    CraftingGridSlots stonePickaxeGrid{};
+    stonePickaxeGrid[0].blockType = BlockType::Cobblestone;
+    stonePickaxeGrid[0].count = 1;
+    stonePickaxeGrid[1].blockType = BlockType::Cobblestone;
+    stonePickaxeGrid[1].count = 1;
+    stonePickaxeGrid[2].blockType = BlockType::Cobblestone;
+    stonePickaxeGrid[2].count = 1;
+    stonePickaxeGrid[4].equippedItem = EquippedItem::Stick;
+    stonePickaxeGrid[4].count = 1;
+    stonePickaxeGrid[7].equippedItem = EquippedItem::Stick;
+    stonePickaxeGrid[7].count = 1;
+    const auto stonePickaxeBench = vibecraft::app::evaluateCraftingGrid(
+        stonePickaxeGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(stonePickaxeBench.has_value());
+    CHECK(stonePickaxeBench->output.equippedItem == EquippedItem::StonePickaxe);
+
     CraftingGridSlots ovenGrid{};
     for (std::size_t i = 0; i < 9; ++i)
     {
@@ -383,9 +436,9 @@ TEST_CASE("terrain generator produces snowy, jungle, and temperate surface biome
     bool foundSnowySurface = false;
     bool foundJungleSurface = false;
 
-    for (int worldX = -384; worldX <= 384; worldX += 12)
+    for (int worldX = -16384; worldX <= 16384; worldX += 128)
     {
-        for (int worldZ = -384; worldZ <= 384; worldZ += 12)
+        for (int worldZ = -16384; worldZ <= 16384; worldZ += 128)
         {
             const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
             const BlockType surfaceBlock = terrainGenerator.blockTypeAt(worldX, surface, worldZ);
@@ -411,6 +464,7 @@ TEST_CASE("terrain generator produces snowy, jungle, and temperate surface biome
 TEST_CASE("world save and load round-trips edited blocks")
 {
     vibecraft::world::World world;
+    world.setGenerationSeed(0x13579bdfU);
     world.generateRadius(vibecraft::world::TerrainGenerator{}, 1);
     REQUIRE(world.applyEditCommand({
         .action = vibecraft::world::WorldEditAction::Place,
@@ -426,6 +480,7 @@ TEST_CASE("world save and load round-trips edited blocks")
     vibecraft::world::World loadedWorld;
     REQUIRE(loadedWorld.load(tempPath));
     CHECK(loadedWorld.blockAt(2, 40, 2) == vibecraft::world::BlockType::CoalOre);
+    CHECK(loadedWorld.generationSeed() == 0x13579bdfU);
 
     std::error_code errorCode;
     std::filesystem::remove(tempPath, errorCode);
