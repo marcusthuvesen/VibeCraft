@@ -23,6 +23,7 @@
 #include "vibecraft/game/CollisionHelpers.hpp"
 #include "vibecraft/multiplayer/UdpTransport.hpp"
 #include "vibecraft/platform/LocalNetworkAddress.hpp"
+#include "vibecraft/render/RendererDetail.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
@@ -81,10 +82,14 @@ struct PlayerMovementSettings
     float gravity = 32.0f;
     float jumpVelocity = 8.4f;
     float terminalFallVelocity = 45.0f;
-    float waterMoveSpeedMultiplier = 0.42f;
+    float waterMoveSpeedMultiplier = 0.30f;
+    /// Downward component while in water (before buoyancy). Tuned with `waterBuoyancyAcceleration` for neutral float.
     float waterGravity = 10.0f;
+    /// Upward component while in water — match `waterGravity` for Minecraft-like neutral buoyancy (no idle sink).
+    float waterBuoyancyAcceleration = 10.0f;
     float waterTerminalFallVelocity = 4.2f;
     float waterTerminalRiseVelocity = 4.0f;
+    /// Space / jump while swimming (Minecraft-style fast rise).
     float waterSwimUpAcceleration = 15.0f;
     float waterSinkAcceleration = 6.0f;
     float waterVerticalDrag = 4.0f;
@@ -136,7 +141,8 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         || blockType == world::BlockType::Allium || blockType == world::BlockType::OxeyeDaisy
         || blockType == world::BlockType::BrownMushroom || blockType == world::BlockType::RedMushroom
         || blockType == world::BlockType::DeadBush || blockType == world::BlockType::Vines
-        || blockType == world::BlockType::CocoaPod || blockType == world::BlockType::Melon;
+        || blockType == world::BlockType::CocoaPod || blockType == world::BlockType::Melon
+        || blockType == world::BlockType::Bamboo;
 }
 
 [[nodiscard]] bool isStoneFamilyBlockType(const world::BlockType blockType)
@@ -1716,6 +1722,24 @@ void Application::update(const float deltaTimeSeconds)
             frameDebugData.mainMenuJoinPortField = joinPortInput_;
             frameDebugData.mainMenuMultiplayerPortDisplay = multiplayerPort_;
             frameDebugData.mainMenuJoinFocusedField = joinFocusedField_;
+            frameDebugData.mainMenuJoinPresetButtonLabels.clear();
+            for (const JoinPresetEntry& preset : joinPresets_)
+            {
+                frameDebugData.mainMenuJoinPresetButtonLabels.push_back(
+                    fmt::format("{} — {}:{}", preset.label, preset.host, preset.port));
+            }
+            const int joinSlotsForMpLayout = static_cast<int>(std::min(joinPresets_.size(), std::size_t(3)));
+            const int mainMenuContentTopBias = vibecraft::render::detail::mainMenuLogoReservedDbgRows(
+                window_.width(),
+                window_.height(),
+                textHeight,
+                renderer_.menuLogoWidthPx(),
+                renderer_.menuLogoHeightPx());
+            const int multiplayerRowShift = render::Renderer::multiplayerMenuRowShift(
+                textHeight,
+                mainMenuMultiplayerPanel_,
+                mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Join ? joinSlotsForMpLayout : 0,
+                mainMenuContentTopBias);
             switch (mainMenuMultiplayerPanel_)
             {
             case MainMenuMultiplayerPanel::Hub:
@@ -1725,7 +1749,9 @@ void Application::update(const float deltaTimeSeconds)
                     window_.width(),
                     window_.height(),
                     textWidth,
-                    textHeight);
+                    textHeight,
+                    multiplayerRowShift,
+                    mainMenuContentTopBias);
                 break;
             case MainMenuMultiplayerPanel::Host:
                 frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerHost(
@@ -1734,7 +1760,9 @@ void Application::update(const float deltaTimeSeconds)
                     window_.width(),
                     window_.height(),
                     textWidth,
-                    textHeight);
+                    textHeight,
+                    multiplayerRowShift,
+                    mainMenuContentTopBias);
                 break;
             case MainMenuMultiplayerPanel::Join:
                 frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerJoin(
@@ -1743,7 +1771,10 @@ void Application::update(const float deltaTimeSeconds)
                     window_.width(),
                     window_.height(),
                     textWidth,
-                    textHeight);
+                    textHeight,
+                    joinSlotsForMpLayout,
+                    multiplayerRowShift,
+                    mainMenuContentTopBias);
                 break;
             case MainMenuMultiplayerPanel::None:
             default:
@@ -2075,6 +2106,18 @@ void Application::processInput(const float deltaTimeSeconds)
             }
             else if (mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None)
             {
+                const int joinSlotsForMpLayout = static_cast<int>(std::min(joinPresets_.size(), std::size_t(3)));
+                const int mainMenuContentTopBias = vibecraft::render::detail::mainMenuLogoReservedDbgRows(
+                    window_.width(),
+                    window_.height(),
+                    textHeight,
+                    renderer_.menuLogoWidthPx(),
+                    renderer_.menuLogoHeightPx());
+                const int multiplayerRowShift = render::Renderer::multiplayerMenuRowShift(
+                    textHeight,
+                    mainMenuMultiplayerPanel_,
+                    mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Join ? joinSlotsForMpLayout : 0,
+                    mainMenuContentTopBias);
                 if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Hub)
                 {
                     const int hit = render::Renderer::hitTestMainMenuMultiplayerHub(
@@ -2083,7 +2126,9 @@ void Application::processInput(const float deltaTimeSeconds)
                         window_.width(),
                         window_.height(),
                         textWidth,
-                        textHeight);
+                        textHeight,
+                        multiplayerRowShift,
+                        mainMenuContentTopBias);
                     switch (hit)
                     {
                     case 0:
@@ -2092,6 +2137,7 @@ void Application::processInput(const float deltaTimeSeconds)
                         mainMenuNotice_.clear();
                         break;
                     case 1:
+                        loadJoinPresets();
                         mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Join;
                         joinFocusedField_ = 0;
                         window_.setTextInputActive(true);
@@ -2113,7 +2159,9 @@ void Application::processInput(const float deltaTimeSeconds)
                         window_.width(),
                         window_.height(),
                         textWidth,
-                        textHeight);
+                        textHeight,
+                        multiplayerRowShift,
+                        mainMenuContentTopBias);
                     switch (hit)
                     {
                     case 0:
@@ -2129,31 +2177,46 @@ void Application::processInput(const float deltaTimeSeconds)
                 }
                 else if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Join)
                 {
+                    const int presetSlots = joinSlotsForMpLayout;
                     const int hit = render::Renderer::hitTestMainMenuMultiplayerJoin(
                         inputState_.mouseWindowX,
                         inputState_.mouseWindowY,
                         window_.width(),
                         window_.height(),
                         textWidth,
-                        textHeight);
-                    switch (hit)
+                        textHeight,
+                        presetSlots,
+                        multiplayerRowShift,
+                        mainMenuContentTopBias);
+                    if (hit >= 0 && hit < presetSlots)
                     {
-                    case 0:
-                        joinFocusedField_ = 0;
-                        break;
-                    case 1:
-                        joinFocusedField_ = 1;
-                        break;
-                    case 2:
+                        applyJoinPreset(joinPresets_[static_cast<std::size_t>(hit)]);
                         tryConnectFromJoinMenu();
-                        break;
-                    case 3:
-                        mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Hub;
-                        window_.setTextInputActive(false);
-                        mainMenuNotice_.clear();
-                        break;
-                    default:
-                        break;
+                    }
+                    else
+                    {
+                        const int manual = hit - presetSlots;
+                        switch (manual)
+                        {
+                        case 0:
+                            joinFocusedField_ = 0;
+                            window_.setTextInputActive(true);
+                            break;
+                        case 1:
+                            joinFocusedField_ = 1;
+                            window_.setTextInputActive(true);
+                            break;
+                        case 2:
+                            tryConnectFromJoinMenu();
+                            break;
+                        case 3:
+                            mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Hub;
+                            window_.setTextInputActive(false);
+                            mainMenuNotice_.clear();
+                            break;
+                        default:
+                            break;
+                        }
                     }
                 }
             }
@@ -2546,8 +2609,38 @@ void Application::processInput(const float deltaTimeSeconds)
         horizontalRight = glm::vec3(1.0f, 0.0f, 0.0f);
     }
 
-    glm::vec3 horizontalDisplacement =
-        horizontalForward * localMotion.z + horizontalRight * localMotion.x;
+    // On land: move on the horizontal plane. In water: Minecraft-style swim along look direction (W/S dive and rise).
+    glm::vec3 horizontalDisplacement(0.0f);
+    float swimVerticalFromLook = 0.0f;
+    if (inWaterForMovement)
+    {
+        glm::vec3 swimForward = camera_.forward();
+        if (glm::dot(swimForward, swimForward) > kFloatEpsilon)
+        {
+            swimForward = glm::normalize(swimForward);
+        }
+        else
+        {
+            swimForward = glm::vec3(0.0f, 0.0f, -1.0f);
+        }
+        glm::vec3 swimRight = camera_.right();
+        if (glm::dot(swimRight, swimRight) > kFloatEpsilon)
+        {
+            swimRight = glm::normalize(swimRight);
+        }
+        else
+        {
+            swimRight = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
+        const glm::vec3 swimWish = swimForward * localMotion.z + swimRight * localMotion.x;
+        swimVerticalFromLook = swimWish.y;
+        horizontalDisplacement = glm::vec3(swimWish.x, 0.0f, swimWish.z);
+    }
+    else
+    {
+        horizontalDisplacement =
+            horizontalForward * localMotion.z + horizontalRight * localMotion.x;
+    }
 
     const float horizontalMoveDistance =
         glm::length(glm::vec2(horizontalDisplacement.x, horizontalDisplacement.z));
@@ -2604,6 +2697,8 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (inWaterForMovement)
     {
+        // Buoyancy vs gravity: equal by default → no constant sink (Minecraft-style neutral swim).
+        verticalVelocity_ += kPlayerMovementSettings.waterBuoyancyAcceleration * deltaTimeSeconds;
         if (jumpHeld)
         {
             verticalVelocity_ += kPlayerMovementSettings.waterSwimUpAcceleration * deltaTimeSeconds;
@@ -2626,7 +2721,11 @@ void Application::processInput(const float deltaTimeSeconds)
     }
 
     const glm::vec3 verticalStartPosition = playerFeetPosition_;
-    const float verticalDisplacement = verticalVelocity_ * deltaTimeSeconds;
+    float verticalDisplacement = verticalVelocity_ * deltaTimeSeconds;
+    if (inWaterForMovement)
+    {
+        verticalDisplacement += swimVerticalFromLook;
+    }
     const AxisMoveResult verticalMoveResult =
         movePlayerAxisWithCollision(world_, playerFeetPosition_, 1, verticalDisplacement, colliderHeight);
     const bool verticalBlocked = verticalMoveResult.blocked;
@@ -3540,6 +3639,82 @@ std::filesystem::path Application::multiplayerPrefsPath() const
     return directory / "multiplayer_prefs.txt";
 }
 
+std::filesystem::path Application::joinPresetsPath() const
+{
+    std::filesystem::path directory = savePath_.parent_path();
+    if (directory.empty())
+    {
+        directory = "assets/saves";
+    }
+    return directory / "join_presets.txt";
+}
+
+void Application::applyJoinPreset(const JoinPresetEntry& preset)
+{
+    joinAddressInput_ = preset.host;
+    joinPortInput_ = std::to_string(preset.port);
+    multiplayerPort_ = preset.port;
+    multiplayerAddress_ = preset.host;
+}
+
+void Application::loadJoinPresets()
+{
+    joinPresets_.clear();
+    std::ifstream input(joinPresetsPath());
+    if (input.is_open())
+    {
+        std::string line;
+        while (std::getline(input, line) && joinPresets_.size() < 3)
+        {
+            trimInPlace(line);
+            if (line.empty() || line.front() == '#')
+            {
+                continue;
+            }
+            const std::size_t p1 = line.find('|');
+            if (p1 == std::string::npos)
+            {
+                continue;
+            }
+            const std::size_t p2 = line.find('|', p1 + 1);
+            if (p2 == std::string::npos || p2 <= p1)
+            {
+                continue;
+            }
+            std::string label = trimCopy(line.substr(0, p1));
+            std::string host = trimCopy(line.substr(p1 + 1, p2 - p1 - 1));
+            std::string portStr = trimCopy(line.substr(p2 + 1));
+            if (label.empty() || host.empty())
+            {
+                continue;
+            }
+            unsigned long port = 41234;
+            try
+            {
+                port = std::stoul(portStr);
+            }
+            catch (...)
+            {
+                continue;
+            }
+            if (port > 65535UL)
+            {
+                continue;
+            }
+            joinPresets_.push_back(JoinPresetEntry{
+                .label = std::move(label),
+                .host = std::move(host),
+                .port = static_cast<std::uint16_t>(port),
+            });
+        }
+    }
+    if (joinPresets_.empty())
+    {
+        joinPresets_.push_back(
+            JoinPresetEntry{.label = "This PC (local)", .host = "127.0.0.1", .port = 41234});
+    }
+}
+
 void Application::loadMultiplayerPrefs()
 {
     joinAddressInput_ = resolveJoinAddressFromEnvironment();
@@ -3548,6 +3723,7 @@ void Application::loadMultiplayerPrefs()
     if (!input.is_open())
     {
         multiplayerAddress_ = joinAddressInput_;
+        loadJoinPresets();
         return;
     }
 
@@ -3580,6 +3756,7 @@ void Application::loadMultiplayerPrefs()
     catch (...)
     {
     }
+    loadJoinPresets();
 }
 
 void Application::saveMultiplayerPrefs() const

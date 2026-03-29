@@ -668,72 +668,72 @@ void drawBottomButtonPair(
 void drawMainMenuMultiplayerOverlay(
     const FrameDebugData& frameDebugData,
     const std::uint16_t textWidth,
-    const std::uint16_t textHeight)
+    const std::uint16_t textHeight,
+    const int mainMenuTitleContentRowOffset)
 {
     const int tw = static_cast<int>(textWidth);
-    constexpr int kWide = MultiplayerMenuLayout::kWide;
-    const int centerCol = std::max(0, (tw - kWide) / 2);
+    const int th = static_cast<int>(textHeight);
+    const MainMenuComputedLayout menu = computeMainMenuLayout(tw, th, mainMenuTitleContentRowOffset);
+    const int centerCol = menu.centerCol;
+    const int outerWidth = menu.outerWidth;
+    const int btnLines = menu.buttonLineCount;
     const std::uint16_t footerRow =
         textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
-    constexpr std::uint16_t kGrayBorder = 0x08;
-    constexpr std::uint16_t kGrayLabel = 0x07;
-    constexpr std::uint16_t kHiBorder = 0x08;
-    constexpr std::uint16_t kHiLabel = 0x0f;
+    constexpr std::uint16_t kMenuTitle = 0x07;
+    constexpr std::uint16_t kMenuMuted = 0x08;
 
     const int hovered = frameDebugData.mainMenuMultiplayerHoveredControl;
 
     switch (frameDebugData.mainMenuMultiplayerPanel)
     {
     case FrameDebugData::MainMenuMultiplayerPanel::Hub:
-        dbgTextPrintfCenteredRow(5, 0x0f, "MULTIPLAYER");
-        dbgTextPrintfCenteredRow(7, 0x07, "Play with friends on the same Wi-Fi");
-        drawFramedButton3(
-            MultiplayerMenuLayout::kHubHostRow,
+    {
+        const int rowShift = MultiplayerMenuLayout::multiplayerMenuRowShift(
+            th, FrameDebugData::MainMenuMultiplayerPanel::Hub, 0, mainMenuTitleContentRowOffset);
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(5 + rowShift), kMenuTitle, "MULTIPLAYER");
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(7 + rowShift), kMenuTitle, "Play with friends on the same Wi-Fi");
+        drawMainMenuFramedButton5(
+            MultiplayerMenuLayout::kHubHostRow + rowShift,
             centerCol,
-            kWide,
+            outerWidth,
+            btnLines,
             "Host game",
-            hovered == 0,
-            kGrayBorder,
-            kGrayLabel,
-            kHiBorder,
-            kHiLabel);
-        drawFramedButton3(
-            MultiplayerMenuLayout::kHubJoinRow,
+            hovered == 0);
+        drawMainMenuFramedButton5(
+            MultiplayerMenuLayout::kHubJoinRow + rowShift,
             centerCol,
-            kWide,
+            outerWidth,
+            btnLines,
             "Join game",
-            hovered == 1,
-            kGrayBorder,
-            kGrayLabel,
-            kHiBorder,
-            kHiLabel);
-        drawFramedButton3(
-            MultiplayerMenuLayout::kHubBackRow,
+            hovered == 1);
+        drawMainMenuFramedButton5(
+            MultiplayerMenuLayout::kHubBackRow + rowShift,
             centerCol,
-            kWide,
+            outerWidth,
+            btnLines,
             "Back",
-            hovered == 2,
-            kGrayBorder,
-            kGrayLabel,
-            kHiBorder,
-            kHiLabel);
-        dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back to title");
+            hovered == 2);
+        dbgTextPrintfCenteredRow(footerRow, kMenuTitle, "Esc: back to title");
         break;
+    }
 
     case FrameDebugData::MainMenuMultiplayerPanel::Host:
-        dbgTextPrintfCenteredRow(5, 0x0f, "HOST MULTIPLAYER");
+    {
+        const int rowShift = MultiplayerMenuLayout::multiplayerMenuRowShift(
+            th, FrameDebugData::MainMenuMultiplayerPanel::Host, 0, mainMenuTitleContentRowOffset);
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(5 + rowShift), kMenuTitle, "HOST MULTIPLAYER");
         if (frameDebugData.mainMenuMultiplayerLanAddress.empty())
         {
             dbgTextPrintfCenteredRow(
-                8,
-                0x07,
+                static_cast<std::uint16_t>(8 + rowShift),
+                kMenuTitle,
                 clampDbgTextLine("LAN IP not detected — check Wi-Fi IP in System Settings", static_cast<std::size_t>(tw - 2)));
         }
         else
         {
             dbgTextPrintfCenteredRow(
-                8,
-                0x07,
+                static_cast<std::uint16_t>(8 + rowShift),
+                kMenuTitle,
                 clampDbgTextLine(
                     fmt::format(
                         "Friend on Wi-Fi: {}:{}",
@@ -741,124 +741,114 @@ void drawMainMenuMultiplayerOverlay(
                         frameDebugData.mainMenuMultiplayerPortDisplay),
                     static_cast<std::size_t>(tw - 2)));
         }
-        dbgTextPrintfCenteredRow(9, 0x08, "Same machine test: 127.0.0.1");
-        drawFramedButton3(
-            MultiplayerMenuLayout::kHostStartRow,
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(9 + rowShift), kMenuMuted, "Same machine test: 127.0.0.1");
+        drawMainMenuFramedButton5(
+            MultiplayerMenuLayout::kHostStartRow + rowShift,
             centerCol,
-            kWide,
+            outerWidth,
+            btnLines,
             "Start hosting",
-            hovered == 0,
-            kGrayBorder,
-            kGrayLabel,
-            kHiBorder,
-            kHiLabel);
-        drawFramedButton3(
-            MultiplayerMenuLayout::kHostBackRow,
+            hovered == 0);
+        drawMainMenuFramedButton5(
+            MultiplayerMenuLayout::kHostBackRow + rowShift,
             centerCol,
-            kWide,
+            outerWidth,
+            btnLines,
             "Back",
-            hovered == 1,
-            kGrayBorder,
-            kGrayLabel,
-            kHiBorder,
-            kHiLabel);
-        dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back");
+            hovered == 1);
+        dbgTextPrintfCenteredRow(footerRow, kMenuTitle, "Esc: back");
         break;
+    }
 
     case FrameDebugData::MainMenuMultiplayerPanel::Join:
-        dbgTextPrintfCenteredRow(5, 0x0f, "JOIN MULTIPLAYER");
+    {
+        const int presetSlots =
+            MultiplayerMenuLayout::joinPresetSlotCountForLayout(frameDebugData.mainMenuJoinPresetButtonLabels.size());
+        const int rowShift = MultiplayerMenuLayout::multiplayerMenuRowShift(
+            th, FrameDebugData::MainMenuMultiplayerPanel::Join, presetSlots, mainMenuTitleContentRowOffset);
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(5 + rowShift), kMenuTitle, "JOIN MULTIPLAYER");
+        for (int i = 0; i < presetSlots; ++i)
         {
-            const std::uint16_t addrLabelAttr = frameDebugData.mainMenuJoinFocusedField == 0 ? 0x0f : 0x07;
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                8,
-                addrLabelAttr,
-                "%s",
-                "Host address");
-            const int inner = kWide - 2;
-            const std::string addrMid =
-                "|" + padLabelToInnerWidth(clampDbgTextLine(frameDebugData.mainMenuJoinAddressField, 80), inner) + "|";
-            const std::uint16_t addrBorderAttr =
-                (hovered == 0 || frameDebugData.mainMenuJoinFocusedField == 0) ? kHiBorder : kGrayBorder;
-            const std::uint16_t addrMidAttr =
-                (hovered == 0 || frameDebugData.mainMenuJoinFocusedField == 0) ? kHiLabel : kGrayLabel;
-            const std::string addrBorder = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinAddrFieldRow),
-                addrBorderAttr,
-                "%s",
-                addrBorder.c_str());
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinAddrFieldRow + 1),
-                addrMidAttr,
-                "%s",
-                addrMid.c_str());
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinAddrFieldRow + 2),
-                addrBorderAttr,
-                "%s",
-                addrBorder.c_str());
+            const std::string label =
+                clampDbgTextLine(frameDebugData.mainMenuJoinPresetButtonLabels[static_cast<std::size_t>(i)], 80);
+            drawMainMenuFramedButton5(
+                MultiplayerMenuLayout::joinPresetButtonStartRow(i) + rowShift,
+                centerCol,
+                outerWidth,
+                btnLines,
+                label,
+                hovered == i);
         }
-        {
-            const std::uint16_t portLabelAttr = frameDebugData.mainMenuJoinFocusedField == 1 ? 0x0f : 0x07;
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                12,
-                portLabelAttr,
-                "%s",
-                "Port");
-            const int inner = kWide - 2;
-            const std::string portMid =
-                "|" + padLabelToInnerWidth(clampDbgTextLine(frameDebugData.mainMenuJoinPortField, 12), inner) + "|";
-            const std::uint16_t portBorderAttr =
-                (hovered == 1 || frameDebugData.mainMenuJoinFocusedField == 1) ? kHiBorder : kGrayBorder;
-            const std::uint16_t portMidAttr =
-                (hovered == 1 || frameDebugData.mainMenuJoinFocusedField == 1) ? kHiLabel : kGrayLabel;
-            const std::string portBorder = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinPortFieldRow),
-                portBorderAttr,
-                "%s",
-                portBorder.c_str());
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinPortFieldRow + 1),
-                portMidAttr,
-                "%s",
-                portMid.c_str());
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(centerCol),
-                static_cast<std::uint16_t>(MultiplayerMenuLayout::kJoinPortFieldRow + 2),
-                portBorderAttr,
-                "%s",
-                portBorder.c_str());
-        }
-        drawFramedButton3(
-            MultiplayerMenuLayout::kJoinConnectRow,
+
+        int addrFieldRow = 0;
+        int portLabelRow = 0;
+        int portFieldRow = 0;
+        int connectRow = 0;
+        int backRow = 0;
+        MultiplayerMenuLayout::joinManualSectionRows(presetSlots, addrFieldRow, portLabelRow, portFieldRow, connectRow, backRow);
+        addrFieldRow += rowShift;
+        portLabelRow += rowShift;
+        portFieldRow += rowShift;
+        connectRow += rowShift;
+        backRow += rowShift;
+
+        const int addrHoverId = presetSlots;
+        const int portHoverId = presetSlots + 1;
+        const int connectHoverId = presetSlots + 2;
+        const int backHoverId = presetSlots + 3;
+
+        const int maxInner = std::max(8, outerWidth - 2);
+        const int addrLabelRow = std::max(1, addrFieldRow - 1);
+        const std::uint16_t addrLabelAttr =
+            frameDebugData.mainMenuJoinFocusedField == 0 ? 0x3f : kMenuTitle;
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(centerCol),
+            static_cast<std::uint16_t>(addrLabelRow),
+            addrLabelAttr,
+            "%s",
+            "Host address (click to edit)");
+        drawMainMenuFramedButton5(
+            addrFieldRow,
             centerCol,
-            kWide,
+            outerWidth,
+            MultiplayerMenuLayout::kFieldButtonLineCount,
+            clampDbgTextLine(frameDebugData.mainMenuJoinAddressField, static_cast<std::size_t>(maxInner)),
+            hovered == addrHoverId || frameDebugData.mainMenuJoinFocusedField == 0);
+        const std::uint16_t portLabelAttr =
+            frameDebugData.mainMenuJoinFocusedField == 1 ? 0x3f : kMenuTitle;
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(centerCol),
+            static_cast<std::uint16_t>(portLabelRow),
+            portLabelAttr,
+            "%s",
+            "Port (click to edit)");
+        drawMainMenuFramedButton5(
+            portFieldRow,
+            centerCol,
+            outerWidth,
+            MultiplayerMenuLayout::kFieldButtonLineCount,
+            clampDbgTextLine(frameDebugData.mainMenuJoinPortField, static_cast<std::size_t>(maxInner)),
+            hovered == portHoverId || frameDebugData.mainMenuJoinFocusedField == 1);
+        drawMainMenuFramedButton5(
+            connectRow,
+            centerCol,
+            outerWidth,
+            btnLines,
             "Connect",
-            hovered == 2,
-            kGrayBorder,
-            kGrayLabel,
-            kHiBorder,
-            kHiLabel);
-        drawFramedButton3(
-            MultiplayerMenuLayout::kJoinBackRow,
+            hovered == connectHoverId);
+        drawMainMenuFramedButton5(
+            backRow,
             centerCol,
-            kWide,
+            outerWidth,
+            btnLines,
             "Back",
-            hovered == 3,
-            kGrayBorder,
-            kGrayLabel,
-            kHiBorder,
-            kHiLabel);
-        dbgTextPrintfCenteredRow(footerRow, 0x07, "Esc: back   Tab: switch field   Type: edit");
+            hovered == backHoverId);
+        dbgTextPrintfCenteredRow(
+            footerRow,
+            kMenuTitle,
+            "Esc: back   Tab: field   Type: IP/port   Presets: connect immediately");
         break;
+    }
 
     case FrameDebugData::MainMenuMultiplayerPanel::None:
     default:
@@ -923,7 +913,7 @@ void drawMainMenuOverlay(
 
     if (frameDebugData.mainMenuMultiplayerPanel != FrameDebugData::MainMenuMultiplayerPanel::None)
     {
-        drawMainMenuMultiplayerOverlay(frameDebugData, textWidth, textHeight);
+        drawMainMenuMultiplayerOverlay(frameDebugData, textWidth, textHeight, mainMenuTitleContentRowOffset);
         return;
     }
 

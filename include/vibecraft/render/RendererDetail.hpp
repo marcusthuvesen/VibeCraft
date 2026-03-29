@@ -32,15 +32,110 @@ constexpr int kSubtitleRuleAndGapRows = 3;
 namespace MultiplayerMenuLayout
 {
 constexpr int kWide = 84;
+/// Same vertical pitch as main menu buttons (`MainMenuLayout::kPreferredButtonLineCount`).
+constexpr int kMainButtonLineCount = 9;
+/// Smaller framed fields (IP / port) — still solid-filled like main menu.
+constexpr int kFieldButtonLineCount = 5;
 constexpr int kHubHostRow = 8;
-constexpr int kHubJoinRow = 15;
-constexpr int kHubBackRow = 22;
+constexpr int kHubJoinRow = kHubHostRow + kMainButtonLineCount;
+constexpr int kHubBackRow = kHubJoinRow + kMainButtonLineCount;
 constexpr int kHostStartRow = 15;
-constexpr int kHostBackRow = 24;
+constexpr int kHostBackRow = kHostStartRow + kMainButtonLineCount;
 constexpr int kJoinAddrFieldRow = 8;
-constexpr int kJoinPortFieldRow = 15;
-constexpr int kJoinConnectRow = 22;
-constexpr int kJoinBackRow = 29;
+/// Vertical distance between join preset / primary buttons (matches main menu pitch).
+constexpr int kJoinPresetPitchRows = kMainButtonLineCount;
+constexpr int kJoinPresetSlotMax = 3;
+
+[[nodiscard]] inline int joinPresetSlotCountForLayout(const std::size_t presetLabelCount)
+{
+    return static_cast<int>(std::min(presetLabelCount, std::size_t{kJoinPresetSlotMax}));
+}
+
+[[nodiscard]] inline int joinManualSectionOffsetRows(const int presetSlotCount)
+{
+    return kJoinPresetPitchRows * std::clamp(presetSlotCount, 0, kJoinPresetSlotMax);
+}
+
+[[nodiscard]] inline int joinPresetButtonStartRow(const int presetIndex)
+{
+    return kJoinAddrFieldRow + presetIndex * kJoinPresetPitchRows;
+}
+
+inline void joinManualSectionRows(
+    const int presetSlotCount,
+    int& addrFieldRow,
+    int& portLabelRow,
+    int& portFieldRow,
+    int& connectRow,
+    int& backRow)
+{
+    const int off = joinManualSectionOffsetRows(presetSlotCount);
+    addrFieldRow = kJoinAddrFieldRow + off;
+    // Spacing for kFieldButtonLineCount address row, label, port field, then kMainButtonLineCount connect/back.
+    portLabelRow = addrFieldRow + 6;
+    portFieldRow = addrFieldRow + 9;
+    connectRow = addrFieldRow + 16;
+    backRow = addrFieldRow + 25;
+}
+
+/// Title row in the legacy (fixed) layout; used with `multiplayerMenuRowShift` to center panels vertically.
+constexpr int kMultiplayerTitleAnchorRow = 5;
+/// Extra dbg rows below the logo reservation so Hub / Host / Join sit clearly under the title logo (not crowding it).
+constexpr int kMultiplayerExtraRowsBelowLogo = 6;
+
+[[nodiscard]] inline int multiplayerJoinBottomRow(const int presetSlotCount)
+{
+    int addrFieldRow = 0;
+    [[maybe_unused]] int portLabelUnused = 0;
+    int portFieldRow = 0;
+    int connectRow = 0;
+    int backRow = 0;
+    joinManualSectionRows(presetSlotCount, addrFieldRow, portLabelUnused, portFieldRow, connectRow, backRow);
+    return backRow + kMainButtonLineCount - 1;
+}
+
+[[nodiscard]] inline int multiplayerPanelContentRows(
+    const FrameDebugData::MainMenuMultiplayerPanel panel,
+    const int joinPresetSlotCount)
+{
+    switch (panel)
+    {
+    case FrameDebugData::MainMenuMultiplayerPanel::Hub:
+        return (kHubBackRow + kMainButtonLineCount - 1) - kMultiplayerTitleAnchorRow + 1;
+    case FrameDebugData::MainMenuMultiplayerPanel::Host:
+        return (kHostBackRow + kMainButtonLineCount - 1) - kMultiplayerTitleAnchorRow + 1;
+    case FrameDebugData::MainMenuMultiplayerPanel::Join:
+        return multiplayerJoinBottomRow(joinPresetSlotCount) - kMultiplayerTitleAnchorRow + 1;
+    case FrameDebugData::MainMenuMultiplayerPanel::None:
+    default:
+        return 1;
+    }
+}
+
+/// Shifts legacy row indices so the multiplayer block is vertically centered (matches `computeMainMenuLayout` + logo bias).
+[[nodiscard]] inline int multiplayerMenuRowShift(
+    const int textHeight,
+    const FrameDebugData::MainMenuMultiplayerPanel panel,
+    const int joinPresetSlotCount,
+    const int mainMenuContentTopBias)
+{
+    if (textHeight <= 0 || panel == FrameDebugData::MainMenuMultiplayerPanel::None)
+    {
+        return 0;
+    }
+    const int contentRows = multiplayerPanelContentRows(panel, joinPresetSlotCount);
+    if (contentRows <= 0)
+    {
+        return 0;
+    }
+    const int centeredBase = (textHeight - contentRows) / 2;
+    const int minFirstRow = mainMenuContentTopBias + kMultiplayerExtraRowsBelowLogo;
+    const int firstRow = std::clamp(
+        std::max(centeredBase + mainMenuContentTopBias + kMultiplayerExtraRowsBelowLogo, minFirstRow),
+        1,
+        std::max(1, textHeight - contentRows));
+    return firstRow - kMultiplayerTitleAnchorRow;
+}
 }  // namespace MultiplayerMenuLayout
 
 /// Pause menu dbg-text grid; must match `drawPauseMenuOverlay` and pause hit tests.
@@ -254,7 +349,11 @@ void drawMainMenuOverlay(
     std::uint16_t textWidth,
     std::uint16_t textHeight,
     int mainMenuTitleContentRowOffset = 0);
-void drawMainMenuMultiplayerOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
+void drawMainMenuMultiplayerOverlay(
+    const FrameDebugData& frameDebugData,
+    std::uint16_t textWidth,
+    std::uint16_t textHeight,
+    int mainMenuTitleContentRowOffset);
 void drawPauseMenuOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
 
 }  // namespace vibecraft::render::detail

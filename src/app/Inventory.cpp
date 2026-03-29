@@ -189,6 +189,8 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Cocoa Pod";
     case vibecraft::world::BlockType::Melon:
         return "Melon";
+    case vibecraft::world::BlockType::Bamboo:
+        return "Bamboo";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

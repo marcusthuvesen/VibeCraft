@@ -186,6 +186,8 @@ struct FrameDebugData
     int mainMenuMultiplayerHoveredControl = -1;
     /// 0 = host address field, 1 = port field (Join screen).
     int mainMenuJoinFocusedField = 0;
+    /// Quick-join preset button labels (max 3); same order as `join_presets.txt` / host config.
+    std::vector<std::string> mainMenuJoinPresetButtonLabels;
 
     /// In-game pause overlay (world still rendered underneath).
     bool pauseMenuActive = false;
@@ -269,6 +271,13 @@ class Renderer
         std::uint16_t textHeight,
         bool musicSlider);
 
+    /// Same vertical centering as `drawMainMenuMultiplayerOverlay` (dbg-text row shift).
+    [[nodiscard]] static int multiplayerMenuRowShift(
+        std::uint16_t textHeight,
+        FrameDebugData::MainMenuMultiplayerPanel panel,
+        int joinPresetSlotCount,
+        int mainMenuContentTopBias);
+
     /// Multiplayer hub: 0 Host, 1 Join, 2 Back.
     [[nodiscard]] static int hitTestMainMenuMultiplayerHub(
         float mouseX,
@@ -276,7 +285,9 @@ class Renderer
         std::uint32_t windowWidth,
         std::uint32_t windowHeight,
         std::uint16_t textWidth,
-        std::uint16_t textHeight);
+        std::uint16_t textHeight,
+        int multiplayerRowShift,
+        int mainMenuContentTopBias);
 
     /// Host screen: 0 Start hosting, 1 Back.
     [[nodiscard]] static int hitTestMainMenuMultiplayerHost(
@@ -285,16 +296,21 @@ class Renderer
         std::uint32_t windowWidth,
         std::uint32_t windowHeight,
         std::uint16_t textWidth,
-        std::uint16_t textHeight);
+        std::uint16_t textHeight,
+        int multiplayerRowShift,
+        int mainMenuContentTopBias);
 
-    /// Join screen: 0 address field, 1 port field, 2 Connect, 3 Back.
+    /// Join screen: 0..presetCount-1 quick join, then address, port, Connect, Back.
     [[nodiscard]] static int hitTestMainMenuMultiplayerJoin(
         float mouseX,
         float mouseY,
         std::uint32_t windowWidth,
         std::uint32_t windowHeight,
         std::uint16_t textWidth,
-        std::uint16_t textHeight);
+        std::uint16_t textHeight,
+        int joinPresetSlotCount,
+        int multiplayerRowShift,
+        int mainMenuContentTopBias);
 
     /// Crafting screen hit ids: 0..8 grid, 9 result, 10..18 hotbar, 19..99 bag.
     static constexpr int kCraftingGridHitBase = 0;

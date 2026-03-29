@@ -261,13 +261,25 @@ std::optional<float> Renderer::pauseSoundSliderValueFromMouse(
     return std::clamp(t, 0.0f, 1.0f);
 }
 
+int Renderer::multiplayerMenuRowShift(
+    const std::uint16_t textHeight,
+    const FrameDebugData::MainMenuMultiplayerPanel panel,
+    const int joinPresetSlotCount,
+    const int mainMenuContentTopBias)
+{
+    return detail::MultiplayerMenuLayout::multiplayerMenuRowShift(
+        static_cast<int>(textHeight), panel, joinPresetSlotCount, mainMenuContentTopBias);
+}
+
 int Renderer::hitTestMainMenuMultiplayerHub(
     const float mouseX,
     const float mouseY,
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
     const std::uint16_t textWidth,
-    const std::uint16_t textHeight)
+    const std::uint16_t textHeight,
+    const int multiplayerRowShift,
+    const int mainMenuContentTopBias)
 {
     if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
     {
@@ -281,24 +293,27 @@ int Renderer::hitTestMainMenuMultiplayerHub(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, th - 1);
 
-    constexpr int kWide = detail::MultiplayerMenuLayout::kWide;
-    const int centerCol = std::max(0, (tw - kWide) / 2);
+    const detail::MainMenuComputedLayout menu = detail::computeMainMenuLayout(tw, th, mainMenuContentTopBias);
+    const int centerCol = menu.centerCol;
+    const int rightEdge = centerCol + menu.outerWidth - 1;
+    const int rs = multiplayerRowShift;
+    constexpr int kBtnH = detail::MultiplayerMenuLayout::kMainButtonLineCount;
 
-    if (clampedRow >= detail::MultiplayerMenuLayout::kHubHostRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kHubHostRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= detail::MultiplayerMenuLayout::kHubHostRow + rs
+        && clampedRow <= detail::MultiplayerMenuLayout::kHubHostRow + kBtnH - 1 + rs && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
         return 0;
     }
-    if (clampedRow >= detail::MultiplayerMenuLayout::kHubJoinRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kHubJoinRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= detail::MultiplayerMenuLayout::kHubJoinRow + rs
+        && clampedRow <= detail::MultiplayerMenuLayout::kHubJoinRow + kBtnH - 1 + rs && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
         return 1;
     }
-    if (clampedRow >= detail::MultiplayerMenuLayout::kHubBackRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kHubBackRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= detail::MultiplayerMenuLayout::kHubBackRow + rs
+        && clampedRow <= detail::MultiplayerMenuLayout::kHubBackRow + kBtnH - 1 + rs && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
         return 2;
     }
@@ -312,7 +327,9 @@ int Renderer::hitTestMainMenuMultiplayerHost(
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
     const std::uint16_t textWidth,
-    const std::uint16_t textHeight)
+    const std::uint16_t textHeight,
+    const int multiplayerRowShift,
+    const int mainMenuContentTopBias)
 {
     if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
     {
@@ -326,18 +343,21 @@ int Renderer::hitTestMainMenuMultiplayerHost(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, th - 1);
 
-    constexpr int kWide = detail::MultiplayerMenuLayout::kWide;
-    const int centerCol = std::max(0, (tw - kWide) / 2);
+    const detail::MainMenuComputedLayout menu = detail::computeMainMenuLayout(tw, th, mainMenuContentTopBias);
+    const int centerCol = menu.centerCol;
+    const int rightEdge = centerCol + menu.outerWidth - 1;
+    const int rs = multiplayerRowShift;
+    constexpr int kBtnH = detail::MultiplayerMenuLayout::kMainButtonLineCount;
 
-    if (clampedRow >= detail::MultiplayerMenuLayout::kHostStartRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kHostStartRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= detail::MultiplayerMenuLayout::kHostStartRow + rs
+        && clampedRow <= detail::MultiplayerMenuLayout::kHostStartRow + kBtnH - 1 + rs && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
         return 0;
     }
-    if (clampedRow >= detail::MultiplayerMenuLayout::kHostBackRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kHostBackRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= detail::MultiplayerMenuLayout::kHostBackRow + rs
+        && clampedRow <= detail::MultiplayerMenuLayout::kHostBackRow + kBtnH - 1 + rs && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
         return 1;
     }
@@ -351,7 +371,10 @@ int Renderer::hitTestMainMenuMultiplayerJoin(
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
     const std::uint16_t textWidth,
-    const std::uint16_t textHeight)
+    const std::uint16_t textHeight,
+    const int joinPresetSlotCount,
+    const int multiplayerRowShift,
+    const int mainMenuContentTopBias)
 {
     if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
     {
@@ -365,32 +388,55 @@ int Renderer::hitTestMainMenuMultiplayerJoin(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, th - 1);
 
-    constexpr int kWide = detail::MultiplayerMenuLayout::kWide;
-    const int centerCol = std::max(0, (tw - kWide) / 2);
+    const detail::MainMenuComputedLayout menu = detail::computeMainMenuLayout(tw, th, mainMenuContentTopBias);
+    const int centerCol = menu.centerCol;
+    const int rightEdge = centerCol + menu.outerWidth - 1;
+    const int rs = multiplayerRowShift;
+    constexpr int kBtnH = detail::MultiplayerMenuLayout::kMainButtonLineCount;
+    constexpr int kFieldH = detail::MultiplayerMenuLayout::kFieldButtonLineCount;
 
-    if (clampedRow >= detail::MultiplayerMenuLayout::kJoinAddrFieldRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kJoinAddrFieldRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    const int presetSlots = std::clamp(joinPresetSlotCount, 0, detail::MultiplayerMenuLayout::kJoinPresetSlotMax);
+    for (int i = 0; i < presetSlots; ++i)
     {
-        return 0;
+        const int startRow = detail::MultiplayerMenuLayout::joinPresetButtonStartRow(i) + rs;
+        if (clampedRow >= startRow && clampedRow <= startRow + kBtnH - 1 && clampedCol >= centerCol
+            && clampedCol <= rightEdge)
+        {
+            return i;
+        }
     }
-    if (clampedRow >= detail::MultiplayerMenuLayout::kJoinPortFieldRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kJoinPortFieldRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+
+    int addrFieldRow = 0;
+    [[maybe_unused]] int portLabelUnused = 0;
+    int portFieldRow = 0;
+    int connectRow = 0;
+    int backRow = 0;
+    detail::MultiplayerMenuLayout::joinManualSectionRows(
+        presetSlots, addrFieldRow, portLabelUnused, portFieldRow, connectRow, backRow);
+    addrFieldRow += rs;
+    portFieldRow += rs;
+    connectRow += rs;
+    backRow += rs;
+
+    if (clampedRow >= addrFieldRow && clampedRow <= addrFieldRow + kFieldH - 1 && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
-        return 1;
+        return presetSlots;
     }
-    if (clampedRow >= detail::MultiplayerMenuLayout::kJoinConnectRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kJoinConnectRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= portFieldRow && clampedRow <= portFieldRow + kFieldH - 1 && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
-        return 2;
+        return presetSlots + 1;
     }
-    if (clampedRow >= detail::MultiplayerMenuLayout::kJoinBackRow
-        && clampedRow <= detail::MultiplayerMenuLayout::kJoinBackRow + 4 && clampedCol >= centerCol
-        && clampedCol <= centerCol + kWide - 1)
+    if (clampedRow >= connectRow && clampedRow <= connectRow + kBtnH - 1 && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
     {
-        return 3;
+        return presetSlots + 2;
+    }
+    if (clampedRow >= backRow && clampedRow <= backRow + kBtnH - 1 && clampedCol >= centerCol
+        && clampedCol <= rightEdge)
+    {
+        return presetSlots + 3;
     }
 
     return -1;

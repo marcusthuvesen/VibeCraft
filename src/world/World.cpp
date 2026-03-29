@@ -23,7 +23,7 @@ namespace vibecraft::world
 namespace
 {
 constexpr int kTreeCellSize = 6;
-constexpr int kTreeMaxCrownRadius = 3;
+constexpr int kTreeMaxCrownRadius = 4;
 constexpr int kTreeMinSurfaceY = 27;
 constexpr std::uint32_t kTreeSeed = 0x0ea52f4dU;
 constexpr std::uint32_t kTreeChanceSeed = 0x6f4a31deU;
@@ -38,6 +38,11 @@ constexpr std::uint32_t kFloraSpotSeed = 0x73eb260aU;
 constexpr std::uint32_t kFloraSpotSeedB = 0x84fc371bU;
 constexpr std::uint32_t kJungleFeatureNoiseSeed = 0x950d482cU;
 constexpr std::uint32_t kJungleFeatureRollSeed = 0xa61e593dU;
+constexpr std::uint32_t kJungleCanopyVineSeed = 0xb72f6a4eU;
+constexpr std::uint32_t kJungleTrunkVineSeed = 0xc8407b5fU;
+constexpr std::uint32_t kJungleCocoaSeed = 0xd9518c60U;
+constexpr std::uint32_t kJungleDenseTreeSeed = 0xea629d71U;
+constexpr std::uint32_t kJungleDenseTreeRollSeed = 0xfb73ae82U;
 constexpr double kFloraFlowerPatchScale = 21.0;
 constexpr double kFloraMushroomPatchScale = 29.0;
 constexpr double kFloraWetScale = 46.0;
@@ -109,10 +114,10 @@ struct TreeBiomeSettings
     {
     case SurfaceBiome::Jungle:
         return TreeBiomeSettings{
-            .spawnChance = 0.58f,
-            .minTrunkHeight = 6,
-            .maxTrunkHeight = 9,
-            .crownRadius = 3,
+            .spawnChance = 0.70f,
+            .minTrunkHeight = 9,
+            .maxTrunkHeight = 14,
+            .crownRadius = 4,
             .trunkBlock = BlockType::JungleTreeTrunk,
             .crownBlock = BlockType::JungleTreeCrown,
         };
@@ -164,10 +169,10 @@ struct FloraPatchParams
         };
     case SurfaceBiome::Jungle:
         return FloraPatchParams{
-            .flowerPatchMin = 0.58,
-            .flowerSpotChance = 0.11,
-            .mushroomPatchMin = 0.61,
-            .mushroomSpotChance = 0.19,
+            .flowerPatchMin = 0.54,
+            .flowerSpotChance = 0.14,
+            .mushroomPatchMin = 0.57,
+            .mushroomSpotChance = 0.24,
         };
     case SurfaceBiome::Snowy:
         return FloraPatchParams{
@@ -269,10 +274,28 @@ void placeTreeForColumn(
         return;
     }
     const std::uint32_t treeHash = noise::hashCoordinates(treeX, treeZ, kTreeSeed);
-    const int trunkHeight = settings.minTrunkHeight
+    int trunkHeight = settings.minTrunkHeight
         + static_cast<int>(treeHash
                             % static_cast<std::uint32_t>(settings.maxTrunkHeight - settings.minTrunkHeight + 1));
-    if (!canGrowTreeAt(terrainGenerator, treeX, treeZ, surfaceY, trunkHeight, settings.crownRadius))
+    int crownRadius = settings.crownRadius;
+
+    // Spawn occasional giant variants so some trees are dramatically larger.
+    if (settings.crownBlock == BlockType::JungleTreeCrown
+        && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x193U) < 0.18)
+    {
+        const std::uint32_t giantHash = noise::hashCoordinates(treeX, treeZ, kTreeShapeSeed + 0x319U);
+        trunkHeight += 8 + static_cast<int>(giantHash % 8U);
+        crownRadius += 2;
+    }
+    else if (settings.crownBlock == BlockType::TreeCrown
+             && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x41BU) < 0.06)
+    {
+        const std::uint32_t giantHash = noise::hashCoordinates(treeX, treeZ, kTreeShapeSeed + 0x58DU);
+        trunkHeight += 5 + static_cast<int>(giantHash % 5U);
+        crownRadius += 1;
+    }
+
+    if (!canGrowTreeAt(terrainGenerator, treeX, treeZ, surfaceY, trunkHeight, crownRadius))
     {
         return;
     }
@@ -283,9 +306,9 @@ void placeTreeForColumn(
     }
 
     const int crownCenterY = surfaceY + trunkHeight;
-    for (int dy = -settings.crownRadius; dy <= 1; ++dy)
+    for (int dy = -crownRadius; dy <= 1; ++dy)
     {
-        const int radius = dy <= -1 ? settings.crownRadius : std::max(1, settings.crownRadius - 1);
+        const int radius = dy <= -1 ? crownRadius : std::max(1, crownRadius - 1);
         for (int dz = -radius; dz <= radius; ++dz)
         {
             for (int dx = -radius; dx <= radius; ++dx)
@@ -301,7 +324,7 @@ void placeTreeForColumn(
                 const bool outerCorner = std::abs(dx) == radius && std::abs(dz) == radius;
                 if (outerCorner
                     && noise::random01(crownX, crownZ, kTreeShapeSeed + static_cast<std::uint32_t>(crownY))
-                        > (settings.crownRadius >= 3 ? 0.26 : 0.4))
+                        > (crownRadius >= 3 ? 0.26 : 0.4))
                 {
                     continue;
                 }
@@ -311,9 +334,74 @@ void placeTreeForColumn(
     }
 
     placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 2, treeZ, settings.crownBlock);
-    if (settings.crownRadius >= 3)
+    if (crownRadius >= 3)
     {
         placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 3, treeZ, settings.crownBlock);
+    }
+
+    if (settings.crownBlock == BlockType::JungleTreeCrown)
+    {
+        // Add hanging jungle vines along canopy edges for a denser, Minecraft-like jungle silhouette.
+        for (int dy = -crownRadius; dy <= 1; ++dy)
+        {
+            const int radius = dy <= -1 ? crownRadius : std::max(1, crownRadius - 1);
+            for (int dz = -radius; dz <= radius; ++dz)
+            {
+                for (int dx = -radius; dx <= radius; ++dx)
+                {
+                    if (std::abs(dx) != radius && std::abs(dz) != radius)
+                    {
+                        continue;
+                    }
+                    const int vineX = treeX + dx;
+                    const int vineZ = treeZ + dz;
+                    const int vineStartY = crownCenterY + dy - 1;
+                    const std::uint32_t ySeed = static_cast<std::uint32_t>(vineStartY - kWorldMinY);
+                    if (noise::random01(vineX, vineZ, kJungleCanopyVineSeed + ySeed) > 0.45)
+                    {
+                        continue;
+                    }
+                    const std::uint32_t lengthHash =
+                        noise::hashCoordinates(vineX, vineZ, kJungleCanopyVineSeed + ySeed + 17U);
+                    const int vineLength = 3 + static_cast<int>(lengthHash % 9U);
+                    for (int i = 0; i < vineLength; ++i)
+                    {
+                        placeBlockIfInsideChunk(chunk, coord, vineX, vineStartY - i, vineZ, BlockType::Vines);
+                    }
+                }
+            }
+        }
+
+        constexpr std::array<std::array<int, 2>, 4> kTrunkSides{{
+            {{1, 0}},
+            {{-1, 0}},
+            {{0, 1}},
+            {{0, -1}},
+        }};
+        const int trunkVineStartY = surfaceY + trunkHeight / 2;
+        for (int y = trunkVineStartY; y <= surfaceY + trunkHeight; ++y)
+        {
+            const std::uint32_t ySeed = static_cast<std::uint32_t>(y - kWorldMinY);
+            for (const auto& side : kTrunkSides)
+            {
+                const int sideX = treeX + side[0];
+                const int sideZ = treeZ + side[1];
+                if (noise::random01(sideX, sideZ, kJungleTrunkVineSeed + ySeed) < 0.17)
+                {
+                    const std::uint32_t vineLenHash =
+                        noise::hashCoordinates(sideX, sideZ, kJungleTrunkVineSeed + ySeed + 23U);
+                    const int vineLength = 2 + static_cast<int>(vineLenHash % 6U);
+                    for (int i = 0; i < vineLength; ++i)
+                    {
+                        placeBlockIfInsideChunk(chunk, coord, sideX, y - i, sideZ, BlockType::Vines);
+                    }
+                }
+                if (noise::random01(sideX, sideZ, kJungleCocoaSeed + ySeed) < 0.045)
+                {
+                    placeBlockIfInsideChunk(chunk, coord, sideX, y, sideZ, BlockType::CocoaPod);
+                }
+            }
+        }
     }
 }
 
@@ -351,6 +439,26 @@ void populateTreesForChunk(
                 continue;
             }
             placeTreeForColumn(chunk, coord, terrainGenerator, treeX, treeZ, settings);
+
+            // Jungle gets an extra nearby tree attempt so canopy feels denser like Minecraft jungles.
+            if (biome == SurfaceBiome::Jungle)
+            {
+                const std::uint32_t denseHash = noise::hashCoordinates(cellX, cellZ, kJungleDenseTreeSeed);
+                const int offsetX = static_cast<int>(denseHash % 5U) - 2;
+                const int offsetZ = static_cast<int>((denseHash / 5U) % 5U) - 2;
+                if ((offsetX != 0 || offsetZ != 0)
+                    && noise::random01(cellX, cellZ, kJungleDenseTreeRollSeed) < 0.72)
+                {
+                    const int denseTreeX = treeX + offsetX;
+                    const int denseTreeZ = treeZ + offsetZ;
+                    const SurfaceBiome denseBiome = terrainGenerator.surfaceBiomeAt(denseTreeX, denseTreeZ);
+                    const TreeBiomeSettings denseSettings = treeBiomeSettingsForSurfaceBiome(denseBiome);
+                    if (denseBiome == SurfaceBiome::Jungle && denseSettings.spawnChance > 0.0f)
+                    {
+                        placeTreeForColumn(chunk, coord, terrainGenerator, denseTreeX, denseTreeZ, denseSettings);
+                    }
+                }
+            }
         }
     }
 }
@@ -413,11 +521,13 @@ void populateSurfaceFloraForChunk(
                     kJungleFeaturePatchScale,
                     2,
                     kJungleFeatureNoiseSeed);
-                if (jungleFeature > 0.78
-                    && noise::random01(worldX, worldZ, kJungleFeatureRollSeed) < 0.095)
+                if (jungleFeature > 0.70
+                    && noise::random01(worldX, worldZ, kJungleFeatureRollSeed) < 0.20)
                 {
-                    constexpr std::array<BlockType, 3> kJungleLargeFlora{
+                    constexpr std::array<BlockType, 5> kJungleLargeFlora{
                         BlockType::Vines,
+                        BlockType::Bamboo,
+                        BlockType::Bamboo,
                         BlockType::CocoaPod,
                         BlockType::Melon,
                     };
@@ -425,7 +535,27 @@ void populateSurfaceFloraForChunk(
                     const BlockType floraBlock = kJungleLargeFlora[pick % kJungleLargeFlora.size()];
                     if (isNaturalDecorationBlock(floraBlock))
                     {
-                        chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                        if (floraBlock == BlockType::Bamboo)
+                        {
+                            const std::uint32_t h = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed + 83U);
+                            const int bambooHeight = 3 + static_cast<int>(h % 8U);
+                            for (int bambooY = surfaceY + 1; bambooY <= surfaceY + bambooHeight; ++bambooY)
+                            {
+                                if (bambooY > kWorldMaxY)
+                                {
+                                    break;
+                                }
+                                if (chunk.blockAt(localX, bambooY, localZ) != BlockType::Air)
+                                {
+                                    break;
+                                }
+                                chunk.setBlock(localX, bambooY, localZ, BlockType::Bamboo);
+                            }
+                        }
+                        else
+                        {
+                            chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                        }
                     }
                     continue;
                 }

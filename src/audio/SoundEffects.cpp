@@ -50,6 +50,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::Vines:
     case BlockType::CocoaPod:
     case BlockType::Melon:
+    case BlockType::Bamboo:
         return {
             "block/grass/break1.ogg",
             "block/grass/break2.ogg",
@@ -145,6 +146,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::Vines:
     case BlockType::CocoaPod:
     case BlockType::Melon:
+    case BlockType::Bamboo:
         return {"block/grass/hit1.ogg", "block/grass/hit2.ogg", "block/grass/hit3.ogg", "block/grass/hit4.ogg"};
     case BlockType::Sand:
     case BlockType::Sandstone:
@@ -209,6 +211,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::Vines:
     case BlockType::CocoaPod:
     case BlockType::Melon:
+    case BlockType::Bamboo:
         step.assign(
             {"block/grass/step1.ogg",
              "block/grass/step2.ogg",
@@ -348,6 +351,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::Vines:
     case BlockType::CocoaPod:
     case BlockType::Melon:
+    case BlockType::Bamboo:
         return {
             "block/grass/place1.ogg",
             "block/grass/place2.ogg",

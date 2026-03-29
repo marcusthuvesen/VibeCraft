@@ -131,6 +131,13 @@ class Application
         std::string label;
     };
 
+    struct JoinPresetEntry
+    {
+        std::string label;
+        std::string host;
+        std::uint16_t port = 41234;
+    };
+
     struct CraftingMenuState
     {
         enum class Mode : std::uint8_t
@@ -158,6 +165,9 @@ class Application
     void loadMultiplayerPrefs();
     void saveMultiplayerPrefs() const;
     [[nodiscard]] std::filesystem::path multiplayerPrefsPath() const;
+    [[nodiscard]] std::filesystem::path joinPresetsPath() const;
+    void loadJoinPresets();
+    void applyJoinPreset(const JoinPresetEntry& preset);
     void loadAudioPrefs();
     void saveAudioPrefs() const;
     [[nodiscard]] std::filesystem::path audioPrefsPath() const;
@@ -234,6 +244,7 @@ class Application
     std::string joinAddressInput_;
     std::string joinPortInput_;
     int joinFocusedField_ = 0;
+    std::vector<JoinPresetEntry> joinPresets_;
     std::string detectedLanAddress_;
     std::vector<RemotePlayerState> remotePlayers_;
     std::unordered_set<std::uint16_t> worldSyncSentClients_;

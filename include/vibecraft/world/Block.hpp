@@ -53,7 +53,8 @@ enum class BlockType : std::uint8_t
     DeadBush,
     Vines,
     CocoaPod,
-    Melon
+    Melon,
+    Bamboo
 };
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)
@@ -71,7 +72,7 @@ enum class BlockType : std::uint8_t
         && blockType != BlockType::Allium && blockType != BlockType::OxeyeDaisy
         && blockType != BlockType::BrownMushroom && blockType != BlockType::RedMushroom
         && blockType != BlockType::DeadBush && blockType != BlockType::Vines
-        && blockType != BlockType::CocoaPod;
+        && blockType != BlockType::CocoaPod && blockType != BlockType::Bamboo;
 }
 
 [[nodiscard]] constexpr bool isRenderable(const BlockType blockType)
@@ -96,7 +97,8 @@ enum class BlockType : std::uint8_t
         && blockType != BlockType::BlueOrchid && blockType != BlockType::Allium
         && blockType != BlockType::OxeyeDaisy && blockType != BlockType::BrownMushroom
         && blockType != BlockType::RedMushroom && blockType != BlockType::DeadBush
-        && blockType != BlockType::Vines && blockType != BlockType::CocoaPod;
+        && blockType != BlockType::Vines && blockType != BlockType::CocoaPod
+        && blockType != BlockType::Bamboo;
 }
 
 /// Blocks terrain generation may place directly into the base world columns.
@@ -141,6 +143,7 @@ enum class BlockType : std::uint8_t
         || blockType == BlockType::Allium || blockType == BlockType::OxeyeDaisy
         || blockType == BlockType::BrownMushroom || blockType == BlockType::RedMushroom
         || blockType == BlockType::DeadBush || blockType == BlockType::Vines
-        || blockType == BlockType::CocoaPod || blockType == BlockType::Melon;
+        || blockType == BlockType::CocoaPod || blockType == BlockType::Melon
+        || blockType == BlockType::Bamboo;
 }
 }  // namespace vibecraft::world

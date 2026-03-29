@@ -135,8 +135,8 @@ struct BlockMetadata
         };
     case BlockType::TreeCrown:
         return {
-            // Slight alpha makes leaves partially see-through while retaining atlas color.
-            .debugColor = 0xc8ffffff,
+            // Apply a temperate foliage tint (ABGR) so grayscale leaf textures render green.
+            .debugColor = 0xc84eb978,
             .textureTiles = {.top = 16, .bottom = 16, .side = 16},
             .hardness = 0.2f,
             .breakable = true,
@@ -150,8 +150,8 @@ struct BlockMetadata
         };
     case BlockType::JungleTreeCrown:
         return {
-            // Match leaf translucency used for regular tree canopies.
-            .debugColor = 0xc8ffffff,
+            // Lusher jungle foliage tint (ABGR), closer to Minecraft jungle biome look.
+            .debugColor = 0xc85aac38,
             .textureTiles = {.top = 60, .bottom = 60, .side = 60},
             .hardness = 0.2f,
             .breakable = true,
@@ -165,7 +165,8 @@ struct BlockMetadata
         };
     case BlockType::SnowTreeCrown:
         return {
-            .debugColor = 0xc8ffffff,
+            // Cooler spruce-like tint for snowy canopies (ABGR).
+            .debugColor = 0xc8548461,
             .textureTiles = {.top = 63, .bottom = 63, .side = 63},
             .hardness = 0.2f,
             .breakable = true,
@@ -351,7 +352,8 @@ struct BlockMetadata
         };
     case BlockType::Vines:
         return {
-            .debugColor = 0xffffffff,
+            // Match jungle canopy tint so hanging vines read as lush green instead of gray.
+            .debugColor = 0xc85aac38,
             .textureTiles = {.top = 57, .bottom = 57, .side = 57},
             .hardness = 0.0f,
             .breakable = true,
@@ -368,6 +370,13 @@ struct BlockMetadata
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 59, .bottom = 59, .side = 59},
             .hardness = 1.0f,
+            .breakable = true,
+        };
+    case BlockType::Bamboo:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 64, .bottom = 64, .side = 64},
+            .hardness = 0.2f,
             .breakable = true,
         };
     case BlockType::Air:

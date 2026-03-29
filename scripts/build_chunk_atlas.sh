@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Packs selected materials into chunk_atlas.png (128x128, 16x16 tiles, 8x8 grid)
+# Packs selected materials into chunk_atlas.png (128x144, 16x16 tiles, 8x9 grid)
 # and chunk_atlas.bgra for the renderer. Tile order must match BlockMetadata tile indices in code.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -65,7 +65,7 @@ resize_tile "${MAT}/emerald_ore.png" "${TMP}/t12.png"
 still_fluid_tile "${MAT}/lava_still.png" "${TMP}/t13.png"
 resize_tile "${MAT}/oak_log_top.png" "${TMP}/t14.png"
 resize_tile "${MAT}/oak_log.png" "${TMP}/t15.png"
-resize_tile "${MAT}/oak_leaves.png" "${TMP}/t16.png"
+tint_tile_green "${MAT}/oak_leaves.png" "${TMP}/t16.png" 42
 resize_tile "${MAT}/oak_planks.png" "${TMP}/t17.png"
 resize_tile "${MAT}/cobblestone.png" "${TMP}/t18.png"
 resize_tile "${MAT}/sandstone.png" "${TMP}/t19.png"
@@ -263,9 +263,9 @@ else
   resize_tile "${MAT}/sandstone.png" "${TMP}/t59.png"
 fi
 if [[ -f "${MAT}/jungle_leaves.png" ]]; then
-  resize_tile "${MAT}/jungle_leaves.png" "${TMP}/t60.png"
+  tint_tile_green "${MAT}/jungle_leaves.png" "${TMP}/t60.png" 60
 else
-  resize_tile "${MAT}/oak_leaves.png" "${TMP}/t60.png"
+  tint_tile_green "${MAT}/oak_leaves.png" "${TMP}/t60.png" 60
 fi
 if [[ -f "${MAT}/spruce_log_top.png" ]]; then
   resize_tile "${MAT}/spruce_log_top.png" "${TMP}/t61.png"
@@ -278,9 +278,18 @@ else
   resize_tile "${MAT}/oak_log.png" "${TMP}/t62.png"
 fi
 if [[ -f "${MAT}/spruce_leaves.png" ]]; then
-  resize_tile "${MAT}/spruce_leaves.png" "${TMP}/t63.png"
+  tint_tile_green "${MAT}/spruce_leaves.png" "${TMP}/t63.png" 28
 else
-  resize_tile "${MAT}/oak_leaves.png" "${TMP}/t63.png"
+  tint_tile_green "${MAT}/oak_leaves.png" "${TMP}/t63.png" 28
+fi
+
+# Row 9 head: bamboo.
+if [[ -f "${MAT}/bamboo_stalk.png" ]]; then
+  decorative_cutout_tile "${MAT}/bamboo_stalk.png" "${TMP}/t64.png"
+elif [[ -f "${MAT}/bamboo.png" ]]; then
+  decorative_cutout_tile "${MAT}/bamboo.png" "${TMP}/t64.png"
+else
+  decorative_cutout_tile "${MAT}/vine.png" "${TMP}/t64.png"
 fi
 
 magick montage \
@@ -293,8 +302,9 @@ magick montage \
   "${TMP}/t40.png" "${TMP}/t41.png" "${TMP}/t42.png" "${TMP}/t43.png" "${TMP}/t44.png" "${TMP}/t45.png" "${TMP}/t46.png" "${TMP}/t47.png" \
   "${TMP}/t48.png" "${TMP}/t49.png" "${TMP}/t50.png" "${TMP}/t51.png" "${TMP}/t52.png" "${TMP}/t53.png" "${TMP}/t54.png" "${TMP}/t55.png" \
   "${TMP}/t56.png" "${TMP}/t57.png" "${TMP}/t58.png" "${TMP}/t59.png" "${TMP}/t60.png" "${TMP}/t61.png" "${TMP}/t62.png" "${TMP}/t63.png" \
-  -tile 8x8 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
+  "${TMP}/t64.png" \
+  -tile 8x9 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
 
 magick "${OUT}/chunk_atlas.png" -depth 8 "BGRA:${OUT}/chunk_atlas.bgra"
 rm -rf "${TMP}"
-echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*128*4)) bytes)"
+echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*144*4)) bytes)"

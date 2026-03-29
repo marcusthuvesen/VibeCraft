@@ -422,6 +422,9 @@ struct RecipeDefinition
         r.push_back(makeSwordRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::Cobblestone, EquippedItem::StoneSword, true));
+        // Stone-tier: mined Stone/Deepslate drop as blocks; accept them like Cobblestone (Minecraft uses cobble).
+        r.push_back(makeSwordRecipe(BlockType::Stone, EquippedItem::StoneSword, true));
+        r.push_back(makeSwordRecipe(BlockType::Deepslate, EquippedItem::StoneSword, true));
         r.push_back(makeSwordRecipe(BlockType::IronOre, EquippedItem::IronSword, true));
         r.push_back(makeSwordRecipe(BlockType::GoldOre, EquippedItem::GoldSword, true));
         r.push_back(makeSwordRecipe(BlockType::DiamondOre, EquippedItem::DiamondSword, true));
@@ -431,6 +434,8 @@ struct RecipeDefinition
         r.push_back(makePickaxeRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::Cobblestone, EquippedItem::StonePickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::Stone, EquippedItem::StonePickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::Deepslate, EquippedItem::StonePickaxe));
         r.push_back(makePickaxeRecipe(BlockType::IronOre, EquippedItem::IronPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::GoldOre, EquippedItem::GoldPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondPickaxe));
@@ -445,6 +450,10 @@ struct RecipeDefinition
         r.push_back(makeAxeRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodAxe, true));
         r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe, false));
         r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::Stone, EquippedItem::StoneAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::Stone, EquippedItem::StoneAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::Deepslate, EquippedItem::StoneAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::Deepslate, EquippedItem::StoneAxe, true));
         r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe, false));
         r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe, true));
         r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe, false));
