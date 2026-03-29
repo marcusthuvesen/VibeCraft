@@ -2774,6 +2774,13 @@ void Application::processInput(const float deltaTimeSeconds)
                     clientSession_->sendInput(
                         {
                             .clientId = clientSession_->clientId(),
+                            .positionX = playerFeetPosition_.x,
+                            .positionY = playerFeetPosition_.y,
+                            .positionZ = playerFeetPosition_.z,
+                            .yawDelta = camera_.yawDegrees(),
+                            .pitchDelta = camera_.pitchDegrees(),
+                            .health = playerVitals_.health(),
+                            .air = playerVitals_.air(),
                             .breakBlock = true,
                             .targetX = command.position.x,
                             .targetY = command.position.y,
@@ -2835,6 +2842,13 @@ void Application::processInput(const float deltaTimeSeconds)
                 clientSession_->sendInput(
                     {
                         .clientId = clientSession_->clientId(),
+                        .positionX = playerFeetPosition_.x,
+                        .positionY = playerFeetPosition_.y,
+                        .positionZ = playerFeetPosition_.z,
+                        .yawDelta = camera_.yawDegrees(),
+                        .pitchDelta = camera_.pitchDegrees(),
+                        .health = playerVitals_.health(),
+                        .air = playerVitals_.air(),
                         .placeBlock = true,
                         .targetX = command.position.x,
                         .targetY = command.position.y,
@@ -4005,19 +4019,26 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                     }
                     else
                     {
-                        // Lightweight reconciliation to soften position snaps while converging quickly.
-                        playerFeetPosition_ = glm::mix(playerFeetPosition_, authoritativePosition, 0.4f);
-                        float yawDelta = player.yawDegrees - camera_.yawDegrees();
-                        while (yawDelta > 180.0f)
+                        // After join bootstrap the client is authoritative for its own movement,
+                        // so the host snapshot is effectively an echo of our earlier input.
+                        // Pulling toward it every frame adds visible lag and weakens jumping.
+                        const glm::vec3 authoritativeDelta = authoritativePosition - playerFeetPosition_;
+                        if (glm::dot(authoritativeDelta, authoritativeDelta) > 4.0f)
                         {
-                            yawDelta -= 360.0f;
+                            playerFeetPosition_ = authoritativePosition;
+                            verticalVelocity_ = 0.0f;
+                            accumulatedFallDistance_ = 0.0f;
+                            isGrounded_ = isGroundedAtFeetPosition(
+                                world_,
+                                playerFeetPosition_,
+                                kPlayerMovementSettings.standingColliderHeight);
+                            playerHazards_ = samplePlayerHazards(
+                                world_,
+                                playerFeetPosition_,
+                                kPlayerMovementSettings.standingColliderHeight,
+                                kPlayerMovementSettings.standingEyeHeight);
+                            camera_.setYawPitch(player.yawDegrees, player.pitchDegrees);
                         }
-                        while (yawDelta < -180.0f)
-                        {
-                            yawDelta += 360.0f;
-                        }
-                        const float pitchDelta = player.pitchDegrees - camera_.pitchDegrees();
-                        camera_.addYawPitch(yawDelta * 0.4f, pitchDelta * 0.4f);
                     }
                     camera_.setPosition(
                         playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
