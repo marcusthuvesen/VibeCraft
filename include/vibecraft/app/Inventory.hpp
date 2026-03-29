@@ -33,6 +33,7 @@ enum class EquippedItem : std::uint8_t
     IronAxe,
     GoldAxe,
     DiamondAxe,
+    Coal,
 };
 
 struct InventorySlot

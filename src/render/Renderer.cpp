@@ -360,6 +360,16 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     {
         featherTextureHandle_ = featherTexture.idx;
     }
+    const bgfx::TextureHandle coalTexture = detail::createTextureFromPng(
+        "textures/item/coal.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(coalTexture))
+    {
+        coalTextureHandle_ = coalTexture.idx;
+    }
 
     extendedToolTextureHandles_.fill(UINT16_MAX);
     static constexpr const char* const kExtendedToolTexturePaths[14] = {
@@ -599,6 +609,11 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toTextureHandle(featherTextureHandle_));
         featherTextureHandle_ = UINT16_MAX;
+    }
+    if (coalTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(coalTextureHandle_));
+        coalTextureHandle_ = UINT16_MAX;
     }
     {
         std::unordered_set<std::uint16_t> destroyedExtended;
@@ -890,6 +905,8 @@ std::uint16_t Renderer::hudItemKindTextureHandle(const HudItemKind kind) const
         return muttonTextureHandle_;
     case HudItemKind::Feather:
         return featherTextureHandle_;
+    case HudItemKind::Coal:
+        return coalTextureHandle_ != UINT16_MAX ? coalTextureHandle_ : stickTextureHandle_;
     case HudItemKind::WoodSword:
     case HudItemKind::StoneSword:
     case HudItemKind::IronSword:

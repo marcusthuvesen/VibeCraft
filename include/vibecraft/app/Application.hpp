@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -45,6 +46,15 @@ enum class MultiplayerRuntimeMode
     SinglePlayer,
     Host,
     Client,
+};
+
+enum class SpawnPreset : std::uint8_t
+{
+    Origin = 0,
+    North,
+    South,
+    East,
+    West,
 };
 
 class Application
@@ -145,6 +155,7 @@ class Application
     void applyChunkSnapshot(const vibecraft::multiplayer::protocol::ChunkSnapshotMessage& chunkMessage);
     void applyRemoteBlockEdit(const vibecraft::multiplayer::protocol::BlockEditEventMessage& editMessage);
     [[nodiscard]] vibecraft::multiplayer::protocol::ServerSnapshotMessage buildServerSnapshot() const;
+    [[nodiscard]] glm::vec3 findSafeMultiplayerJoinFeetPosition(const glm::vec3& anchorFeetPosition) const;
 
     void update(float deltaTimeSeconds);
     void processInput(float deltaTimeSeconds);
@@ -216,8 +227,12 @@ class Application
     bool pauseGameSettingsOpen_ = false;
     bool mobSpawningEnabled_ = true;
     bool mainMenuSoundSettingsOpen_ = false;
+    bool creativeModeEnabled_ = false;
+    SpawnPreset spawnPreset_ = SpawnPreset::Origin;
     float musicVolume_ = 0.85f;
     float sfxVolume_ = 1.0f;
+    bool creativeToggleKeyWasDown_ = false;
+    bool spawnPresetToggleKeyWasDown_ = false;
     float heldItemSwing_ = 0.0f;
     float footstepDistanceAccumulator_ = 0.0f;
     bool craftingKeyWasDown_ = false;

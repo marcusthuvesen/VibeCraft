@@ -7,10 +7,12 @@
 #include <glm/geometric.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <unordered_set>
@@ -569,6 +571,63 @@ void applyMeshSyncGpuData(
     return spawnFeetPosition;
 }
 
+[[nodiscard]] const char* spawnPresetLabel(const SpawnPreset preset)
+{
+    switch (preset)
+    {
+    case SpawnPreset::North:
+        return "Northlands";
+    case SpawnPreset::South:
+        return "Southlands";
+    case SpawnPreset::East:
+        return "Eastlands";
+    case SpawnPreset::West:
+        return "Westlands";
+    case SpawnPreset::Origin:
+    default:
+        return "Origin";
+    }
+}
+
+[[nodiscard]] SpawnPreset nextSpawnPreset(const SpawnPreset preset)
+{
+    switch (preset)
+    {
+    case SpawnPreset::Origin:
+        return SpawnPreset::North;
+    case SpawnPreset::North:
+        return SpawnPreset::South;
+    case SpawnPreset::South:
+        return SpawnPreset::East;
+    case SpawnPreset::East:
+        return SpawnPreset::West;
+    case SpawnPreset::West:
+    default:
+        return SpawnPreset::Origin;
+    }
+}
+
+[[nodiscard]] glm::vec3 preferredSpawnProbePosition(
+    const SpawnPreset preset,
+    const glm::vec3& fallbackCameraPosition)
+{
+    constexpr float kSpawnOffset = 420.0f;
+    switch (preset)
+    {
+    case SpawnPreset::North:
+        return glm::vec3(0.0f, fallbackCameraPosition.y, -kSpawnOffset);
+    case SpawnPreset::South:
+        return glm::vec3(0.0f, fallbackCameraPosition.y, kSpawnOffset);
+    case SpawnPreset::East:
+        return glm::vec3(kSpawnOffset, fallbackCameraPosition.y, 0.0f);
+    case SpawnPreset::West:
+        return glm::vec3(-kSpawnOffset, fallbackCameraPosition.y, 0.0f);
+    case SpawnPreset::Origin:
+    default:
+        return fallbackCameraPosition;
+    }
+}
+
 [[nodiscard]] bool movePlayerAxisWithCollision(
     const world::World& worldState,
     glm::vec3& feetPosition,
@@ -864,6 +923,8 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
         return BK::TreeCrown;
     case EquippedItem::Feather:
         return BK::Sand;
+    case EquippedItem::Coal:
+        return BK::CoalOre;
     case EquippedItem::WoodSword:
     case EquippedItem::WoodPickaxe:
     case EquippedItem::WoodAxe:
@@ -958,7 +1019,8 @@ template <std::size_t SlotCount>
 
 [[nodiscard]] bool canPlaceIntoCraftingGrid(const InventorySlot& slot)
 {
-    return slot.equippedItem == EquippedItem::None;
+    return slot.count > 0
+        && (slot.equippedItem != EquippedItem::None || slot.blockType != world::BlockType::Air);
 }
 
 [[nodiscard]] bool canReceiveCraftingOutput(
@@ -1238,7 +1300,7 @@ void Application::update(const float deltaTimeSeconds)
             dayNightSample.period,
             mobSpawningEnabled_,
             playerVitals_);
-        if (playerVitals_.health() + 0.001f < healthBeforeMobTick)
+        if (!creativeModeEnabled_ && playerVitals_.health() + 0.001f < healthBeforeMobTick)
         {
             soundEffects_.playPlayerHurt();
         }
@@ -1349,7 +1411,7 @@ void Application::update(const float deltaTimeSeconds)
 
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
-        frameDebugData.worldMobs.reserve(mobSpawnSystem_.mobs().size());
+        frameDebugData.worldMobs.reserve(mobSpawnSystem_.mobs().size() + remotePlayers_.size());
         for (const game::MobInstance& mob : mobSpawnSystem_.mobs())
         {
             frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
@@ -1358,6 +1420,17 @@ void Application::update(const float deltaTimeSeconds)
                 .halfWidth = mob.halfWidth,
                 .height = mob.height,
                 .mobKind = mob.kind,
+            });
+        }
+        constexpr float kDegreesToRadians = 0.01745329251994329577f;
+        for (const RemotePlayerState& remotePlayer : remotePlayers_)
+        {
+            frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
+                .feetPosition = remotePlayer.position,
+                .yawRadians = remotePlayer.yawDegrees * kDegreesToRadians,
+                .halfWidth = kPlayerMovementSettings.colliderHalfWidth,
+                .height = kPlayerMovementSettings.standingColliderHeight,
+                .mobKind = game::MobKind::HostileStalker,
             });
         }
     }
@@ -1383,10 +1456,13 @@ void Application::update(const float deltaTimeSeconds)
         frameDebugData.mainMenuActive = true;
         frameDebugData.mainMenuTimeSeconds = mainMenuTimeSeconds_;
         frameDebugData.mainMenuNotice = mainMenuNotice_;
+        frameDebugData.mainMenuCreativeModeEnabled = creativeModeEnabled_;
+        frameDebugData.mainMenuSpawnPresetLabel = spawnPresetLabel(spawnPreset_);
         const bgfx::Stats* const stats = bgfx::getStats();
         const std::uint16_t textWidth =
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
-        const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
+        const std::uint16_t textHeight =
+            stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
         if (mainMenuSoundSettingsOpen_)
         {
             frameDebugData.mainMenuSoundSettingsActive = true;
@@ -1475,7 +1551,8 @@ void Application::update(const float deltaTimeSeconds)
         const bgfx::Stats* const pauseStats = bgfx::getStats();
         const std::uint16_t pauseTextWidth =
             pauseStats != nullptr && pauseStats->textWidth > 0 ? pauseStats->textWidth : 100;
-        const std::uint16_t pauseTextHeight = pauseStats != nullptr ? pauseStats->textHeight : 30;
+        const std::uint16_t pauseTextHeight =
+            pauseStats != nullptr && pauseStats->textHeight > 0 ? pauseStats->textHeight : 30;
         if (pauseGameSettingsOpen_)
         {
             frameDebugData.pauseGameSettingsActive = true;
@@ -1672,7 +1749,22 @@ void Application::processInput(const float deltaTimeSeconds)
         const bgfx::Stats* const stats = bgfx::getStats();
         const std::uint16_t textWidth =
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
-        const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
+        const std::uint16_t textHeight =
+            stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
+        const bool creativeToggleKeyDown = inputState_.isKeyDown(SDL_SCANCODE_C);
+        const bool spawnPresetToggleKeyDown = inputState_.isKeyDown(SDL_SCANCODE_V);
+        if (creativeToggleKeyDown && !creativeToggleKeyWasDown_)
+        {
+            creativeModeEnabled_ = !creativeModeEnabled_;
+            mainMenuNotice_ = creativeModeEnabled_ ? "Creative mode enabled." : "Creative mode disabled.";
+        }
+        if (spawnPresetToggleKeyDown && !spawnPresetToggleKeyWasDown_)
+        {
+            spawnPreset_ = nextSpawnPreset(spawnPreset_);
+            mainMenuNotice_ = fmt::format("Spawn preset: {}", spawnPresetLabel(spawnPreset_));
+        }
+        creativeToggleKeyWasDown_ = creativeToggleKeyDown;
+        spawnPresetToggleKeyWasDown_ = spawnPresetToggleKeyDown;
 
         // Ignore early frames: launch/focus can deliver spurious releases, and dbg-text dimensions may
         // not match the first rendered menu until a couple of frames have passed.
@@ -1816,7 +1908,8 @@ void Application::processInput(const float deltaTimeSeconds)
                     mainMenuNotice_.clear();
                     break;
                 case 2:
-                    mainMenuNotice_ = "VibeCraft Realms is not available yet.";
+                    creativeModeEnabled_ = !creativeModeEnabled_;
+                    mainMenuNotice_ = creativeModeEnabled_ ? "Creative mode enabled." : "Creative mode disabled.";
                     break;
                 case 3:
                     mainMenuSoundSettingsOpen_ = true;
@@ -1826,10 +1919,12 @@ void Application::processInput(const float deltaTimeSeconds)
                     inputState_.quitRequested = true;
                     break;
                 case 5:
-                    mainMenuNotice_ = "Language selection is not available yet.";
+                    creativeModeEnabled_ = !creativeModeEnabled_;
+                    mainMenuNotice_ = creativeModeEnabled_ ? "Creative mode enabled." : "Creative mode disabled.";
                     break;
                 case 6:
-                    mainMenuNotice_ = "Accessibility options are not available yet.";
+                    spawnPreset_ = nextSpawnPreset(spawnPreset_);
+                    mainMenuNotice_ = fmt::format("Spawn preset: {}", spawnPresetLabel(spawnPreset_));
                     break;
                 default:
                     break;
@@ -1844,7 +1939,8 @@ void Application::processInput(const float deltaTimeSeconds)
         const bgfx::Stats* const stats = bgfx::getStats();
         const std::uint16_t textWidth =
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
-        const std::uint16_t textHeight = stats != nullptr ? stats->textHeight : 30;
+        const std::uint16_t textHeight =
+            stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
 
         if (inputState_.leftMouseClicked)
         {
@@ -2226,11 +2322,14 @@ void Application::processInput(const float deltaTimeSeconds)
     bool playerTookDamageThisFrame = false;
     if (landedThisFrame)
     {
-        const float healthBeforeLanding = playerVitals_.health();
-        static_cast<void>(playerVitals_.applyLandingImpact(accumulatedFallDistance_, playerHazards_.bodyInWater));
-        if (playerVitals_.health() + 0.001f < healthBeforeLanding)
+        if (!creativeModeEnabled_)
         {
-            playerTookDamageThisFrame = true;
+            const float healthBeforeLanding = playerVitals_.health();
+            static_cast<void>(playerVitals_.applyLandingImpact(accumulatedFallDistance_, playerHazards_.bodyInWater));
+            if (playerVitals_.health() + 0.001f < healthBeforeLanding)
+            {
+                playerTookDamageThisFrame = true;
+            }
         }
         accumulatedFallDistance_ = 0.0f;
         footstepDistanceAccumulator_ = 0.0f;
@@ -2281,11 +2380,19 @@ void Application::processInput(const float deltaTimeSeconds)
         footstepDistanceAccumulator_ = 0.0f;
     }
 
-    const float healthBeforeEnvironmentTick = playerVitals_.health();
-    playerVitals_.tickEnvironment(deltaTimeSeconds, playerHazards_);
-    if (playerVitals_.health() + 0.001f < healthBeforeEnvironmentTick)
+    if (!creativeModeEnabled_)
     {
-        playerTookDamageThisFrame = true;
+        const float healthBeforeEnvironmentTick = playerVitals_.health();
+        playerVitals_.tickEnvironment(deltaTimeSeconds, playerHazards_);
+        if (playerVitals_.health() + 0.001f < healthBeforeEnvironmentTick)
+        {
+            playerTookDamageThisFrame = true;
+        }
+    }
+    else
+    {
+        // Creative mode keeps vitals full and ignores environmental damage/air depletion.
+        playerVitals_.reset();
     }
     if (playerTookDamageThisFrame)
     {
@@ -2293,7 +2400,7 @@ void Application::processInput(const float deltaTimeSeconds)
     }
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, eyeHeight, 0.0f));
 
-    if (playerVitals_.isDead())
+    if (!creativeModeEnabled_ && playerVitals_.isDead())
     {
         respawnNotice_ = fmt::format("Respawned after {} damage.", game::damageCauseName(playerVitals_.lastDamageCause()));
         respawnPlayer();
@@ -2370,8 +2477,9 @@ void Application::processInput(const float deltaTimeSeconds)
             activeMiningState_.equippedBlockType = equippedBlockType;
             activeMiningState_.equippedItem = equippedItem;
             activeMiningState_.elapsedSeconds = 0.0f;
-            activeMiningState_.requiredSeconds =
-                miningDurationSeconds(raycastHit->blockType, equippedBlockType, equippedItem);
+            activeMiningState_.requiredSeconds = creativeModeEnabled_
+                ? 0.0f
+                : miningDurationSeconds(raycastHit->blockType, equippedBlockType, equippedItem);
             soundEffects_.playBlockDigTick(raycastHit->blockType);
             activeMiningState_.digSoundCooldownSeconds = 0.11f;
         }
@@ -2404,13 +2512,13 @@ void Application::processInput(const float deltaTimeSeconds)
                         {
                             for (std::uint32_t i = 0; i < slot.count; ++i)
                             {
-                                if (slot.equippedItem != EquippedItem::None)
+                                if (!creativeModeEnabled_ && slot.equippedItem != EquippedItem::None)
                                 {
                                     spawnDroppedItemAtPosition(
                                         slot.equippedItem,
                                         glm::vec3(raycastHit->solidBlock) + glm::vec3(0.5f, 0.4f, 0.5f));
                                 }
-                                else if (slot.blockType != world::BlockType::Air)
+                                else if (!creativeModeEnabled_ && slot.blockType != world::BlockType::Air)
                                 {
                                     spawnDroppedItemAtPosition(
                                         slot.blockType,
@@ -2421,7 +2529,10 @@ void Application::processInput(const float deltaTimeSeconds)
                         chestSlotsByPosition_.erase(chestIt);
                     }
                 }
-                spawnDroppedItem(raycastHit->blockType, raycastHit->solidBlock);
+                if (!creativeModeEnabled_)
+                {
+                    spawnDroppedItem(raycastHit->blockType, raycastHit->solidBlock);
+                }
                 soundEffects_.playBlockBreak(raycastHit->blockType);
                 if (hostSession_ != nullptr && hostSession_->running())
                 {
@@ -2479,7 +2590,10 @@ void Application::processInput(const float deltaTimeSeconds)
         };
         if (world_.applyEditCommand(command))
         {
-            consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+            if (!creativeModeEnabled_)
+            {
+                consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+            }
             soundEffects_.playBlockPlace(command.blockType);
             if (hostSession_ != nullptr && hostSession_->running())
             {
@@ -2517,6 +2631,17 @@ void Application::spawnDroppedItem(
     if (blockType == world::BlockType::Air || blockType == world::BlockType::Water
         || blockType == world::BlockType::Lava)
     {
+        return;
+    }
+
+    if (blockType == world::BlockType::CoalOre)
+    {
+        spawnDroppedItemAtPosition(
+            EquippedItem::Coal,
+            glm::vec3(
+                static_cast<float>(blockPosition.x) + 0.5f,
+                static_cast<float>(blockPosition.y) + 0.2f,
+                static_cast<float>(blockPosition.z) + 0.5f));
         return;
     }
 
@@ -3322,6 +3447,7 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
         const std::vector<multiplayer::protocol::ClientInputMessage> inputs = hostSession_->takePendingInputs();
         for (const multiplayer::protocol::ClientInputMessage& input : inputs)
         {
+            bool suppressPositionUpdateFromInput = false;
             auto remotePlayerIt = std::find_if(
                 remotePlayers_.begin(),
                 remotePlayers_.end(),
@@ -3331,23 +3457,26 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                 });
             if (remotePlayerIt == remotePlayers_.end())
             {
+                const glm::vec3 spawnFeetPosition = findSafeMultiplayerJoinFeetPosition(playerFeetPosition_);
                 remotePlayers_.push_back(RemotePlayerState{
                     .clientId = input.clientId,
-                    .position = {input.positionX, input.positionY, input.positionZ},
-                    .yawDegrees = input.yawDelta,
+                    .position = spawnFeetPosition,
+                    .yawDegrees = camera_.yawDegrees(),
                     .pitchDegrees = input.pitchDelta,
                     .health = input.health,
                     .air = input.air,
                 });
+                suppressPositionUpdateFromInput = true;
+                remotePlayerIt = std::prev(remotePlayers_.end());
             }
-            else
+            if (!suppressPositionUpdateFromInput)
             {
                 remotePlayerIt->position = {input.positionX, input.positionY, input.positionZ};
-                remotePlayerIt->yawDegrees = input.yawDelta;
-                remotePlayerIt->pitchDegrees = input.pitchDelta;
-                remotePlayerIt->health = input.health;
-                remotePlayerIt->air = input.air;
             }
+            remotePlayerIt->yawDegrees = input.yawDelta;
+            remotePlayerIt->pitchDegrees = input.pitchDelta;
+            remotePlayerIt->health = input.health;
+            remotePlayerIt->air = input.air;
 
             if (input.breakBlock)
             {
@@ -3510,6 +3639,58 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
     }
 }
 
+glm::vec3 Application::findSafeMultiplayerJoinFeetPosition(const glm::vec3& anchorFeetPosition) const
+{
+    const float colliderHeight = kPlayerMovementSettings.standingColliderHeight;
+    const float minDistance = kPlayerMovementSettings.colliderHalfWidth * 2.0f + 0.35f;
+    const float minDistanceSq = minDistance * minDistance;
+    const std::array<glm::vec2, 8> ringDirections{
+        glm::vec2{1.0f, 0.0f},
+        glm::vec2{0.7071f, 0.7071f},
+        glm::vec2{0.0f, 1.0f},
+        glm::vec2{-0.7071f, 0.7071f},
+        glm::vec2{-1.0f, 0.0f},
+        glm::vec2{-0.7071f, -0.7071f},
+        glm::vec2{0.0f, -1.0f},
+        glm::vec2{0.7071f, -0.7071f},
+    };
+
+    for (int radiusStep = 1; radiusStep <= 6; ++radiusStep)
+    {
+        const float radius = 1.8f + static_cast<float>(radiusStep - 1) * 0.9f;
+        for (const glm::vec2& direction : ringDirections)
+        {
+            const glm::vec3 candidateProbe{
+                anchorFeetPosition.x + direction.x * radius,
+                anchorFeetPosition.y,
+                anchorFeetPosition.z + direction.y * radius,
+            };
+            const glm::vec3 candidateFeet =
+                findInitialSpawnFeetPosition(world_, terrainGenerator_, candidateProbe, colliderHeight);
+            const glm::vec2 horizontalDelta{
+                candidateFeet.x - anchorFeetPosition.x,
+                candidateFeet.z - anchorFeetPosition.z,
+            };
+            if (glm::dot(horizontalDelta, horizontalDelta) < minDistanceSq)
+            {
+                continue;
+            }
+            if (game::collidesWithSolidBlock(world_, playerAabbAt(candidateFeet, colliderHeight)))
+            {
+                continue;
+            }
+            return candidateFeet;
+        }
+    }
+
+    const glm::vec3 fallbackProbe{
+        anchorFeetPosition.x + 2.2f,
+        anchorFeetPosition.y,
+        anchorFeetPosition.z,
+    };
+    return findInitialSpawnFeetPosition(world_, terrainGenerator_, fallbackProbe, colliderHeight);
+}
+
 void Application::beginSingleplayerLoad()
 {
     if (gameScreen_ != GameScreen::MainMenu || singleplayerLoadState_.active)
@@ -3589,7 +3770,8 @@ void Application::updateSingleplayerLoad()
         }
 
         const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
-        playerFeetPosition_ = findInitialSpawnFeetPosition(world_, terrainGenerator_, camera_.position(), spawnHeight);
+        const glm::vec3 spawnProbePosition = preferredSpawnProbePosition(spawnPreset_, camera_.position());
+        playerFeetPosition_ = findInitialSpawnFeetPosition(world_, terrainGenerator_, spawnProbePosition, spawnHeight);
         isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
         spawnFeetPosition_ = playerFeetPosition_;
         accumulatedFallDistance_ = 0.0f;

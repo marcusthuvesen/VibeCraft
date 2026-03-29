@@ -307,6 +307,20 @@ struct RecipeDefinition
                 .equippedItem = EquippedItem::None,
             },
         });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientItem(EquippedItem::Coal),
+                ingredientItem(EquippedItem::Stick),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Torch,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
 
         r.push_back(makeSwordRecipe(BlockType::OakPlanks, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::Cobblestone, EquippedItem::StoneSword, true));

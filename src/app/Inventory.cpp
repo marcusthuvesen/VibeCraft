@@ -108,7 +108,7 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
     case vibecraft::world::BlockType::Deepslate:
         return "Deepslate";
     case vibecraft::world::BlockType::CoalOre:
-        return "Coal";
+        return "Coal Ore";
     case vibecraft::world::BlockType::Sand:
         return "Sand";
     case vibecraft::world::BlockType::Bedrock:
@@ -141,6 +141,8 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Oven";
     case vibecraft::world::BlockType::Chest:
         return "Chest";
+    case vibecraft::world::BlockType::Torch:
+        return "Torch";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

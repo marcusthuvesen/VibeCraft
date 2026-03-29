@@ -88,6 +88,7 @@ enum class HudItemKind : std::uint8_t
     IronAxe,
     GoldAxe,
     DiamondAxe,
+    Coal,
 };
 
 struct FrameDebugData
@@ -153,6 +154,8 @@ struct FrameDebugData
     int mainMenuHoveredButton = -1;
     float mainMenuTimeSeconds = 0.0f;
     std::string mainMenuNotice;
+    bool mainMenuCreativeModeEnabled = false;
+    std::string mainMenuSpawnPresetLabel;
     bool mainMenuLoadingActive = false;
     float mainMenuLoadingProgress = 0.0f;
     std::string mainMenuLoadingLabel;
@@ -350,6 +353,7 @@ class Renderer
     std::uint16_t rawPorkchopTextureHandle_ = UINT16_MAX;
     std::uint16_t muttonTextureHandle_ = UINT16_MAX;
     std::uint16_t featherTextureHandle_ = UINT16_MAX;
+    std::uint16_t coalTextureHandle_ = UINT16_MAX;
     /// Optional textures for WoodSword..DiamondAxe (see HudItemKind); falls back in hudItemKindTextureHandle.
     std::array<std::uint16_t, 14> extendedToolTextureHandles_{};
     std::array<std::uint16_t, 10> blockBreakStageTextureHandles_{};

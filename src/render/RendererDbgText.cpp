@@ -916,10 +916,10 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
     dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.ruleRow), 0x08, ruleLine);
 
     const int hovered = frameDebugData.mainMenuHoveredButton;
-    static constexpr const char* const kMainMenuLabels[5] = {
+    const std::array<std::string, 5> mainMenuLabels{
         "Singleplayer",
         "Multiplayer",
-        "VibeCraft Realms  * !",
+        fmt::format("Creative mode: {}", frameDebugData.mainMenuCreativeModeEnabled ? "ON" : "OFF"),
         "Options...",
         "Quit game",
     };
@@ -930,7 +930,7 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
             menu.centerCol,
             menu.outerWidth,
             menu.buttonLineCount,
-            kMainMenuLabels[static_cast<std::size_t>(i)],
+            mainMenuLabels[static_cast<std::size_t>(i)],
             hovered == i);
     }
 
@@ -942,13 +942,13 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
             static_cast<std::uint16_t>(menu.centerCol - 6),
             static_cast<std::uint16_t>(menu.iconHintsRow),
             iconAttrG,
-            "[G]");
+            "[C]");
     }
     bgfx::dbgTextPrintf(
         static_cast<std::uint16_t>(menu.centerCol + menu.outerWidth - 3),
         static_cast<std::uint16_t>(menu.iconHintsRow),
         iconAttrA,
-        "[A]");
+        "[V]");
 
     const bool splashBright =
         static_cast<int>(frameDebugData.mainMenuTimeSeconds * 3.0f) % 2 == 0;
@@ -966,7 +966,12 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
         dbgTextPrintfCenteredRow(noticeRow, 0x07, frameDebugData.mainMenuNotice);
     }
 
-    dbgTextPrintfCenteredRow(footerRow, 0x07, "Tab: capture mouse   Esc: pause menu");
+    dbgTextPrintfCenteredRow(
+        footerRow,
+        0x07,
+        fmt::format(
+            "Spawn preset: {}   C/[C]: creative   V/[V]: cycle spawn",
+            frameDebugData.mainMenuSpawnPresetLabel.empty() ? "Origin" : frameDebugData.mainMenuSpawnPresetLabel));
 }
 
 void drawPauseMenuFramedButton(

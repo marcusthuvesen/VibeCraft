@@ -44,6 +44,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
+    case BlockType::Torch:
         return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {
@@ -121,6 +122,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
+    case BlockType::Torch:
         step.assign(
             {"block/wood/step1.ogg",
              "block/wood/step2.ogg",
@@ -183,6 +185,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
+    case BlockType::Torch:
         return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {

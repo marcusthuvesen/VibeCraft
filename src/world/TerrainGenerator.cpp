@@ -89,20 +89,21 @@ struct ColumnContext
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    const double baseTemperature = noise::fbmNoise2d(worldXd, worldZd, 256.0, 4, 0x8b4d1e29U) * 2.0 - 1.0;
-    const double variation = noise::valueNoise2d(worldXd + 73.0, worldZd - 59.0, 96.0, 0x1c0f3aa7U) * 2.0 - 1.0;
+    // Use tighter climate scales so biomes shift more frequently across explored terrain.
+    const double baseTemperature = noise::fbmNoise2d(worldXd, worldZd, 132.0, 4, 0x8b4d1e29U) * 2.0 - 1.0;
+    const double variation = noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 54.0, 3, 0x1c0f3aa7U) * 2.0 - 1.0;
     const double altitudeCooling = std::clamp(
         static_cast<double>(surfaceHeight - kSeaLevel) / 120.0,
         0.0,
         0.55);
-    return baseTemperature + variation * 0.22 - altitudeCooling;
+    return baseTemperature + variation * 0.33 - altitudeCooling;
 }
 
 [[nodiscard]] double biomeHumidityAt(const int worldX, const int worldZ)
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 210.0, 4, 0x32a7f1c4U) * 2.0 - 1.0;
+    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 118.0, 4, 0x32a7f1c4U) * 2.0 - 1.0;
 }
 
 [[nodiscard]] ColumnBiome columnBiomeAt(const int worldX, const int worldZ, const int surfaceHeight)
@@ -114,15 +115,15 @@ struct ColumnContext
 
     const double temperature = biomeTemperatureAt(worldX, worldZ, surfaceHeight);
     const double humidity = biomeHumidityAt(worldX, worldZ);
-    if (surfaceHeight <= kSandSurfaceMaxHeight && temperature > 0.28 && humidity < -0.08)
+    if (surfaceHeight <= kSandSurfaceMaxHeight && temperature > 0.22 && humidity < -0.04)
     {
         return ColumnBiome::Sandy;
     }
-    if (temperature < -0.20 && humidity > -0.02)
+    if (temperature < -0.12 && humidity > -0.05)
     {
         return ColumnBiome::Snowy;
     }
-    if (temperature > 0.24 && humidity > 0.18)
+    if (temperature > 0.16 && humidity > 0.12)
     {
         return ColumnBiome::Jungle;
     }

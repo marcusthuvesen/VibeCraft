@@ -29,7 +29,8 @@ enum class BlockType : std::uint8_t
     Oven,
     Chest,
     SnowGrass,
-    JungleGrass
+    JungleGrass,
+    Torch
 };
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)
@@ -39,7 +40,8 @@ enum class BlockType : std::uint8_t
 
 [[nodiscard]] constexpr bool isSolid(const BlockType blockType)
 {
-    return blockType != BlockType::Air && !isFluid(blockType);
+    return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::TreeCrown
+        && blockType != BlockType::Torch;
 }
 
 [[nodiscard]] constexpr bool isRenderable(const BlockType blockType)
@@ -49,6 +51,7 @@ enum class BlockType : std::uint8_t
 
 [[nodiscard]] constexpr bool occludesFaces(const BlockType blockType)
 {
-    return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::TreeCrown;
+    return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::TreeCrown
+        && blockType != BlockType::Torch;
 }
 }  // namespace vibecraft::world

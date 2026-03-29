@@ -33,7 +33,8 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         drawMainMenuLogo();
         bgfx::dbgTextClear();
         const bgfx::Stats* const menuStats = bgfx::getStats();
-        const std::uint16_t menuTextHeight = menuStats != nullptr ? menuStats->textHeight : 30;
+        const std::uint16_t menuTextHeight =
+            menuStats != nullptr && menuStats->textHeight > 0 ? menuStats->textHeight : 30;
         const std::uint16_t menuTextWidth =
             menuStats != nullptr && menuStats->textWidth > 0 ? menuStats->textWidth : 100;
         detail::drawMainMenuOverlay(frameDebugData, menuTextWidth, menuTextHeight);
@@ -216,7 +217,8 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
 
     bgfx::dbgTextClear();
     const bgfx::Stats* const bgfxStats = bgfx::getStats();
-    const std::uint16_t textHeight = bgfxStats != nullptr ? bgfxStats->textHeight : 30;
+    const std::uint16_t textHeight =
+        bgfxStats != nullptr && bgfxStats->textHeight > 0 ? bgfxStats->textHeight : 30;
     const std::uint16_t textWidthForHud =
         bgfxStats != nullptr && bgfxStats->textWidth > 0 ? bgfxStats->textWidth : 100;
 

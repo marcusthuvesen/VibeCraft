@@ -252,6 +252,18 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     CHECK(stickMatch->output.equippedItem == EquippedItem::Stick);
     CHECK(stickMatch->output.count == 4);
 
+    CraftingGridSlots torchGrid{};
+    torchGrid[0].equippedItem = EquippedItem::Coal;
+    torchGrid[0].count = 1;
+    torchGrid[3].equippedItem = EquippedItem::Stick;
+    torchGrid[3].count = 1;
+    const auto torchMatch = vibecraft::app::evaluateCraftingGrid(
+        torchGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(torchMatch.has_value());
+    CHECK(torchMatch->output.blockType == BlockType::Torch);
+    CHECK(torchMatch->output.count == 4);
+
     CraftingGridSlots sandstoneGrid{};
     sandstoneGrid[0].blockType = BlockType::Sand;
     sandstoneGrid[0].count = 1;

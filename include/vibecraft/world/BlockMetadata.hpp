@@ -200,6 +200,14 @@ struct BlockMetadata
             .hardness = 0.7f,
             .breakable = true,
         };
+    case BlockType::Torch:
+        // Reuse oak planks tile until dedicated torch atlas tile is added.
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 17, .bottom = 17, .side = 17},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
     case BlockType::Air:
     default:
         return {};
