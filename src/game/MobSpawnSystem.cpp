@@ -77,6 +77,8 @@ struct MobDimensionsForKind
     {
     case MobKind::HostileStalker:
         return 20.0f;
+    case MobKind::Player:
+        return 20.0f;
     case MobKind::Cow:
         return 10.0f;
     case MobKind::Pig:
@@ -95,6 +97,8 @@ struct MobDimensionsForKind
     {
     case MobKind::HostileStalker:
         return {.halfWidth = 0.28f, .height = 1.75f};
+    case MobKind::Player:
+        return {.halfWidth = 0.30f, .height = 2.0f};
     case MobKind::Cow:
         return {.halfWidth = 0.46f, .height = 1.48f};
     case MobKind::Pig:

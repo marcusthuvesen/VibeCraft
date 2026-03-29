@@ -133,6 +133,10 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Jungle Trunk";
     case vibecraft::world::BlockType::JungleTreeCrown:
         return "Jungle Leaves";
+    case vibecraft::world::BlockType::SnowTreeTrunk:
+        return "Spruce Trunk";
+    case vibecraft::world::BlockType::SnowTreeCrown:
+        return "Spruce Leaves";
     case vibecraft::world::BlockType::OakPlanks:
         return "Oak Planks";
     case vibecraft::world::BlockType::CraftingTable:
@@ -177,6 +181,14 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Brown Mushroom";
     case vibecraft::world::BlockType::RedMushroom:
         return "Red Mushroom";
+    case vibecraft::world::BlockType::DeadBush:
+        return "Dead Bush";
+    case vibecraft::world::BlockType::Vines:
+        return "Vines";
+    case vibecraft::world::BlockType::CocoaPod:
+        return "Cocoa Pod";
+    case vibecraft::world::BlockType::Melon:
+        return "Melon";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

@@ -381,11 +381,13 @@ class Renderer
     std::uint16_t inventoryUiSolidProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSamplerHandle_ = UINT16_MAX;
     std::uint16_t hostileMobTextureHandle_ = UINT16_MAX;
+    std::uint16_t playerMobTextureHandle_ = UINT16_MAX;
     std::uint16_t cowMobTextureHandle_ = UINT16_MAX;
     std::uint16_t pigMobTextureHandle_ = UINT16_MAX;
     std::uint16_t sheepMobTextureHandle_ = UINT16_MAX;
     std::uint16_t chickenMobTextureHandle_ = UINT16_MAX;
     TextureUvRect hostileMobTextureUv_{};
+    TextureUvRect playerMobTextureUv_{};
     TextureUvRect cowMobTextureUv_{};
     TextureUvRect pigMobTextureUv_{};
     TextureUvRect sheepMobTextureUv_{};

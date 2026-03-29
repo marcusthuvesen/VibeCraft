@@ -95,6 +95,7 @@ struct ModelPartSpec
     switch (mobKind)
     {
     case MK::HostileStalker:
+    case MK::Player:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 8.0f, 12.0f, 4.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
@@ -141,6 +142,7 @@ struct ModelPartSpec
     switch (mobKind)
     {
     case MK::HostileStalker:
+    case MK::Player:
         return 32.0f;
     case MK::Cow:
         return 20.0f;
@@ -160,6 +162,7 @@ struct ModelPartSpec
     switch (mobKind)
     {
     case MK::HostileStalker:
+    case MK::Player:
         return 6.0f;
     case MK::Cow:
         return 6.0f;
@@ -1162,6 +1165,25 @@ void Renderer::drawWorldMobSprites(
         using MK = vibecraft::game::MobKind;
         switch (mob.mobKind)
         {
+        case MK::Player:
+        {
+            // Player silhouette/proportions match classic Minecraft character dimensions.
+            constexpr float kPi = 3.14159265358979323846f;
+            const float gaitPhase = cameraFrameData.weatherTimeSeconds * 3.1f
+                + mob.feetPosition.x * 0.19f
+                + mob.feetPosition.z * 0.16f;
+            const float armSwing = std::sin(gaitPhase) * 1.25f;
+            const float legSwing = std::sin(gaitPhase + kPi) * 1.1f;
+            const float bodyBob = std::abs(std::sin(gaitPhase * 2.0f)) * 0.2f;
+
+            if (!submitCuboid(glm::vec3(0.0f, 18.0f + bodyBob, 0.0f), glm::vec3(4.0f, 6.0f, 2.0f), uv.body)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 28.0f + bodyBob, 0.0f), glm::vec3(4.0f, 4.0f, 4.0f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(-6.0f, 18.0f + bodyBob, armSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(6.0f, 18.0f + bodyBob, -armSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(-2.0f, 6.0f, legSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.0f, 6.0f, -legSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
+            break;
+        }
         case MK::HostileStalker:
         {
             // A mild procedural walk cycle makes hostile mobs read as "alive" without a full skeleton.

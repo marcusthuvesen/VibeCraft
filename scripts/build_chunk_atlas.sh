@@ -242,18 +242,46 @@ if [[ -f "${MAT}/red_mushroom.png" ]]; then
 else
   resize_tile "${MAT}/grass_block_top.png" "${TMP}/t55.png"
 fi
-resize_tile "${MAT}/stone_bricks.png" "${TMP}/t56.png"
-resize_tile "${MAT}/granite.png" "${TMP}/t57.png"
-resize_tile "${MAT}/diorite.png" "${TMP}/t58.png"
-resize_tile "${MAT}/andesite.png" "${TMP}/t59.png"
+if [[ -f "${MAT}/dead_bush.png" ]]; then
+  decorative_cutout_tile "${MAT}/dead_bush.png" "${TMP}/t56.png"
+else
+  decorative_cutout_tile "${MAT}/brown_mushroom.png" "${TMP}/t56.png"
+fi
+if [[ -f "${MAT}/vine.png" ]]; then
+  decorative_cutout_tile "${MAT}/vine.png" "${TMP}/t57.png"
+else
+  decorative_cutout_tile "${MAT}/grass_block_side_overlay.png" "${TMP}/t57.png"
+fi
+if [[ -f "${MAT}/cocoa_stage2.png" ]]; then
+  resize_tile "${MAT}/cocoa_stage2.png" "${TMP}/t58.png"
+else
+  resize_tile "${MAT}/brown_mushroom.png" "${TMP}/t58.png"
+fi
+if [[ -f "${MAT}/melon_side.png" ]]; then
+  resize_tile "${MAT}/melon_side.png" "${TMP}/t59.png"
+else
+  resize_tile "${MAT}/sandstone.png" "${TMP}/t59.png"
+fi
 if [[ -f "${MAT}/jungle_leaves.png" ]]; then
   resize_tile "${MAT}/jungle_leaves.png" "${TMP}/t60.png"
 else
   resize_tile "${MAT}/oak_leaves.png" "${TMP}/t60.png"
 fi
-resize_tile "${MAT}/mossy_cobblestone.png" "${TMP}/t61.png"
-resize_tile "${MAT}/sandstone.png" "${TMP}/t62.png"
-resize_tile "${MAT}/stone.png" "${TMP}/t63.png"
+if [[ -f "${MAT}/spruce_log_top.png" ]]; then
+  resize_tile "${MAT}/spruce_log_top.png" "${TMP}/t61.png"
+else
+  resize_tile "${MAT}/oak_log_top.png" "${TMP}/t61.png"
+fi
+if [[ -f "${MAT}/spruce_log.png" ]]; then
+  resize_tile "${MAT}/spruce_log.png" "${TMP}/t62.png"
+else
+  resize_tile "${MAT}/oak_log.png" "${TMP}/t62.png"
+fi
+if [[ -f "${MAT}/spruce_leaves.png" ]]; then
+  resize_tile "${MAT}/spruce_leaves.png" "${TMP}/t63.png"
+else
+  resize_tile "${MAT}/oak_leaves.png" "${TMP}/t63.png"
+fi
 
 magick montage \
   "${TMP}/t00.png" "${TMP}/t01.png" "${TMP}/t02.png" "${TMP}/t03.png" "${TMP}/t04.png" "${TMP}/t05.png" \

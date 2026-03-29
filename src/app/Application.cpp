@@ -26,6 +26,19 @@
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
+#if !defined(NDEBUG) || defined(VIBECRAFT_DEBUG_MULTIPLAYER_JOIN)
+template<typename... Args>
+void logMultiplayerJoinDiag(fmt::format_string<Args...> fmtStr, Args&&... args)
+{
+    vibecraft::core::logInfo(fmt::format("[mp-join] {}", fmt::format(fmtStr, std::forward<Args>(args)...)));
+}
+#else
+template<typename... Args>
+void logMultiplayerJoinDiag(fmt::format_string<Args...>, Args&&...)
+{
+}
+#endif
+
 namespace vibecraft::app
 {
 namespace
@@ -102,7 +115,9 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         || blockType == world::BlockType::Cactus || blockType == world::BlockType::Dandelion
         || blockType == world::BlockType::Poppy || blockType == world::BlockType::BlueOrchid
         || blockType == world::BlockType::Allium || blockType == world::BlockType::OxeyeDaisy
-        || blockType == world::BlockType::BrownMushroom || blockType == world::BlockType::RedMushroom;
+        || blockType == world::BlockType::BrownMushroom || blockType == world::BlockType::RedMushroom
+        || blockType == world::BlockType::DeadBush || blockType == world::BlockType::Vines
+        || blockType == world::BlockType::CocoaPod || blockType == world::BlockType::Melon;
 }
 
 [[nodiscard]] bool isStoneFamilyBlockType(const world::BlockType blockType)
@@ -120,6 +135,8 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
     return blockType == world::BlockType::TreeTrunk || blockType == world::BlockType::TreeCrown
         || blockType == world::BlockType::JungleTreeTrunk
         || blockType == world::BlockType::JungleTreeCrown
+        || blockType == world::BlockType::SnowTreeTrunk
+        || blockType == world::BlockType::SnowTreeCrown
         || blockType == world::BlockType::Bookshelf;
 }
 
@@ -1003,6 +1020,8 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
     {
     case MK::HostileStalker:
         return EquippedItem::RottenFlesh;
+    case MK::Player:
+        return EquippedItem::None;
     case MK::Cow:
         return EquippedItem::Leather;
     case MK::Pig:
@@ -1542,9 +1561,9 @@ void Application::update(const float deltaTimeSeconds)
             frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
                 .feetPosition = remotePlayer.position,
                 .yawRadians = remotePlayer.yawDegrees * kDegreesToRadians,
-                .halfWidth = kPlayerMovementSettings.colliderHalfWidth,
-                .height = kPlayerMovementSettings.standingColliderHeight,
-                .mobKind = game::MobKind::HostileStalker,
+                .halfWidth = 0.30f,
+                .height = 2.0f,
+                .mobKind = game::MobKind::Player,
             });
         }
     }
@@ -3321,7 +3340,6 @@ bool Application::startHostSession()
     clientChunkSyncCoordsById_.clear();
     clientChunkSyncCursorById_.clear();
     clientChunkSyncCenterById_.clear();
-    clientSpawnLockFramesById_.clear();
     remotePlayers_.clear();
     multiplayerStatusLine_ = fmt::format("hosting on :{}", multiplayerPort_);
     return true;
@@ -3365,7 +3383,6 @@ void Application::stopMultiplayerSessions()
     clientChunkSyncCoordsById_.clear();
     clientChunkSyncCursorById_.clear();
     clientChunkSyncCenterById_.clear();
-    clientSpawnLockFramesById_.clear();
 }
 
 std::filesystem::path Application::multiplayerPrefsPath() const
@@ -3540,6 +3557,14 @@ void Application::beginClientJoinLoad()
         return;
     }
 
+    clientJoinLoadDebugFrame_ = 0;
+    clientJoinLoggedFirstChunkSummary_ = false;
+    clientJoinAuthoritativeSnapLogsRemaining_ = 8;
+    logMultiplayerJoinDiag(
+        "beginClientJoinLoad -> {}:{} (local world cleared, awaiting snapshots + authoritative spawn)",
+        multiplayerAddress_,
+        multiplayerPort_);
+
     pendingHostStartAfterWorldLoad_ = false;
     pendingClientJoinAfterWorldLoad_ = true;
     singleplayerLoadState_.active = true;
@@ -3579,15 +3604,13 @@ void Application::sendInitialWorldToClient(const std::uint16_t clientId)
 
 void Application::applyChunkSnapshot(const multiplayer::protocol::ChunkSnapshotMessage& chunkMessage)
 {
-    world::World::ChunkMap chunks = world_.chunks();
     world::Chunk chunk(chunkMessage.coord);
     auto& storage = chunk.mutableBlockStorage();
     for (std::size_t i = 0; i < storage.size(); ++i)
     {
         storage[i] = static_cast<world::BlockType>(chunkMessage.blocks[i]);
     }
-    chunks[chunkMessage.coord] = std::move(chunk);
-    world_.replaceChunks(std::move(chunks));
+    world_.replaceChunk(std::move(chunk));
 }
 
 void Application::applyRemoteBlockEdit(const multiplayer::protocol::BlockEditEventMessage& editMessage)
@@ -3656,6 +3679,8 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
     if (hostSession_ != nullptr && hostSession_->running())
     {
         hostSession_->poll();
+        std::unordered_set<std::uint16_t> activeClientIds;
+        activeClientIds.reserve(hostSession_->clients().size());
         const auto rebuildChunkSyncList = [this](const std::uint16_t clientId, const world::ChunkCoord& centerChunk)
         {
             std::vector<world::ChunkCoord> coords;
@@ -3701,13 +3726,43 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
         constexpr std::size_t kChunkSnapshotsPerClientPerFrame = 2;
         for (const multiplayer::ConnectedClient& client : hostSession_->clients())
         {
-            const auto remotePlayerIt = std::find_if(
+            activeClientIds.insert(client.clientId);
+            auto remotePlayerIt = std::find_if(
                 remotePlayers_.begin(),
                 remotePlayers_.end(),
                 [&client](const RemotePlayerState& remote)
                 {
                     return remote.clientId == client.clientId;
                 });
+            if (remotePlayerIt == remotePlayers_.end())
+            {
+                const glm::vec3 spawnFeetPosition = findSafeMultiplayerJoinFeetPosition(playerFeetPosition_);
+                remotePlayers_.push_back(RemotePlayerState{
+                    .clientId = client.clientId,
+                    .position = spawnFeetPosition,
+                    .yawDegrees = camera_.yawDegrees(),
+                    .pitchDegrees = camera_.pitchDegrees(),
+                    .health = 20.0f,
+                    .air = 10.0f,
+                });
+                remotePlayerIt = std::prev(remotePlayers_.end());
+                const world::ChunkCoord spawnChunk = world::worldToChunkCoord(
+                    static_cast<int>(std::floor(spawnFeetPosition.x)),
+                    static_cast<int>(std::floor(spawnFeetPosition.z)));
+                logMultiplayerJoinDiag(
+                    "host: new client id {} spawn feet ({:.2f},{:.2f},{:.2f}) chunk ({},{})  host feet ({:.2f},{:.2f},{:.2f})  "
+                    "chunks in host world {}",
+                    client.clientId,
+                    spawnFeetPosition.x,
+                    spawnFeetPosition.y,
+                    spawnFeetPosition.z,
+                    spawnChunk.x,
+                    spawnChunk.z,
+                    playerFeetPosition_.x,
+                    playerFeetPosition_.y,
+                    playerFeetPosition_.z,
+                    world_.chunks().size());
+            }
             const world::ChunkCoord centerChunk = remotePlayerIt != remotePlayers_.end()
                 ? world::worldToChunkCoord(
                     static_cast<int>(std::floor(remotePlayerIt->position.x)),
@@ -3756,7 +3811,6 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
         const std::vector<multiplayer::protocol::ClientInputMessage> inputs = hostSession_->takePendingInputs();
         for (const multiplayer::protocol::ClientInputMessage& input : inputs)
         {
-            bool suppressPositionUpdateFromInput = false;
             auto remotePlayerIt = std::find_if(
                 remotePlayers_.begin(),
                 remotePlayers_.end(),
@@ -3775,13 +3829,9 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                     .health = input.health,
                     .air = input.air,
                 });
-                suppressPositionUpdateFromInput = true;
                 remotePlayerIt = std::prev(remotePlayers_.end());
             }
-            if (!suppressPositionUpdateFromInput)
-            {
-                remotePlayerIt->position = {input.positionX, input.positionY, input.positionZ};
-            }
+            remotePlayerIt->position = {input.positionX, input.positionY, input.positionZ};
             remotePlayerIt->yawDegrees = input.yawDelta;
             remotePlayerIt->pitchDegrees = input.pitchDelta;
             remotePlayerIt->health = input.health;
@@ -3842,6 +3892,29 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
 
         multiplayerStatusLine_ =
             fmt::format("host {} client(s) @{}", hostSession_->clients().size(), multiplayerPort_);
+
+        for (auto it = clientChunkSyncCoordsById_.begin(); it != clientChunkSyncCoordsById_.end();)
+        {
+            if (activeClientIds.contains(it->first))
+            {
+                ++it;
+            }
+            else
+            {
+                clientChunkSyncCursorById_.erase(it->first);
+                clientChunkSyncCenterById_.erase(it->first);
+                it = clientChunkSyncCoordsById_.erase(it);
+            }
+        }
+        remotePlayers_.erase(
+            std::remove_if(
+                remotePlayers_.begin(),
+                remotePlayers_.end(),
+                [&activeClientIds](const RemotePlayerState& state)
+                {
+                    return !activeClientIds.contains(state.clientId);
+                }),
+            remotePlayers_.end());
     }
 
     if (clientSession_ != nullptr)
@@ -3891,8 +3964,61 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                 if (player.clientId == localClientId_)
                 {
                     const glm::vec3 authoritativePosition{player.posX, player.posY, player.posZ};
-                    // Lightweight reconciliation to soften position snaps while converging quickly.
-                    playerFeetPosition_ = glm::mix(playerFeetPosition_, authoritativePosition, 0.4f);
+                    if (pendingClientJoinAfterWorldLoad_)
+                    {
+                        if (clientJoinAuthoritativeSnapLogsRemaining_ > 0)
+                        {
+                            --clientJoinAuthoritativeSnapLogsRemaining_;
+                            const world::ChunkCoord authChunk = world::worldToChunkCoord(
+                                static_cast<int>(std::floor(authoritativePosition.x)),
+                                static_cast<int>(std::floor(authoritativePosition.z)));
+                            logMultiplayerJoinDiag(
+                                "client: authoritative snap during join ({} left) feet ({:.2f},{:.2f},{:.2f}) chunk "
+                                "({},{}) yaw {:.1f} pitch {:.1f} worldChunks {} tick {}",
+                                static_cast<int>(clientJoinAuthoritativeSnapLogsRemaining_),
+                                authoritativePosition.x,
+                                authoritativePosition.y,
+                                authoritativePosition.z,
+                                authChunk.x,
+                                authChunk.z,
+                                player.yawDegrees,
+                                player.pitchDegrees,
+                                world_.chunks().size(),
+                                latest.serverTick);
+                        }
+                        // During join bootstrap, snap to the host-authoritative spawn so chunk loading
+                        // targets the same area the host chose for this client.
+                        playerFeetPosition_ = authoritativePosition;
+                        spawnFeetPosition_ = authoritativePosition;
+                        verticalVelocity_ = 0.0f;
+                        accumulatedFallDistance_ = 0.0f;
+                        isGrounded_ = isGroundedAtFeetPosition(
+                            world_,
+                            playerFeetPosition_,
+                            kPlayerMovementSettings.standingColliderHeight);
+                        playerHazards_ = samplePlayerHazards(
+                            world_,
+                            playerFeetPosition_,
+                            kPlayerMovementSettings.standingColliderHeight,
+                            kPlayerMovementSettings.standingEyeHeight);
+                        camera_.setYawPitch(player.yawDegrees, player.pitchDegrees);
+                    }
+                    else
+                    {
+                        // Lightweight reconciliation to soften position snaps while converging quickly.
+                        playerFeetPosition_ = glm::mix(playerFeetPosition_, authoritativePosition, 0.4f);
+                        float yawDelta = player.yawDegrees - camera_.yawDegrees();
+                        while (yawDelta > 180.0f)
+                        {
+                            yawDelta -= 360.0f;
+                        }
+                        while (yawDelta < -180.0f)
+                        {
+                            yawDelta += 360.0f;
+                        }
+                        const float pitchDelta = player.pitchDegrees - camera_.pitchDegrees();
+                        camera_.addYawPitch(yawDelta * 0.4f, pitchDelta * 0.4f);
+                    }
                     camera_.setPosition(
                         playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
                     continue;
@@ -3922,19 +4048,22 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
 
         if (clientSession_->connected())
         {
-            clientSession_->sendInput(
-                {
-                    .clientId = localClientId_,
-                    .dtSeconds = deltaTimeSeconds,
-                    .positionX = playerFeetPosition_.x,
-                    .positionY = playerFeetPosition_.y,
-                    .positionZ = playerFeetPosition_.z,
-                    .yawDelta = camera_.yawDegrees(),
-                    .pitchDelta = camera_.pitchDegrees(),
-                    .health = playerVitals_.health(),
-                    .air = playerVitals_.air(),
-                },
-                networkServerTick_);
+            if (!pendingClientJoinAfterWorldLoad_)
+            {
+                clientSession_->sendInput(
+                    {
+                        .clientId = localClientId_,
+                        .dtSeconds = deltaTimeSeconds,
+                        .positionX = playerFeetPosition_.x,
+                        .positionY = playerFeetPosition_.y,
+                        .positionZ = playerFeetPosition_.z,
+                        .yawDelta = camera_.yawDegrees(),
+                        .pitchDelta = camera_.pitchDegrees(),
+                        .health = playerVitals_.health(),
+                        .air = playerVitals_.air(),
+                    },
+                    networkServerTick_);
+            }
             multiplayerStatusLine_ = fmt::format("client id {} -> {}:{}", localClientId_, multiplayerAddress_, multiplayerPort_);
         }
         else if (clientSession_->connecting())
@@ -4002,6 +4131,7 @@ glm::vec3 Application::findSafeMultiplayerJoinFeetPosition(const glm::vec3& anch
 
 void Application::clearClientWorldAwaitingHostChunks()
 {
+    logMultiplayerJoinDiag("clearClientWorldAwaitingHostChunks (drop resident meshes + empty chunk map)");
     std::vector<std::uint64_t> removedMeshIds(residentChunkMeshIds_.begin(), residentChunkMeshIds_.end());
     if (!removedMeshIds.empty())
     {
@@ -4061,7 +4191,6 @@ void Application::beginSingleplayerLoad()
     clientChunkSyncCoordsById_.clear();
     clientChunkSyncCursorById_.clear();
     clientChunkSyncCenterById_.clear();
-    clientSpawnLockFramesById_.clear();
     mobSpawnSystem_.clearAllMobs();
     applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
     bagSlots_.fill({});
@@ -4083,6 +4212,7 @@ void Application::updateSingleplayerLoad()
 {
     if (pendingClientJoinAfterWorldLoad_)
     {
+        ++clientJoinLoadDebugFrame_;
         if (clientSession_ == nullptr)
         {
             singleplayerLoadState_.active = false;
@@ -4103,7 +4233,43 @@ void Application::updateSingleplayerLoad()
         {
             singleplayerLoadState_.progress = std::max(singleplayerLoadState_.progress, 0.18f);
             singleplayerLoadState_.label = "Waiting for world data from host...";
+            if ((clientJoinLoadDebugFrame_ % 45U) == 1U)
+            {
+                logMultiplayerJoinDiag(
+                    "client join load: waiting for first chunk (frame {}) connected={} localId={}",
+                    clientJoinLoadDebugFrame_,
+                    connected,
+                    localClientId_);
+            }
             return;
+        }
+
+        if (!clientJoinLoggedFirstChunkSummary_ && !world_.chunks().empty())
+        {
+            clientJoinLoggedFirstChunkSummary_ = true;
+            world::ChunkCoord minC{std::numeric_limits<int>::max(), std::numeric_limits<int>::max()};
+            world::ChunkCoord maxC{std::numeric_limits<int>::min(), std::numeric_limits<int>::min()};
+            for (const auto& [coord, chunk] : world_.chunks())
+            {
+                static_cast<void>(chunk);
+                minC.x = std::min(minC.x, coord.x);
+                minC.z = std::min(minC.z, coord.z);
+                maxC.x = std::max(maxC.x, coord.x);
+                maxC.z = std::max(maxC.z, coord.z);
+            }
+            logMultiplayerJoinDiag(
+                "client join load: first chunk data — count {}  AABB chunks x[{},{}] z[{},{}]  cameraChunk ({},{})  "
+                "feet ({:.2f},{:.2f},{:.2f})",
+                world_.chunks().size(),
+                minC.x,
+                maxC.x,
+                minC.z,
+                maxC.z,
+                cameraChunk.x,
+                cameraChunk.z,
+                playerFeetPosition_.x,
+                playerFeetPosition_.y,
+                playerFeetPosition_.z);
         }
 
         // If our current camera chunk is outside the received host snapshot area (e.g. stale local position),
@@ -4130,6 +4296,13 @@ void Application::updateSingleplayerLoad()
             if (!hasChunkNearCamera)
             {
                 const world::ChunkCoord firstReceivedCoord = world_.chunks().begin()->first;
+                logMultiplayerJoinDiag(
+                    "client join load: re-anchor camera to first received chunk — was ({},{}) -> ({},{}) "
+                    "(no resident chunks near prior camera)",
+                    cameraChunk.x,
+                    cameraChunk.z,
+                    firstReceivedCoord.x,
+                    firstReceivedCoord.z);
                 playerFeetPosition_.x = static_cast<float>(firstReceivedCoord.x * world::Chunk::kSize)
                     + static_cast<float>(world::Chunk::kSize) * 0.5f;
                 playerFeetPosition_.z = static_cast<float>(firstReceivedCoord.z * world::Chunk::kSize)
@@ -4185,6 +4358,25 @@ void Application::updateSingleplayerLoad()
 
         if (connected)
         {
+            if ((clientJoinLoadDebugFrame_ % 30U) == 0U)
+            {
+                logMultiplayerJoinDiag(
+                    "client join load: frame {}  camChunk ({},{})  feet ({:.2f},{:.2f},{:.2f})  yaw {:.1f}  "
+                    "terrain {}/{}  mesh {}/{}  dirtyInWindow {}  worldChunks {}",
+                    clientJoinLoadDebugFrame_,
+                    cameraChunk.x,
+                    cameraChunk.z,
+                    playerFeetPosition_.x,
+                    playerFeetPosition_.y,
+                    playerFeetPosition_.z,
+                    camera_.yawDegrees(),
+                    residentGeneratedCount,
+                    residentTarget,
+                    residentMeshCount,
+                    residentTarget,
+                    residentDirtyCount,
+                    world_.chunks().size());
+            }
             singleplayerLoadState_.label = fmt::format(
                 "Receiving world... terrain {}/{}  meshes {}/{}",
                 residentGeneratedCount,

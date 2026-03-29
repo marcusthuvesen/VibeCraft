@@ -235,7 +235,6 @@ class Application
     std::unordered_map<std::uint16_t, std::vector<world::ChunkCoord>> clientChunkSyncCoordsById_;
     std::unordered_map<std::uint16_t, std::size_t> clientChunkSyncCursorById_;
     std::unordered_map<std::uint16_t, world::ChunkCoord> clientChunkSyncCenterById_;
-    std::unordered_map<std::uint16_t, int> clientSpawnLockFramesById_;
     float mainMenuTimeSeconds_ = 0.0f;
     std::string mainMenuNotice_;
     std::string pauseMenuNotice_;
@@ -260,6 +259,10 @@ class Application
     SingleplayerLoadState singleplayerLoadState_{};
     bool pendingHostStartAfterWorldLoad_ = false;
     bool pendingClientJoinAfterWorldLoad_ = false;
+    /// Frames spent in client join load (for throttled diagnostics).
+    std::uint32_t clientJoinLoadDebugFrame_ = 0;
+    bool clientJoinLoggedFirstChunkSummary_ = false;
+    std::uint8_t clientJoinAuthoritativeSnapLogsRemaining_ = 0;
     CraftingMenuState craftingMenuState_{};
     /// Run-loop frame index (used to delay main-menu mouse activation until layout is stable).
     std::uint32_t runFrameIndex_ = 0;

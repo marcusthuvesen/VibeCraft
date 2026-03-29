@@ -434,6 +434,13 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         hostileMobTextureHandle_ = hostileMobTexture.idx;
         hostileMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(hostilePath));
     }
+    const std::filesystem::path playerPath = "textures/entity/player.png";
+    const bgfx::TextureHandle playerMobTexture = detail::createTextureFromPng(playerPath);
+    if (bgfx::isValid(playerMobTexture))
+    {
+        playerMobTextureHandle_ = playerMobTexture.idx;
+        playerMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(playerPath));
+    }
     const std::filesystem::path cowPath = "textures/entity/cow.png";
     const bgfx::TextureHandle cowMobTexture = detail::createTextureFromPng(cowPath);
     if (bgfx::isValid(cowMobTexture))
@@ -670,6 +677,11 @@ void Renderer::shutdown()
         bgfx::destroy(detail::toTextureHandle(hostileMobTextureHandle_));
         hostileMobTextureHandle_ = UINT16_MAX;
     }
+    if (playerMobTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(playerMobTextureHandle_));
+        playerMobTextureHandle_ = UINT16_MAX;
+    }
     if (cowMobTextureHandle_ != UINT16_MAX)
     {
         bgfx::destroy(detail::toTextureHandle(cowMobTextureHandle_));
@@ -854,6 +866,8 @@ std::uint16_t Renderer::mobTextureHandleForKind(const vibecraft::game::MobKind k
     {
     case MK::HostileStalker:
         return hostileMobTextureHandle_;
+    case MK::Player:
+        return playerMobTextureHandle_;
     case MK::Cow:
         return cowMobTextureHandle_;
     case MK::Pig:
@@ -873,6 +887,8 @@ TextureUvRect Renderer::mobTextureUvForKind(const vibecraft::game::MobKind kind)
     {
     case MK::HostileStalker:
         return hostileMobTextureUv_;
+    case MK::Player:
+        return playerMobTextureUv_;
     case MK::Cow:
         return cowMobTextureUv_;
     case MK::Pig:

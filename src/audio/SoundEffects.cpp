@@ -36,6 +36,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
+    case BlockType::JungleTreeCrown:
+    case BlockType::SnowTreeCrown:
     case BlockType::Dandelion:
     case BlockType::Poppy:
     case BlockType::BlueOrchid:
@@ -44,6 +46,10 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::BrownMushroom:
     case BlockType::RedMushroom:
     case BlockType::Cactus:
+    case BlockType::DeadBush:
+    case BlockType::Vines:
+    case BlockType::CocoaPod:
+    case BlockType::Melon:
         return {
             "block/grass/break1.ogg",
             "block/grass/break2.ogg",
@@ -66,6 +72,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
             "block/sand/sand3.ogg",
             "block/sand/sand4.ogg"};
     case BlockType::TreeTrunk:
+    case BlockType::JungleTreeTrunk:
+    case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
@@ -123,6 +131,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
+    case BlockType::JungleTreeCrown:
+    case BlockType::SnowTreeCrown:
     case BlockType::Dandelion:
     case BlockType::Poppy:
     case BlockType::BlueOrchid:
@@ -131,12 +141,18 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::BrownMushroom:
     case BlockType::RedMushroom:
     case BlockType::Cactus:
+    case BlockType::DeadBush:
+    case BlockType::Vines:
+    case BlockType::CocoaPod:
+    case BlockType::Melon:
         return {"block/grass/hit1.ogg", "block/grass/hit2.ogg", "block/grass/hit3.ogg", "block/grass/hit4.ogg"};
     case BlockType::Sand:
     case BlockType::Sandstone:
     case BlockType::TNT:
         return {"block/sand/hit1.ogg", "block/sand/hit2.ogg", "block/sand/hit3.ogg", "block/sand/hit4.ogg"};
     case BlockType::TreeTrunk:
+    case BlockType::JungleTreeTrunk:
+    case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
@@ -179,6 +195,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
+    case BlockType::JungleTreeCrown:
+    case BlockType::SnowTreeCrown:
     case BlockType::Dandelion:
     case BlockType::Poppy:
     case BlockType::BlueOrchid:
@@ -187,6 +205,10 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::BrownMushroom:
     case BlockType::RedMushroom:
     case BlockType::Cactus:
+    case BlockType::DeadBush:
+    case BlockType::Vines:
+    case BlockType::CocoaPod:
+    case BlockType::Melon:
         step.assign(
             {"block/grass/step1.ogg",
              "block/grass/step2.ogg",
@@ -238,6 +260,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
              "liquid/water.ogg"});
         break;
     case BlockType::TreeTrunk:
+    case BlockType::JungleTreeTrunk:
+    case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
@@ -310,6 +334,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
+    case BlockType::JungleTreeCrown:
+    case BlockType::SnowTreeCrown:
     case BlockType::Dandelion:
     case BlockType::Poppy:
     case BlockType::BlueOrchid:
@@ -318,6 +344,10 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::BrownMushroom:
     case BlockType::RedMushroom:
     case BlockType::Cactus:
+    case BlockType::DeadBush:
+    case BlockType::Vines:
+    case BlockType::CocoaPod:
+    case BlockType::Melon:
         return {
             "block/grass/place1.ogg",
             "block/grass/place2.ogg",
@@ -340,6 +370,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
             "block/sand/sand7.ogg",
             "block/sand/sand8.ogg"};
     case BlockType::TreeTrunk:
+    case BlockType::JungleTreeTrunk:
+    case BlockType::SnowTreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
@@ -472,6 +504,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
             "mob/zombie/hurt2.ogg",
             "mob/zombie/say1.ogg",
             "mob/zombie/say2.ogg"};
+    case MobKind::Player:
+        return {"entity/player/hurt1.ogg", "entity/player/hurt2.ogg"};
     case MobKind::Cow:
         return {"entity/cow/hurt1.ogg",
                 "entity/cow/hurt2.ogg",
@@ -516,6 +550,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     {
     case MobKind::HostileStalker:
         return {"entity/zombie/death.ogg", "mob/zombie/death.ogg"};
+    case MobKind::Player:
+        return {"entity/player/death.ogg", "entity/player/hurt1.ogg"};
     case MobKind::Cow:
         return {"entity/cow/death.ogg", "mob/cow/hurt1.ogg", "mob/cow/hurt2.ogg"};
     case MobKind::Pig:

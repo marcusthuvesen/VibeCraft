@@ -47,7 +47,13 @@ enum class BlockType : std::uint8_t
     BrownMushroom,
     RedMushroom,
     JungleTreeTrunk,
-    JungleTreeCrown
+    JungleTreeCrown,
+    SnowTreeTrunk,
+    SnowTreeCrown,
+    DeadBush,
+    Vines,
+    CocoaPod,
+    Melon
 };
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)
@@ -59,10 +65,13 @@ enum class BlockType : std::uint8_t
 {
     return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::TreeCrown
         && blockType != BlockType::JungleTreeCrown
+        && blockType != BlockType::SnowTreeCrown
         && blockType != BlockType::Torch && blockType != BlockType::Dandelion
         && blockType != BlockType::Poppy && blockType != BlockType::BlueOrchid
         && blockType != BlockType::Allium && blockType != BlockType::OxeyeDaisy
-        && blockType != BlockType::BrownMushroom && blockType != BlockType::RedMushroom;
+        && blockType != BlockType::BrownMushroom && blockType != BlockType::RedMushroom
+        && blockType != BlockType::DeadBush && blockType != BlockType::Vines
+        && blockType != BlockType::CocoaPod;
 }
 
 [[nodiscard]] constexpr bool isRenderable(const BlockType blockType)
@@ -81,11 +90,13 @@ enum class BlockType : std::uint8_t
 {
     return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::TreeCrown
         && blockType != BlockType::JungleTreeCrown
+        && blockType != BlockType::SnowTreeCrown
         && blockType != BlockType::Torch && blockType != BlockType::Glass
         && blockType != BlockType::Dandelion && blockType != BlockType::Poppy
         && blockType != BlockType::BlueOrchid && blockType != BlockType::Allium
         && blockType != BlockType::OxeyeDaisy && blockType != BlockType::BrownMushroom
-        && blockType != BlockType::RedMushroom;
+        && blockType != BlockType::RedMushroom && blockType != BlockType::DeadBush
+        && blockType != BlockType::Vines && blockType != BlockType::CocoaPod;
 }
 
 /// Blocks terrain generation may place directly into the base world columns.
@@ -111,6 +122,8 @@ enum class BlockType : std::uint8_t
     case BlockType::TreeCrown:
     case BlockType::JungleTreeTrunk:
     case BlockType::JungleTreeCrown:
+    case BlockType::SnowTreeTrunk:
+    case BlockType::SnowTreeCrown:
     case BlockType::SnowGrass:
     case BlockType::JungleGrass:
     case BlockType::Sandstone:
@@ -126,6 +139,8 @@ enum class BlockType : std::uint8_t
     return blockType == BlockType::Cactus || blockType == BlockType::Dandelion
         || blockType == BlockType::Poppy || blockType == BlockType::BlueOrchid
         || blockType == BlockType::Allium || blockType == BlockType::OxeyeDaisy
-        || blockType == BlockType::BrownMushroom || blockType == BlockType::RedMushroom;
+        || blockType == BlockType::BrownMushroom || blockType == BlockType::RedMushroom
+        || blockType == BlockType::DeadBush || blockType == BlockType::Vines
+        || blockType == BlockType::CocoaPod || blockType == BlockType::Melon;
 }
 }  // namespace vibecraft::world

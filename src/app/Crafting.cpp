@@ -171,6 +171,50 @@ struct RecipeDefinition
             },
         });
         r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::JungleTreeTrunk)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::JungleTreeCrown)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::SnowTreeTrunk)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::SnowTreeCrown)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
             .width = 2,
             .height = 2,
             .requiresWorkbench = false,

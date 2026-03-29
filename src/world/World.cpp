@@ -30,9 +30,20 @@ constexpr std::uint32_t kTreeChanceSeed = 0x6f4a31deU;
 constexpr std::uint32_t kTreeOffsetXSeed = 0x34b6f0e1U;
 constexpr std::uint32_t kTreeOffsetZSeed = 0x5cd2a907U;
 constexpr std::uint32_t kTreeShapeSeed = 0x72f1a4b3U;
-constexpr std::uint32_t kFloraChanceSeed = 0x3af402d1U;
 constexpr std::uint32_t kFloraTypeSeed = 0x28fd99b6U;
+constexpr std::uint32_t kFloraFlowerPatchNoiseSeed = 0x3af402d1U;
+constexpr std::uint32_t kFloraMushroomPatchNoiseSeed = 0x51c903e8U;
+constexpr std::uint32_t kFloraWetNoiseSeed = 0x62da14f9U;
+constexpr std::uint32_t kFloraSpotSeed = 0x73eb260aU;
+constexpr std::uint32_t kFloraSpotSeedB = 0x84fc371bU;
+constexpr std::uint32_t kJungleFeatureNoiseSeed = 0x950d482cU;
+constexpr std::uint32_t kJungleFeatureRollSeed = 0xa61e593dU;
+constexpr double kFloraFlowerPatchScale = 21.0;
+constexpr double kFloraMushroomPatchScale = 29.0;
+constexpr double kFloraWetScale = 46.0;
+constexpr double kJungleFeaturePatchScale = 41.0;
 constexpr std::uint32_t kCactusChanceSeed = 0x4c1aafe3U;
+constexpr std::uint32_t kDeadBushChanceSeed = 0x6db7d041U;
 
 struct TreeBiomeSettings
 {
@@ -111,6 +122,8 @@ struct TreeBiomeSettings
             .minTrunkHeight = 4,
             .maxTrunkHeight = 6,
             .crownRadius = 2,
+            .trunkBlock = BlockType::SnowTreeTrunk,
+            .crownBlock = BlockType::SnowTreeCrown,
         };
     case SurfaceBiome::Sandy:
         return TreeBiomeSettings{
@@ -128,6 +141,86 @@ struct TreeBiomeSettings
             .crownRadius = 2,
         };
     }
+}
+
+struct FloraPatchParams
+{
+    double flowerPatchMin = 1.0;
+    double flowerSpotChance = 0.0;
+    double mushroomPatchMin = 1.0;
+    double mushroomSpotChance = 0.0;
+};
+
+[[nodiscard]] FloraPatchParams floraPatchParamsForBiome(const SurfaceBiome biome)
+{
+    switch (biome)
+    {
+    case SurfaceBiome::TemperateGrassland:
+        return FloraPatchParams{
+            .flowerPatchMin = 0.54,
+            .flowerSpotChance = 0.17,
+            .mushroomPatchMin = 0.73,
+            .mushroomSpotChance = 0.20,
+        };
+    case SurfaceBiome::Jungle:
+        return FloraPatchParams{
+            .flowerPatchMin = 0.58,
+            .flowerSpotChance = 0.11,
+            .mushroomPatchMin = 0.61,
+            .mushroomSpotChance = 0.19,
+        };
+    case SurfaceBiome::Snowy:
+        return FloraPatchParams{
+            .flowerPatchMin = 1.5,
+            .flowerSpotChance = 0.0,
+            .mushroomPatchMin = 0.56,
+            .mushroomSpotChance = 0.16,
+        };
+    case SurfaceBiome::Sandy:
+    default:
+        return FloraPatchParams{};
+    }
+}
+
+[[nodiscard]] BlockType pickTemperateFlowerBlock(const int worldX, const int worldZ, const double wetNoise)
+{
+    const std::uint32_t h = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed);
+    if (wetNoise > 0.52)
+    {
+        constexpr std::array<BlockType, 5> pool{
+            BlockType::Dandelion,
+            BlockType::Poppy,
+            BlockType::OxeyeDaisy,
+            BlockType::Allium,
+            BlockType::BlueOrchid,
+        };
+        return pool[h % pool.size()];
+    }
+    constexpr std::array<BlockType, 4> pool{
+        BlockType::Dandelion,
+        BlockType::Poppy,
+        BlockType::OxeyeDaisy,
+        BlockType::Allium,
+    };
+    return pool[h % pool.size()];
+}
+
+[[nodiscard]] BlockType pickJungleFlowerBlock(const int worldX, const int worldZ)
+{
+    const std::uint32_t h = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed + 17U);
+    constexpr std::array<BlockType, 4> pool{
+        BlockType::BlueOrchid,
+        BlockType::BlueOrchid,
+        BlockType::Poppy,
+        BlockType::Allium,
+    };
+    return pool[h % pool.size()];
+}
+
+[[nodiscard]] BlockType pickMushroomBlock(const int worldX, const int worldZ)
+{
+    const std::uint32_t h = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed + 29U);
+    return (h & 1U) == 0U ? BlockType::BrownMushroom : BlockType::RedMushroom;
 }
 
 void placeBlockIfInsideChunk(
@@ -294,6 +387,12 @@ void populateSurfaceFloraForChunk(
                 {
                     chunk.setBlock(localX, surfaceY + 1, localZ, BlockType::Cactus);
                 }
+                else if (
+                    surfaceBlock == BlockType::Sand
+                    && noise::random01(worldX, worldZ, kDeadBushChanceSeed) < 0.09f)
+                {
+                    chunk.setBlock(localX, surfaceY + 1, localZ, BlockType::DeadBush);
+                }
                 continue;
             }
 
@@ -304,55 +403,108 @@ void populateSurfaceFloraForChunk(
                 continue;
             }
 
-            const float floraChance = biome == SurfaceBiome::Jungle ? 0.12f : (biome == SurfaceBiome::Snowy ? 0.025f : 0.085f);
-            if (noise::random01(worldX, worldZ, kFloraChanceSeed) >= floraChance)
-            {
-                continue;
-            }
+            const FloraPatchParams patch = floraPatchParamsForBiome(biome);
 
-            const std::uint32_t floraHash = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed);
-            if (biome == SurfaceBiome::Snowy)
-            {
-                chunk.setBlock(
-                    localX,
-                    surfaceY + 1,
-                    localZ,
-                    (floraHash & 1U) == 0U ? BlockType::BrownMushroom : BlockType::RedMushroom);
-                continue;
-            }
-
-            constexpr std::array<BlockType, 7> kTemperateFlora{
-                BlockType::Dandelion,
-                BlockType::Poppy,
-                BlockType::OxeyeDaisy,
-                BlockType::BlueOrchid,
-                BlockType::Allium,
-                BlockType::BrownMushroom,
-                BlockType::RedMushroom,
-            };
-            constexpr std::array<BlockType, 5> kJungleFlora{
-                BlockType::BlueOrchid,
-                BlockType::Allium,
-                BlockType::Poppy,
-                BlockType::BrownMushroom,
-                BlockType::RedMushroom,
-            };
             if (biome == SurfaceBiome::Jungle)
             {
-                const BlockType floraBlock = kJungleFlora[floraHash % kJungleFlora.size()];
-                if (isNaturalDecorationBlock(floraBlock))
+                const double jungleFeature = noise::fbmNoise2d(
+                    static_cast<double>(worldX),
+                    static_cast<double>(worldZ),
+                    kJungleFeaturePatchScale,
+                    2,
+                    kJungleFeatureNoiseSeed);
+                if (jungleFeature > 0.78
+                    && noise::random01(worldX, worldZ, kJungleFeatureRollSeed) < 0.095)
                 {
-                    chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                    constexpr std::array<BlockType, 3> kJungleLargeFlora{
+                        BlockType::Vines,
+                        BlockType::CocoaPod,
+                        BlockType::Melon,
+                    };
+                    const std::uint32_t pick = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed + 41U);
+                    const BlockType floraBlock = kJungleLargeFlora[pick % kJungleLargeFlora.size()];
+                    if (isNaturalDecorationBlock(floraBlock))
+                    {
+                        chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                    }
+                    continue;
                 }
             }
-            else
+
+            const double flowerField = noise::fbmNoise2d(
+                static_cast<double>(worldX),
+                static_cast<double>(worldZ),
+                kFloraFlowerPatchScale,
+                3,
+                kFloraFlowerPatchNoiseSeed);
+            const double mushroomField = noise::fbmNoise2d(
+                static_cast<double>(worldX),
+                static_cast<double>(worldZ),
+                kFloraMushroomPatchScale,
+                3,
+                kFloraMushroomPatchNoiseSeed);
+            const double wetField = noise::fbmNoise2d(
+                static_cast<double>(worldX),
+                static_cast<double>(worldZ),
+                kFloraWetScale,
+                2,
+                kFloraWetNoiseSeed);
+
+            const bool inFlowerPatch = flowerField >= patch.flowerPatchMin;
+            const bool inMushroomPatch = mushroomField >= patch.mushroomPatchMin;
+            if (!inFlowerPatch && !inMushroomPatch)
             {
-                const BlockType floraBlock = kTemperateFlora[floraHash % kTemperateFlora.size()];
-                if (isNaturalDecorationBlock(floraBlock))
+                continue;
+            }
+
+            const double flowerJitter = noise::random01(worldX, worldZ, kFloraSpotSeed);
+            const double mushJitter = noise::random01(worldX, worldZ, kFloraSpotSeedB);
+            bool tryFlower = inFlowerPatch && flowerJitter < patch.flowerSpotChance;
+            bool tryMushroom = inMushroomPatch && mushJitter < patch.mushroomSpotChance;
+
+            if (tryFlower && tryMushroom)
+            {
+                const double denomF = 1.0 - patch.flowerPatchMin;
+                const double denomM = 1.0 - patch.mushroomPatchMin;
+                const double flowerStrength = denomF > 1e-6
+                    ? (flowerField - patch.flowerPatchMin) / denomF
+                    : 0.0;
+                const double mushroomStrength = denomM > 1e-6
+                    ? (mushroomField - patch.mushroomPatchMin) / denomM
+                    : 0.0;
+                if (flowerStrength >= mushroomStrength)
                 {
-                    chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                    tryMushroom = false;
+                }
+                else
+                {
+                    tryFlower = false;
                 }
             }
+
+            if (tryMushroom)
+            {
+                chunk.setBlock(localX, surfaceY + 1, localZ, pickMushroomBlock(worldX, worldZ));
+                continue;
+            }
+            if (!tryFlower)
+            {
+                continue;
+            }
+
+            if (biome == SurfaceBiome::Snowy)
+            {
+                continue;
+            }
+            if (biome == SurfaceBiome::Jungle)
+            {
+                const BlockType floraBlock = pickJungleFlowerBlock(worldX, worldZ);
+                chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                continue;
+            }
+
+            const BlockType floraBlock = pickTemperateFlowerBlock(worldX, worldZ, wetField);
+            chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
         }
     }
 }
@@ -699,6 +851,18 @@ void World::applyMeshStatsAndClearDirty(const std::span<const ChunkMeshUpdate> u
 
         meshStats_[update.coord] = update.stats;
         dirtyChunks_.erase(update.coord);
+    }
+}
+
+void World::replaceChunk(Chunk chunk)
+{
+    const ChunkCoord coord = chunk.coord();
+    chunks_[coord] = std::move(chunk);
+
+    // A streamed chunk update can change faces on the chunk itself and along all four borders.
+    for (const ChunkCoord& dirtyCoord : neighboringChunkCoords(coord))
+    {
+        markChunkDirty(dirtyCoord);
     }
 }
 

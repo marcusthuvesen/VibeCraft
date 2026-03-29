@@ -156,6 +156,20 @@ struct BlockMetadata
             .hardness = 0.2f,
             .breakable = true,
         };
+    case BlockType::SnowTreeTrunk:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 61, .bottom = 61, .side = 62},
+            .hardness = 1.7f,
+            .breakable = true,
+        };
+    case BlockType::SnowTreeCrown:
+        return {
+            .debugColor = 0xc8ffffff,
+            .textureTiles = {.top = 63, .bottom = 63, .side = 63},
+            .hardness = 0.2f,
+            .breakable = true,
+        };
     case BlockType::OakPlanks:
         return {
             .debugColor = 0xffffffff,
@@ -326,6 +340,34 @@ struct BlockMetadata
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 55, .bottom = 55, .side = 55},
             .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::DeadBush:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 56, .bottom = 56, .side = 56},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::Vines:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 57, .bottom = 57, .side = 57},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::CocoaPod:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 58, .bottom = 58, .side = 58},
+            .hardness = 0.2f,
+            .breakable = true,
+        };
+    case BlockType::Melon:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 59, .bottom = 59, .side = 59},
+            .hardness = 1.0f,
             .breakable = true,
         };
     case BlockType::Air:

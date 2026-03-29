@@ -7,6 +7,7 @@ namespace vibecraft::game
 enum class MobKind : std::uint8_t
 {
     HostileStalker = 0,
+    Player,
     Cow,
     Pig,
     Sheep,

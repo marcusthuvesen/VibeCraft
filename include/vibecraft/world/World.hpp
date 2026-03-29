@@ -75,6 +75,7 @@ class World
         const vibecraft::meshing::ChunkMesher& chunkMesher,
         std::span<const ChunkCoord> chunkCoords);
     void applyMeshStatsAndClearDirty(std::span<const ChunkMeshUpdate> updates);
+    void replaceChunk(Chunk chunk);
     void replaceChunks(ChunkMap chunks);
 
   private:
