@@ -26,6 +26,27 @@ constexpr int kLowlandPondMaxHeightAboveSea = 3;
 constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
 constexpr int kSandstoneStratumDepth = 6;
 
+enum class ColumnBiome : std::uint8_t
+{
+    TemperateGrassland,
+    Sandy,
+    Snowy,
+    Jungle,
+};
+
+struct ColumnContext
+{
+    int surfaceHeight = kSeaLevel;
+    int topsoilDepth = kTopsoilDepth;
+    int columnWaterLevel = kSeaLevel;
+    int stratumTopExclusive = 0;
+    int stratumBottomInclusive = 0;
+    bool usesSandStrata = false;
+    ColumnBiome biome = ColumnBiome::TemperateGrassland;
+    BlockType surfaceBlockType = BlockType::Grass;
+    BlockType subsurfaceBlockType = BlockType::Dirt;
+};
+
 [[nodiscard]] bool shouldPlaceBedrock(const int y)
 {
     return y <= kBedrockFloorMaxY;
@@ -64,49 +85,80 @@ constexpr int kSandstoneStratumDepth = 6;
     return transitionBandNoise(worldX, worldZ) < transitionBias ? BlockType::Deepslate : BlockType::Stone;
 }
 
-[[nodiscard]] bool isSandyBiome(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] double biomeTemperatureAt(const int worldX, const int worldZ, const int surfaceHeight)
 {
-    if (surfaceHeight > kSandSurfaceMaxHeight)
+    const double worldXd = static_cast<double>(worldX);
+    const double worldZd = static_cast<double>(worldZ);
+    const double baseTemperature = noise::fbmNoise2d(worldXd, worldZd, 256.0, 4, 0x8b4d1e29U) * 2.0 - 1.0;
+    const double variation = noise::valueNoise2d(worldXd + 73.0, worldZd - 59.0, 96.0, 0x1c0f3aa7U) * 2.0 - 1.0;
+    const double altitudeCooling = std::clamp(
+        static_cast<double>(surfaceHeight - kSeaLevel) / 120.0,
+        0.0,
+        0.55);
+    return baseTemperature + variation * 0.22 - altitudeCooling;
+}
+
+[[nodiscard]] double biomeHumidityAt(const int worldX, const int worldZ)
+{
+    const double worldXd = static_cast<double>(worldX);
+    const double worldZd = static_cast<double>(worldZ);
+    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 210.0, 4, 0x32a7f1c4U) * 2.0 - 1.0;
+}
+
+[[nodiscard]] ColumnBiome columnBiomeAt(const int worldX, const int worldZ, const int surfaceHeight)
+{
+    if (surfaceHeight <= kSeaLevel + kBeachMaxHeightAboveSea)
     {
-        return false;
+        return ColumnBiome::Sandy;
     }
 
-    const double drynessNoise = std::sin(static_cast<double>(worldX) * 0.032) +
-        std::cos(static_cast<double>(worldZ) * 0.027) +
-        std::sin(static_cast<double>(worldX - worldZ) * 0.015);
-    return drynessNoise > 1.05;
+    const double temperature = biomeTemperatureAt(worldX, worldZ, surfaceHeight);
+    const double humidity = biomeHumidityAt(worldX, worldZ);
+    if (surfaceHeight <= kSandSurfaceMaxHeight && temperature > 0.28 && humidity < -0.08)
+    {
+        return ColumnBiome::Sandy;
+    }
+    if (temperature < -0.20 && humidity > -0.02)
+    {
+        return ColumnBiome::Snowy;
+    }
+    if (temperature > 0.24 && humidity > 0.18)
+    {
+        return ColumnBiome::Jungle;
+    }
+    return ColumnBiome::TemperateGrassland;
 }
 
 /// Beaches and dry lowlands use sand on the surface; sandstone sits below that (uses existing atlas tile).
-[[nodiscard]] bool columnUsesSandStrata(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] bool columnUsesSandStrata(const ColumnBiome biome)
 {
-    if (surfaceHeight <= kSeaLevel + kBeachMaxHeightAboveSea)
-    {
-        return true;
-    }
-    return isSandyBiome(worldX, worldZ, surfaceHeight);
+    return biome == ColumnBiome::Sandy;
 }
 
-[[nodiscard]] BlockType surfaceBlockTypeAt(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] BlockType surfaceBlockTypeAt(const ColumnBiome biome, const int surfaceHeight)
 {
     if (surfaceHeight >= kMountainStoneCapStartY)
     {
-        return BlockType::Stone;
+        return biome == ColumnBiome::Snowy ? BlockType::SnowGrass : BlockType::Stone;
     }
-    if (surfaceHeight <= kSeaLevel + kBeachMaxHeightAboveSea)
+    if (biome == ColumnBiome::Sandy)
     {
         return BlockType::Sand;
     }
-    return isSandyBiome(worldX, worldZ, surfaceHeight) ? BlockType::Sand : BlockType::Grass;
+    if (biome == ColumnBiome::Snowy)
+    {
+        return BlockType::SnowGrass;
+    }
+    if (biome == ColumnBiome::Jungle)
+    {
+        return BlockType::JungleGrass;
+    }
+    return BlockType::Grass;
 }
 
-[[nodiscard]] BlockType subsurfaceBlockTypeAt(const int worldX, const int worldZ, const int surfaceHeight)
+[[nodiscard]] BlockType subsurfaceBlockTypeAt(const ColumnBiome biome)
 {
-    if (surfaceHeight <= kSeaLevel + kBeachMaxHeightAboveSea)
-    {
-        return BlockType::Sand;
-    }
-    return isSandyBiome(worldX, worldZ, surfaceHeight) ? BlockType::Sand : BlockType::Dirt;
+    return biome == ColumnBiome::Sandy ? BlockType::Sand : BlockType::Dirt;
 }
 
 [[nodiscard]] bool isMountainStoneCapLayer(const int y, const int surfaceHeight)
@@ -129,6 +181,89 @@ constexpr int kSandstoneStratumDepth = 6;
         kPondNoiseSeed);
     return floodNoise > 0.66;
 }
+
+[[nodiscard]] ColumnContext buildColumnContext(const int worldX, const int worldZ, const int surfaceHeight)
+{
+    const int topsoilDepth = topsoilDepthAt(worldX, worldZ);
+    const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight);
+    const int columnWaterLevel = floodLowland ? surfaceHeight + 1 : kSeaLevel;
+    const ColumnBiome biome = columnBiomeAt(worldX, worldZ, surfaceHeight);
+    const bool usesSandStrata = columnUsesSandStrata(biome);
+    const int stratumTopExclusive = surfaceHeight - topsoilDepth;
+    return ColumnContext{
+        .surfaceHeight = surfaceHeight,
+        .topsoilDepth = topsoilDepth,
+        .columnWaterLevel = columnWaterLevel,
+        .stratumTopExclusive = stratumTopExclusive,
+        .stratumBottomInclusive = stratumTopExclusive - kSandstoneStratumDepth,
+        .usesSandStrata = usesSandStrata,
+        .biome = biome,
+        .surfaceBlockType = surfaceBlockTypeAt(biome, surfaceHeight),
+        .subsurfaceBlockType = subsurfaceBlockTypeAt(biome),
+    };
+}
+
+[[nodiscard]] SurfaceBiome toSurfaceBiome(const ColumnBiome biome)
+{
+    switch (biome)
+    {
+    case ColumnBiome::Sandy:
+        return SurfaceBiome::Sandy;
+    case ColumnBiome::Snowy:
+        return SurfaceBiome::Snowy;
+    case ColumnBiome::Jungle:
+        return SurfaceBiome::Jungle;
+    case ColumnBiome::TemperateGrassland:
+    default:
+        return SurfaceBiome::TemperateGrassland;
+    }
+}
+
+[[nodiscard]] BlockType blockTypeAtWithContext(
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const ColumnContext& columnContext)
+{
+    if (shouldPlaceBedrock(y))
+    {
+        return BlockType::Bedrock;
+    }
+    if (y > columnContext.surfaceHeight)
+    {
+        return y <= columnContext.columnWaterLevel ? BlockType::Water : BlockType::Air;
+    }
+    if (y == columnContext.surfaceHeight)
+    {
+        return columnContext.surfaceBlockType;
+    }
+    if (isMountainStoneCapLayer(y, columnContext.surfaceHeight))
+    {
+        return BlockType::Stone;
+    }
+    if (y >= columnContext.surfaceHeight - columnContext.topsoilDepth)
+    {
+        return columnContext.subsurfaceBlockType;
+    }
+    if (underground::shouldCarveCave(worldX, y, worldZ, columnContext.surfaceHeight))
+    {
+        return underground::caveInteriorBlockType(worldX, y, worldZ, columnContext.surfaceHeight);
+    }
+    if (columnContext.usesSandStrata
+        && y < columnContext.stratumTopExclusive
+        && y >= columnContext.stratumBottomInclusive)
+    {
+        return BlockType::Sandstone;
+    }
+
+    const BlockType hostBlockType = undergroundBlockTypeAt(worldX, y, worldZ);
+    if (const std::optional<BlockType> ore = underground::selectOreVeinBlock(
+            worldX, y, worldZ, columnContext.surfaceHeight, hostBlockType))
+    {
+        return *ore;
+    }
+    return hostBlockType;
+}
 }  // namespace
 
 int TerrainGenerator::surfaceHeightAt(const int worldX, const int worldZ) const
@@ -149,54 +284,76 @@ int TerrainGenerator::surfaceHeightAt(const int worldX, const int worldZ) const
     return std::clamp(static_cast<int>(std::round(terrainHeight)), -20, 190);
 }
 
+SurfaceBiome TerrainGenerator::surfaceBiomeAt(const int worldX, const int worldZ) const
+{
+    const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
+    return toSurfaceBiome(columnBiomeAt(worldX, worldZ, surfaceHeight));
+}
+
 BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int worldZ) const
 {
     const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
-    const int topsoilDepth = topsoilDepthAt(worldX, worldZ);
-    const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight);
-    const int columnWaterLevel = floodLowland ? surfaceHeight + 1 : kSeaLevel;
+    return blockTypeAtWithContext(worldX, y, worldZ, buildColumnContext(worldX, worldZ, surfaceHeight));
+}
 
-    if (shouldPlaceBedrock(y))
+void TerrainGenerator::fillColumn(const int worldX, const int worldZ, BlockType* const outColumnBlocks) const
+{
+    if (outColumnBlocks == nullptr)
     {
-        return BlockType::Bedrock;
-    }
-    if (y > surfaceHeight)
-    {
-        return y <= columnWaterLevel ? BlockType::Water : BlockType::Air;
-    }
-    if (y == surfaceHeight)
-    {
-        return surfaceBlockTypeAt(worldX, worldZ, surfaceHeight);
-    }
-    if (isMountainStoneCapLayer(y, surfaceHeight))
-    {
-        return BlockType::Stone;
-    }
-    if (y >= surfaceHeight - topsoilDepth)
-    {
-        return subsurfaceBlockTypeAt(worldX, worldZ, surfaceHeight);
-    }
-    if (underground::shouldCarveCave(worldX, y, worldZ, surfaceHeight))
-    {
-        return underground::caveInteriorBlockType(worldX, y, worldZ, surfaceHeight);
+        return;
     }
 
-    if (columnUsesSandStrata(worldX, worldZ, surfaceHeight))
+    std::fill(outColumnBlocks, outColumnBlocks + kWorldHeight, BlockType::Air);
+
+    const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
+    const ColumnContext columnContext = buildColumnContext(worldX, worldZ, surfaceHeight);
+    const int surfaceIndex = surfaceHeight - kWorldMinY;
+
+    for (int y = kWorldMinY; y <= kBedrockFloorMaxY; ++y)
     {
-        const int stratumTopExclusive = surfaceHeight - topsoilDepth;
-        const int stratumBottomInclusive = stratumTopExclusive - kSandstoneStratumDepth;
-        if (y < stratumTopExclusive && y >= stratumBottomInclusive)
+        outColumnBlocks[y - kWorldMinY] = BlockType::Bedrock;
+    }
+
+    if (surfaceHeight < kWorldMinY)
+    {
+        const int waterTop = std::min(columnContext.columnWaterLevel, kWorldMaxY);
+        for (int y = kWorldMinY; y <= waterTop; ++y)
         {
-            return BlockType::Sandstone;
+            if (y > kBedrockFloorMaxY)
+            {
+                outColumnBlocks[y - kWorldMinY] = BlockType::Water;
+            }
+        }
+        return;
+    }
+
+    if (columnContext.columnWaterLevel > surfaceHeight)
+    {
+        const int waterStart = std::max(surfaceHeight + 1, kWorldMinY);
+        const int waterEnd = std::min(columnContext.columnWaterLevel, kWorldMaxY);
+        for (int y = waterStart; y <= waterEnd; ++y)
+        {
+            outColumnBlocks[y - kWorldMinY] = BlockType::Water;
         }
     }
 
-    const BlockType hostBlockType = undergroundBlockTypeAt(worldX, y, worldZ);
-    if (const std::optional<BlockType> ore = underground::selectOreVeinBlock(
-            worldX, y, worldZ, surfaceHeight, hostBlockType))
+    if (surfaceIndex >= 0 && surfaceIndex < kWorldHeight)
     {
-        return *ore;
+        outColumnBlocks[surfaceIndex] = columnContext.surfaceBlockType;
     }
-    return hostBlockType;
+
+    const int topsoilStart = std::max(kUndergroundStartY, surfaceHeight - columnContext.topsoilDepth);
+    for (int y = topsoilStart; y < surfaceHeight; ++y)
+    {
+        outColumnBlocks[y - kWorldMinY] = isMountainStoneCapLayer(y, surfaceHeight)
+            ? BlockType::Stone
+            : columnContext.subsurfaceBlockType;
+    }
+
+    const int undergroundEnd = std::min(surfaceHeight - columnContext.topsoilDepth - 1, kWorldMaxY);
+    for (int y = kUndergroundStartY; y <= undergroundEnd; ++y)
+    {
+        outColumnBlocks[y - kWorldMinY] = blockTypeAtWithContext(worldX, y, worldZ, columnContext);
+    }
 }
 }  // namespace vibecraft::world

@@ -16,7 +16,20 @@ namespace
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    return fs::is_directory(root / "music", ec) || fs::is_regular_file(root / "dig" / "grass1.ogg", ec);
+    return fs::is_directory(root / "music", ec) || fs::is_regular_file(root / "dig" / "grass1.ogg", ec)
+        || fs::is_directory(root / "sounds" / "music", ec)
+        || fs::is_regular_file(root / "sounds" / "dig" / "grass1.ogg", ec);
+}
+
+[[nodiscard]] std::filesystem::path normalizeAudioRoot(const std::filesystem::path& root)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (fs::is_directory(root / "sounds", ec))
+    {
+        return root / "sounds";
+    }
+    return root;
 }
 }  // namespace
 
@@ -42,11 +55,11 @@ std::filesystem::path resolveMinecraftAudioRoot()
     {
         if (looksLikeMinecraftAudioPack(candidate))
         {
-            return candidate;
+            return normalizeAudioRoot(candidate);
         }
     }
 
-    return baseFromSdl / "audio" / "minecraft";
+    return normalizeAudioRoot(baseFromSdl / "audio" / "minecraft");
 }
 
 void logMinecraftAudioPackDiagnostics(const std::filesystem::path& root)

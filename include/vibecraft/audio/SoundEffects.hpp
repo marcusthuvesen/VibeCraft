@@ -28,6 +28,9 @@ class SoundEffects
     void playBlockDigTick(vibecraft::world::BlockType blockType);
     /// Footstep on the given surface block (grass, stone, sand, …).
     void playFootstep(vibecraft::world::BlockType surfaceBlockType);
+    /// Enter/exit water transition cues from Minecraft ambient underwater pack.
+    void playWaterEnter();
+    void playWaterExit();
     /// Short melee whoosh on a successful player attack.
     void playPlayerAttack();
     /// Player hurt cue for fall/lava/drowning/combat damage.

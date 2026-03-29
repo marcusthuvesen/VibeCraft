@@ -339,26 +339,7 @@ void Renderer::drawInventoryItemIcons(
     };
     const auto itemTextureHandle = [&](const HudItemKind itemKind)
     {
-        switch (itemKind)
-        {
-        case HudItemKind::DiamondSword:
-            return diamondSwordTextureHandle_;
-        case HudItemKind::Stick:
-            return stickTextureHandle_;
-        case HudItemKind::RottenFlesh:
-            return rottenFleshTextureHandle_;
-        case HudItemKind::Leather:
-            return leatherTextureHandle_;
-        case HudItemKind::RawPorkchop:
-            return rawPorkchopTextureHandle_;
-        case HudItemKind::Mutton:
-            return muttonTextureHandle_;
-        case HudItemKind::Feather:
-            return featherTextureHandle_;
-        case HudItemKind::None:
-        default:
-            return static_cast<std::uint16_t>(UINT16_MAX);
-        }
+        return hudItemKindTextureHandle(itemKind);
     };
     const auto drawHudSlotIconInRect = [&](const FrameDebugData::HotbarSlotHud& slotHud,
                                            const float x0,
@@ -739,34 +720,7 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         const float centerX = x + layout.slotSize * 0.5f;
         const float centerY = y + layout.slotSize * 0.5f;
         const float iconSize = std::clamp(std::round(layout.slotSize * 0.75f), 18.0f, 34.0f);
-        std::uint16_t textureHandle = UINT16_MAX;
-        switch (slotHud.itemKind)
-        {
-        case HudItemKind::DiamondSword:
-            textureHandle = diamondSwordTextureHandle_;
-            break;
-        case HudItemKind::Stick:
-            textureHandle = stickTextureHandle_;
-            break;
-        case HudItemKind::RottenFlesh:
-            textureHandle = rottenFleshTextureHandle_;
-            break;
-        case HudItemKind::Leather:
-            textureHandle = leatherTextureHandle_;
-            break;
-        case HudItemKind::RawPorkchop:
-            textureHandle = rawPorkchopTextureHandle_;
-            break;
-        case HudItemKind::Mutton:
-            textureHandle = muttonTextureHandle_;
-            break;
-        case HudItemKind::Feather:
-            textureHandle = featherTextureHandle_;
-            break;
-        case HudItemKind::None:
-        default:
-            break;
-        }
+        const std::uint16_t textureHandle = hudItemKindTextureHandle(slotHud.itemKind);
 
         if (textureHandle != UINT16_MAX)
         {
@@ -826,11 +780,19 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     drawSlotContents(frameDebugData.craftingResultSlot, layout.resultSlotX, layout.resultSlotY);
 
     constexpr int kVisibleBagRows = 3;
+    constexpr std::size_t kBagColumns = 9;
+    const std::size_t maxBagStartRow =
+        (FrameDebugData::kBagHudSlotCount / kBagColumns) > kVisibleBagRows
+        ? (FrameDebugData::kBagHudSlotCount / kBagColumns) - kVisibleBagRows
+        : 0;
+    const std::size_t bagStartRow = std::min(static_cast<std::size_t>(frameDebugData.craftingBagStartRow), maxBagStartRow);
     for (int row = 0; row < kVisibleBagRows; ++row)
     {
         for (int col = 0; col < 9; ++col)
         {
-            const std::size_t slotIndex = static_cast<std::size_t>(row * 9 + col);
+            const std::size_t slotIndex =
+                (bagStartRow + static_cast<std::size_t>(row)) * kBagColumns
+                + static_cast<std::size_t>(col);
             const float slotX = layout.inventoryOriginX + static_cast<float>(col) * (layout.slotSize + layout.slotGap);
             const float slotY = layout.inventoryOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
             drawSlotFrame(slotX, slotY, false);
@@ -879,49 +841,24 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
         float maxU = 1.0f;
         float minV = 0.0f;
         float maxV = 1.0f;
-        switch (pickup.itemKind)
+        if (pickup.itemKind != HudItemKind::None)
         {
-        case HudItemKind::Stick:
-            textureHandle = stickTextureHandle_;
-            break;
-        case HudItemKind::RottenFlesh:
-            textureHandle = rottenFleshTextureHandle_;
-            break;
-        case HudItemKind::Leather:
-            textureHandle = leatherTextureHandle_;
-            break;
-        case HudItemKind::RawPorkchop:
-            textureHandle = rawPorkchopTextureHandle_;
-            break;
-        case HudItemKind::Mutton:
-            textureHandle = muttonTextureHandle_;
-            break;
-        case HudItemKind::Feather:
-            textureHandle = featherTextureHandle_;
-            break;
-        case HudItemKind::DiamondSword:
-            textureHandle = diamondSwordTextureHandle_;
-            break;
-        case HudItemKind::None:
-        default:
-            if (textureHandle == UINT16_MAX)
-            {
-                continue;
-            }
-            {
-                const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
-                    pickup.blockType,
-                    vibecraft::world::BlockFace::Side);
-                const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
-                const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
-                const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
-                const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
-                minU = tileX * tileWidth;
-                maxU = minU + tileWidth;
-                minV = tileY * tileHeight;
-                maxV = minV + tileHeight;
-            }
-            break;
+            textureHandle = hudItemKindTextureHandle(pickup.itemKind);
+        }
+        if (textureHandle == UINT16_MAX && pickup.blockType != vibecraft::world::BlockType::Air)
+        {
+            textureHandle = chunkAtlasTextureHandle_;
+            const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
+                pickup.blockType,
+                vibecraft::world::BlockFace::Side);
+            const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
+            const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
+            const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
+            const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
+            minU = tileX * tileWidth;
+            maxU = minU + tileWidth;
+            minV = tileY * tileHeight;
+            maxV = minV + tileHeight;
         }
         if (textureHandle == UINT16_MAX)
         {
@@ -1672,56 +1609,25 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
     float halfH = 0.0f;
     float baseRotationDeg = 0.0f;
 
-    if (selectedSlot.itemKind == HudItemKind::DiamondSword)
+    textureHandle = hudItemKindTextureHandle(selectedSlot.itemKind);
+    if (textureHandle != UINT16_MAX)
     {
-        if (diamondSwordTextureHandle_ == UINT16_MAX)
+        if (selectedSlot.heldItemUsesSwordPose)
         {
-            return;
+            halfH = std::min(static_cast<float>(height_) * 0.46f, 420.0f);
+            halfW = halfH * 0.58f;
+            baseRotationDeg = -40.0f;
         }
-        textureHandle = diamondSwordTextureHandle_;
-        halfH = std::min(static_cast<float>(height_) * 0.46f, 420.0f);
-        halfW = halfH * 0.58f;
-        baseRotationDeg = -40.0f;
+        else
+        {
+            halfH = std::min(static_cast<float>(height_) * 0.24f, 192.0f);
+            halfW = halfH;
+            baseRotationDeg = -24.0f;
+        }
     }
-    else if (selectedSlot.itemKind != HudItemKind::None)
-    {
-        switch (selectedSlot.itemKind)
-        {
-        case HudItemKind::Stick:
-            textureHandle = stickTextureHandle_;
-            break;
-        case HudItemKind::RottenFlesh:
-            textureHandle = rottenFleshTextureHandle_;
-            break;
-        case HudItemKind::Leather:
-            textureHandle = leatherTextureHandle_;
-            break;
-        case HudItemKind::RawPorkchop:
-            textureHandle = rawPorkchopTextureHandle_;
-            break;
-        case HudItemKind::Mutton:
-            textureHandle = muttonTextureHandle_;
-            break;
-        case HudItemKind::Feather:
-            textureHandle = featherTextureHandle_;
-            break;
-        case HudItemKind::DiamondSword:
-            textureHandle = diamondSwordTextureHandle_;
-            break;
-        case HudItemKind::None:
-        default:
-            textureHandle = UINT16_MAX;
-            break;
-        }
-        if (textureHandle == UINT16_MAX)
-        {
-            return;
-        }
-        halfH = std::min(static_cast<float>(height_) * 0.24f, 192.0f);
-        halfW = halfH;
-        baseRotationDeg = -24.0f;
-    }
-    else
+    else if (
+        selectedSlot.itemKind == HudItemKind::None
+        && selectedSlot.blockType != vibecraft::world::BlockType::Air)
     {
         if (chunkAtlasTextureHandle_ == UINT16_MAX)
         {
@@ -1742,6 +1648,10 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
         halfH = std::min(static_cast<float>(height_) * 0.24f, 192.0f);
         halfW = halfH;
         baseRotationDeg = -24.0f;
+    }
+    else
+    {
+        return;
     }
 
     const float swing = std::clamp(frameDebugData.heldItemSwing, 0.0f, 1.0f);

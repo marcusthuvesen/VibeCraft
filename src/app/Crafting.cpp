@@ -1,6 +1,7 @@
 #include "vibecraft/app/Crafting.hpp"
 
 #include <algorithm>
+#include <vector>
 
 #include "vibecraft/world/Block.hpp"
 
@@ -25,6 +26,24 @@ struct RecipeDefinition
     return y * width + x;
 }
 
+[[nodiscard]] constexpr InventorySlot ingredientBlock(const vibecraft::world::BlockType blockType)
+{
+    return InventorySlot{
+        .blockType = blockType,
+        .count = 1,
+        .equippedItem = EquippedItem::None,
+    };
+}
+
+[[nodiscard]] constexpr InventorySlot ingredientItem(const EquippedItem equippedItem)
+{
+    return InventorySlot{
+        .blockType = vibecraft::world::BlockType::Air,
+        .count = 1,
+        .equippedItem = equippedItem,
+    };
+}
+
 [[nodiscard]] InventorySlot normalizedIngredientAt(
     const CraftingGridSlots& gridSlots,
     const std::size_t x,
@@ -42,56 +61,274 @@ struct RecipeDefinition
     };
 }
 
-[[nodiscard]] constexpr std::array<RecipeDefinition, 3> recipeDefinitions()
+[[nodiscard]] RecipeDefinition makeSwordRecipe(
+    const vibecraft::world::BlockType material,
+    const EquippedItem output,
+    const bool requiresWorkbench)
 {
     using vibecraft::world::BlockType;
-    return {{
-        RecipeDefinition{
+    return RecipeDefinition{
+        .width = 1,
+        .height = 3,
+        .requiresWorkbench = requiresWorkbench,
+        .pattern = {
+            ingredientBlock(material),
+            ingredientBlock(material),
+            ingredientItem(EquippedItem::Stick),
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::Air,
+            .count = 1,
+            .equippedItem = output,
+        },
+    };
+}
+
+[[nodiscard]] RecipeDefinition makePickaxeRecipe(
+    const vibecraft::world::BlockType material,
+    const EquippedItem output)
+{
+    using vibecraft::world::BlockType;
+    const InventorySlot empty{};
+    return RecipeDefinition{
+        .width = 3,
+        .height = 3,
+        .requiresWorkbench = true,
+        .pattern = {
+            ingredientBlock(material),
+            ingredientBlock(material),
+            ingredientBlock(material),
+            empty,
+            ingredientItem(EquippedItem::Stick),
+            empty,
+            empty,
+            ingredientItem(EquippedItem::Stick),
+            empty,
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::Air,
+            .count = 1,
+            .equippedItem = output,
+        },
+    };
+}
+
+[[nodiscard]] RecipeDefinition makeAxeRecipe(
+    const vibecraft::world::BlockType material,
+    const EquippedItem output)
+{
+    using vibecraft::world::BlockType;
+    const InventorySlot empty{};
+    return RecipeDefinition{
+        .width = 3,
+        .height = 3,
+        .requiresWorkbench = true,
+        .pattern = {
+            ingredientBlock(material),
+            ingredientBlock(material),
+            empty,
+            ingredientBlock(material),
+            ingredientItem(EquippedItem::Stick),
+            empty,
+            empty,
+            ingredientItem(EquippedItem::Stick),
+            empty,
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::Air,
+            .count = 1,
+            .equippedItem = output,
+        },
+    };
+}
+
+[[nodiscard]] const std::vector<RecipeDefinition>& allRecipes()
+{
+    using vibecraft::world::BlockType;
+    static const std::vector<RecipeDefinition> recipes = []
+    {
+        std::vector<RecipeDefinition> r;
+        r.push_back(RecipeDefinition{
             .width = 1,
             .height = 1,
             .requiresWorkbench = false,
-            .pattern = {InventorySlot{
-                .blockType = BlockType::TreeTrunk,
-                .count = 1,
-                .equippedItem = EquippedItem::None,
-            }},
+            .pattern = {ingredientBlock(BlockType::TreeTrunk)},
             .output = InventorySlot{
                 .blockType = BlockType::OakPlanks,
                 .count = 4,
                 .equippedItem = EquippedItem::None,
             },
-        },
-        RecipeDefinition{
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::TreeCrown)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
             .width = 2,
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
-                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
-                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
-                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
-                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
             },
             .output = InventorySlot{
                 .blockType = BlockType::CraftingTable,
                 .count = 1,
                 .equippedItem = EquippedItem::None,
             },
-        },
-        RecipeDefinition{
+        });
+        r.push_back(RecipeDefinition{
             .width = 1,
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
-                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
-                InventorySlot{.blockType = BlockType::OakPlanks, .count = 1, .equippedItem = EquippedItem::None},
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
             },
             .output = InventorySlot{
                 .blockType = BlockType::Air,
                 .count = 4,
                 .equippedItem = EquippedItem::Stick,
             },
-        },
-    }};
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Sand),
+                ingredientBlock(BlockType::Sand),
+                ingredientBlock(BlockType::Sand),
+                ingredientBlock(BlockType::Sand),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Sandstone,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::Sandstone)},
+            .output = InventorySlot{
+                .blockType = BlockType::Sand,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::Stone)},
+            .output = InventorySlot{
+                .blockType = BlockType::Cobblestone,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::Deepslate)},
+            .output = InventorySlot{
+                .blockType = BlockType::Cobblestone,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Stone,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                InventorySlot{},
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Oven,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+                InventorySlot{},
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+                ingredientBlock(BlockType::OakPlanks),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Chest,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+
+        r.push_back(makeSwordRecipe(BlockType::OakPlanks, EquippedItem::WoodSword, true));
+        r.push_back(makeSwordRecipe(BlockType::Cobblestone, EquippedItem::StoneSword, true));
+        r.push_back(makeSwordRecipe(BlockType::IronOre, EquippedItem::IronSword, true));
+        r.push_back(makeSwordRecipe(BlockType::GoldOre, EquippedItem::GoldSword, true));
+        r.push_back(makeSwordRecipe(BlockType::DiamondOre, EquippedItem::DiamondSword, true));
+
+        r.push_back(makePickaxeRecipe(BlockType::OakPlanks, EquippedItem::WoodPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::Cobblestone, EquippedItem::StonePickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::IronOre, EquippedItem::IronPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::GoldOre, EquippedItem::GoldPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondPickaxe));
+
+        r.push_back(makeAxeRecipe(BlockType::OakPlanks, EquippedItem::WoodAxe));
+        r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe));
+        r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe));
+        r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe));
+        r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe));
+
+        return r;
+    }();
+    return recipes;
 }
 }  // namespace
 
@@ -130,7 +367,7 @@ std::optional<CraftingMatch> evaluateCraftingGrid(
     const std::size_t activeWidth = mode == CraftingMode::Workbench3x3 ? 3 : 2;
     const std::size_t activeHeight = mode == CraftingMode::Workbench3x3 ? 3 : 2;
 
-    const auto recipes = recipeDefinitions();
+    const std::vector<RecipeDefinition>& recipes = allRecipes();
     for (const RecipeDefinition& recipe : recipes)
     {
         if (recipe.requiresWorkbench && mode != CraftingMode::Workbench3x3)

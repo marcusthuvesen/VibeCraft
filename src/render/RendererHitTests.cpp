@@ -347,13 +347,20 @@ int Renderer::hitTestCraftingMenu(
     const float mouseY,
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
-    const bool useWorkbench)
+    const bool useWorkbench,
+    const std::size_t bagStartRow)
 {
     if (windowWidth == 0 || windowHeight == 0)
     {
         return -1;
     }
     constexpr int kVisibleBagRows = 3;
+    constexpr std::size_t kBagColumns = 9;
+    const std::size_t maxBagStartRow =
+        (FrameDebugData::kBagHudSlotCount / kBagColumns) > kVisibleBagRows
+        ? (FrameDebugData::kBagHudSlotCount / kBagColumns) - kVisibleBagRows
+        : 0;
+    const std::size_t clampedBagStartRow = std::min(bagStartRow, maxBagStartRow);
 
     const detail::CraftingOverlayLayoutPx layout =
         detail::computeCraftingOverlayLayoutPx(windowWidth, windowHeight, useWorkbench);
@@ -396,7 +403,10 @@ int Renderer::hitTestCraftingMenu(
             const float slotY = layout.inventoryOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
             if (insideRect(slotX, slotY))
             {
-                return kCraftingBagHitBase + row * 9 + col;
+                const std::size_t globalIndex =
+                    (clampedBagStartRow + static_cast<std::size_t>(row)) * kBagColumns
+                    + static_cast<std::size_t>(col);
+                return kCraftingBagHitBase + static_cast<int>(globalIndex);
             }
         }
     }

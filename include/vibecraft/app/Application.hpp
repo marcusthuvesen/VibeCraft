@@ -2,10 +2,12 @@
 
 #include <glm/vec3.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -93,6 +95,7 @@ class Application
         glm::ivec3 targetBlockPosition{0};
         vibecraft::world::BlockType targetBlockType = vibecraft::world::BlockType::Air;
         vibecraft::world::BlockType equippedBlockType = vibecraft::world::BlockType::Air;
+        EquippedItem equippedItem = EquippedItem::None;
         float elapsedSeconds = 0.0f;
         float requiredSeconds = 0.0f;
         /// Time until the next dig tick while holding attack (immediate tick on target change).
@@ -109,9 +112,19 @@ class Application
 
     struct CraftingMenuState
     {
+        enum class Mode : std::uint8_t
+        {
+            InventoryCrafting,
+            WorkbenchCrafting,
+            ChestStorage,
+        };
+
         bool active = false;
+        Mode mode = Mode::InventoryCrafting;
         bool usesWorkbench = false;
         glm::ivec3 workbenchBlockPosition{0};
+        glm::ivec3 chestBlockPosition{0};
+        std::size_t bagStartRow = 0;
         CraftingGridSlots gridSlots{};
         InventorySlot carriedSlot{};
         std::string hint;
@@ -140,6 +153,7 @@ class Application
     void syncWorldData();
     void respawnPlayer();
     void openCraftingMenu(bool useWorkbench, const glm::ivec3& workbenchBlockPosition = glm::ivec3(0));
+    void openChestMenu(const glm::ivec3& chestBlockPosition);
     void closeCraftingMenu();
     void handleCraftingMenuClick();
     void handleCraftingMenuRightClick();
@@ -209,6 +223,7 @@ class Application
     bool craftingKeyWasDown_ = false;
     std::string respawnNotice_;
     std::vector<DroppedItem> droppedItems_;
+    std::unordered_map<std::int64_t, CraftingGridSlots> chestSlotsByPosition_;
     ActiveMiningState activeMiningState_{};
     SingleplayerLoadState singleplayerLoadState_{};
     CraftingMenuState craftingMenuState_{};

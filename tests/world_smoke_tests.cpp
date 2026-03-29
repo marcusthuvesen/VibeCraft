@@ -68,6 +68,22 @@ TEST_CASE("terrain generator produces solid ground and non-solid space above it"
     CHECK(!vibecraft::world::isSolid(terrainGenerator.blockTypeAt(12, surface + 1, -9)));
 }
 
+TEST_CASE("terrain generator fast column fill matches per-block sampling")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    std::array<vibecraft::world::BlockType, vibecraft::world::kWorldHeight> columnBlocks{};
+
+    const std::array<std::pair<int, int>, 3> sampleColumns{{{12, -9}, {-24, 31}, {7, 7}}};
+    for (const auto& [worldX, worldZ] : sampleColumns)
+    {
+        terrainGenerator.fillColumn(worldX, worldZ, columnBlocks.data());
+        for (int y = vibecraft::world::kWorldMinY; y <= vibecraft::world::kWorldMaxY; ++y)
+        {
+            CHECK(columnBlocks[y - vibecraft::world::kWorldMinY] == terrainGenerator.blockTypeAt(worldX, y, worldZ));
+        }
+    }
+}
+
 TEST_CASE("terrain generator carves underground non-solid cave space without breaking the surface")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
@@ -163,10 +179,35 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     CHECK(vibecraft::world::textureTileIndex(BlockType::Lava, BlockFace::Side) == 13);
     CHECK(vibecraft::world::textureTileIndex(BlockType::OakPlanks, BlockFace::Side) == 17);
     CHECK(vibecraft::world::textureTileIndex(BlockType::CraftingTable, BlockFace::Top) == 20);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Chest, BlockFace::Top) == 27);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::SnowGrass, BlockFace::Top) == 30);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::SnowGrass, BlockFace::Side) == 31);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::JungleGrass, BlockFace::Top) == 32);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::JungleGrass, BlockFace::Side) == 33);
     CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xffffffff);
 }
 
-TEST_CASE("crafting recipes include trunk to planks and planks to crafting table")
+TEST_CASE("chunk mesher emits axis-aligned face normals")
+{
+    vibecraft::world::World world;
+    CHECK(world.applyEditCommand({
+        .action = vibecraft::world::WorldEditAction::Place,
+        .position = {0, 10, 0},
+        .blockType = vibecraft::world::BlockType::Stone,
+    }));
+
+    vibecraft::meshing::ChunkMesher mesher;
+    const vibecraft::meshing::ChunkMeshData meshData = mesher.buildMesh(world, vibecraft::world::ChunkCoord{0, 0});
+    REQUIRE(meshData.vertices.size() == 24);
+
+    for (const vibecraft::meshing::DebugVertex& vertex : meshData.vertices)
+    {
+        const float axisMagnitude = std::abs(vertex.nx) + std::abs(vertex.ny) + std::abs(vertex.nz);
+        CHECK(axisMagnitude == doctest::Approx(1.0f));
+    }
+}
+
+TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
 {
     using vibecraft::app::CraftingGridSlots;
     using vibecraft::app::CraftingMode;
@@ -183,17 +224,17 @@ TEST_CASE("crafting recipes include trunk to planks and planks to crafting table
     CHECK(planksMatch->output.blockType == BlockType::OakPlanks);
     CHECK(planksMatch->output.count == 4);
 
-    CraftingGridSlots workbenchGrid{};
-    workbenchGrid[0].blockType = BlockType::OakPlanks;
-    workbenchGrid[0].count = 1;
-    workbenchGrid[1].blockType = BlockType::OakPlanks;
-    workbenchGrid[1].count = 1;
-    workbenchGrid[3].blockType = BlockType::OakPlanks;
-    workbenchGrid[3].count = 1;
-    workbenchGrid[4].blockType = BlockType::OakPlanks;
-    workbenchGrid[4].count = 1;
+    CraftingGridSlots tableGrid{};
+    tableGrid[0].blockType = BlockType::OakPlanks;
+    tableGrid[0].count = 1;
+    tableGrid[1].blockType = BlockType::OakPlanks;
+    tableGrid[1].count = 1;
+    tableGrid[3].blockType = BlockType::OakPlanks;
+    tableGrid[3].count = 1;
+    tableGrid[4].blockType = BlockType::OakPlanks;
+    tableGrid[4].count = 1;
     const auto tableMatch = vibecraft::app::evaluateCraftingGrid(
-        workbenchGrid,
+        tableGrid,
         CraftingMode::Inventory2x2);
     REQUIRE(tableMatch.has_value());
     CHECK(tableMatch->output.blockType == BlockType::CraftingTable);
@@ -210,6 +251,72 @@ TEST_CASE("crafting recipes include trunk to planks and planks to crafting table
     REQUIRE(stickMatch.has_value());
     CHECK(stickMatch->output.equippedItem == EquippedItem::Stick);
     CHECK(stickMatch->output.count == 4);
+
+    CraftingGridSlots sandstoneGrid{};
+    sandstoneGrid[0].blockType = BlockType::Sand;
+    sandstoneGrid[0].count = 1;
+    sandstoneGrid[1].blockType = BlockType::Sand;
+    sandstoneGrid[1].count = 1;
+    sandstoneGrid[3].blockType = BlockType::Sand;
+    sandstoneGrid[3].count = 1;
+    sandstoneGrid[4].blockType = BlockType::Sand;
+    sandstoneGrid[4].count = 1;
+    const auto sandstoneMatch = vibecraft::app::evaluateCraftingGrid(
+        sandstoneGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(sandstoneMatch.has_value());
+    CHECK(sandstoneMatch->output.blockType == BlockType::Sandstone);
+    CHECK(sandstoneMatch->output.count == 1);
+
+    CraftingGridSlots swordGrid{};
+    swordGrid[1].blockType = BlockType::DiamondOre;
+    swordGrid[1].count = 1;
+    swordGrid[4].blockType = BlockType::DiamondOre;
+    swordGrid[4].count = 1;
+    swordGrid[7].blockType = BlockType::Air;
+    swordGrid[7].equippedItem = EquippedItem::Stick;
+    swordGrid[7].count = 1;
+    const auto swordWithoutWorkbench = vibecraft::app::evaluateCraftingGrid(
+        swordGrid,
+        CraftingMode::Inventory2x2);
+    CHECK_FALSE(swordWithoutWorkbench.has_value());
+    const auto swordWithWorkbench = vibecraft::app::evaluateCraftingGrid(
+        swordGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(swordWithWorkbench.has_value());
+    CHECK(swordWithWorkbench->output.blockType == BlockType::Air);
+    CHECK(swordWithWorkbench->output.equippedItem == EquippedItem::DiamondSword);
+    CHECK(swordWithWorkbench->output.count == 1);
+
+    CraftingGridSlots ovenGrid{};
+    for (std::size_t i = 0; i < 9; ++i)
+    {
+        ovenGrid[i].blockType = BlockType::Cobblestone;
+        ovenGrid[i].count = 1;
+    }
+    ovenGrid[4].blockType = BlockType::Air;
+    ovenGrid[4].count = 0;
+    const auto ovenMatch = vibecraft::app::evaluateCraftingGrid(
+        ovenGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(ovenMatch.has_value());
+    CHECK(ovenMatch->output.blockType == BlockType::Oven);
+    CHECK(ovenMatch->output.count == 1);
+
+    CraftingGridSlots chestGrid{};
+    for (std::size_t i = 0; i < 9; ++i)
+    {
+        chestGrid[i].blockType = BlockType::OakPlanks;
+        chestGrid[i].count = 1;
+    }
+    chestGrid[4].blockType = BlockType::Air;
+    chestGrid[4].count = 0;
+    const auto chestMatch = vibecraft::app::evaluateCraftingGrid(
+        chestGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(chestMatch.has_value());
+    CHECK(chestMatch->output.blockType == BlockType::Chest);
+    CHECK(chestMatch->output.count == 1);
 }
 
 TEST_CASE("deeper block families are harder and bedrock is unbreakable")
@@ -243,6 +350,40 @@ TEST_CASE("terrain generator varies surface height and produces water")
 
     CHECK(maxSurface - minSurface >= 10);
     CHECK(foundWater);
+}
+
+TEST_CASE("terrain generator produces snowy, jungle, and temperate surface biomes")
+{
+    using vibecraft::world::BlockType;
+
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    bool foundTemperateSurface = false;
+    bool foundSnowySurface = false;
+    bool foundJungleSurface = false;
+
+    for (int worldX = -384; worldX <= 384; worldX += 12)
+    {
+        for (int worldZ = -384; worldZ <= 384; worldZ += 12)
+        {
+            const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            const BlockType surfaceBlock = terrainGenerator.blockTypeAt(worldX, surface, worldZ);
+            foundTemperateSurface = foundTemperateSurface || surfaceBlock == BlockType::Grass;
+            foundSnowySurface = foundSnowySurface || surfaceBlock == BlockType::SnowGrass;
+            foundJungleSurface = foundJungleSurface || surfaceBlock == BlockType::JungleGrass;
+            if (foundTemperateSurface && foundSnowySurface && foundJungleSurface)
+            {
+                break;
+            }
+        }
+        if (foundTemperateSurface && foundSnowySurface && foundJungleSurface)
+        {
+            break;
+        }
+    }
+
+    CHECK(foundTemperateSurface);
+    CHECK(foundSnowySurface);
+    CHECK(foundJungleSurface);
 }
 
 TEST_CASE("world save and load round-trips edited blocks")

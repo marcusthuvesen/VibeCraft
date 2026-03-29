@@ -168,6 +168,38 @@ struct BlockMetadata
             .hardness = 0.8f,
             .breakable = true,
         };
+    case BlockType::Oven:
+        // Tiles 24–26 from build_chunk_atlas.sh row 5 (furnace_*); bottom reuses cobblestone (18).
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 24, .bottom = 18, .side = 25},
+            .hardness = 3.5f,
+            .breakable = true,
+        };
+    case BlockType::Chest:
+        // Tiles 27–29 from build_chunk_atlas.sh row 5 (chest_*).
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 27, .bottom = 27, .side = 28},
+            .hardness = 2.5f,
+            .breakable = true,
+        };
+    case BlockType::SnowGrass:
+        // Tiles 30–31 from build_chunk_atlas.sh row 6 (powder_snow + grass_block_snow); bottom uses dirt (2).
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 30, .bottom = 2, .side = 31},
+            .hardness = 0.65f,
+            .breakable = true,
+        };
+    case BlockType::JungleGrass:
+        // Tiles 32–33 from build_chunk_atlas.sh row 6 (lush jungle-tinted grass top/side); bottom uses dirt (2).
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 32, .bottom = 2, .side = 33},
+            .hardness = 0.7f,
+            .breakable = true,
+        };
     case BlockType::Air:
     default:
         return {};

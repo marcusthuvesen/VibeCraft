@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <queue>
+#include <unordered_set>
 #include <vector>
 
 #include "stb_image.h"
@@ -282,46 +283,115 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         }
     }
 
-    const bgfx::TextureHandle diamondSwordTexture = detail::createTextureFromPng("textures/item/diamond_sword.png");
+    constexpr std::uint16_t kUiItemTextureFlags =
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+    const bgfx::TextureHandle diamondSwordTexture = detail::createTextureFromPng(
+        "textures/item/diamond_sword.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
     if (bgfx::isValid(diamondSwordTexture))
     {
         diamondSwordTextureHandle_ = diamondSwordTexture.idx;
     }
-    const bgfx::TextureHandle stickTexture = detail::createTextureFromPng("textures/item/stick.png");
+    const bgfx::TextureHandle stickTexture = detail::createTextureFromPng(
+        "textures/item/stick.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
     if (bgfx::isValid(stickTexture))
     {
         stickTextureHandle_ = stickTexture.idx;
     }
     const bgfx::TextureHandle rottenFleshTexture =
-        detail::createTextureFromPng("textures/item/mob_drops/rotten_flesh.png");
+        detail::createTextureFromPng(
+            "textures/item/mob_drops/rotten_flesh.png",
+            kUiItemTextureFlags,
+            nullptr,
+            nullptr,
+            true);
     if (bgfx::isValid(rottenFleshTexture))
     {
         rottenFleshTextureHandle_ = rottenFleshTexture.idx;
     }
     const bgfx::TextureHandle leatherTexture =
-        detail::createTextureFromPng("textures/item/mob_drops/leather.png");
+        detail::createTextureFromPng(
+            "textures/item/mob_drops/leather.png",
+            kUiItemTextureFlags,
+            nullptr,
+            nullptr,
+            true);
     if (bgfx::isValid(leatherTexture))
     {
         leatherTextureHandle_ = leatherTexture.idx;
     }
     const bgfx::TextureHandle rawPorkchopTexture =
-        detail::createTextureFromPng("textures/item/mob_drops/porkchop.png");
+        detail::createTextureFromPng(
+            "textures/item/mob_drops/porkchop.png",
+            kUiItemTextureFlags,
+            nullptr,
+            nullptr,
+            true);
     if (bgfx::isValid(rawPorkchopTexture))
     {
         rawPorkchopTextureHandle_ = rawPorkchopTexture.idx;
     }
     const bgfx::TextureHandle muttonTexture =
-        detail::createTextureFromPng("textures/item/mob_drops/mutton.png");
+        detail::createTextureFromPng(
+            "textures/item/mob_drops/mutton.png",
+            kUiItemTextureFlags,
+            nullptr,
+            nullptr,
+            true);
     if (bgfx::isValid(muttonTexture))
     {
         muttonTextureHandle_ = muttonTexture.idx;
     }
     const bgfx::TextureHandle featherTexture =
-        detail::createTextureFromPng("textures/item/mob_drops/feather.png");
+        detail::createTextureFromPng(
+            "textures/item/mob_drops/feather.png",
+            kUiItemTextureFlags,
+            nullptr,
+            nullptr,
+            true);
     if (bgfx::isValid(featherTexture))
     {
         featherTextureHandle_ = featherTexture.idx;
     }
+
+    extendedToolTextureHandles_.fill(UINT16_MAX);
+    static constexpr const char* const kExtendedToolTexturePaths[14] = {
+        "textures/item/wooden_sword.png",
+        "textures/item/stone_sword.png",
+        "textures/item/iron_sword.png",
+        "textures/item/golden_sword.png",
+        "textures/item/wooden_pickaxe.png",
+        "textures/item/stone_pickaxe.png",
+        "textures/item/iron_pickaxe.png",
+        "textures/item/golden_pickaxe.png",
+        "textures/item/diamond_pickaxe.png",
+        "textures/item/wooden_axe.png",
+        "textures/item/stone_axe.png",
+        "textures/item/iron_axe.png",
+        "textures/item/golden_axe.png",
+        "textures/item/diamond_axe.png",
+    };
+    for (std::size_t i = 0; i < extendedToolTextureHandles_.size(); ++i)
+    {
+        const bgfx::TextureHandle toolTexture = detail::createTextureFromPng(
+            kExtendedToolTexturePaths[i],
+            kUiItemTextureFlags,
+            nullptr,
+            nullptr,
+            true);
+        if (bgfx::isValid(toolTexture))
+        {
+            extendedToolTextureHandles_[i] = toolTexture.idx;
+        }
+    }
+
     const bgfx::TextureHandle fullHeartTexture = detail::createHeartTexture(2);
     if (bgfx::isValid(fullHeartTexture))
     {
@@ -529,6 +599,18 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toTextureHandle(featherTextureHandle_));
         featherTextureHandle_ = UINT16_MAX;
+    }
+    {
+        std::unordered_set<std::uint16_t> destroyedExtended;
+        for (const std::uint16_t handle : extendedToolTextureHandles_)
+        {
+            if (handle == UINT16_MAX || !destroyedExtended.insert(handle).second)
+            {
+                continue;
+            }
+            bgfx::destroy(detail::toTextureHandle(handle));
+        }
+        extendedToolTextureHandles_.fill(UINT16_MAX);
     }
     if (fullHeartTextureHandle_ != UINT16_MAX)
     {
@@ -786,6 +868,63 @@ TextureUvRect Renderer::mobTextureUvForKind(const vibecraft::game::MobKind kind)
         return chickenMobTextureUv_;
     }
     return {};
+}
+
+std::uint16_t Renderer::hudItemKindTextureHandle(const HudItemKind kind) const
+{
+    switch (kind)
+    {
+    case HudItemKind::None:
+        return UINT16_MAX;
+    case HudItemKind::DiamondSword:
+        return diamondSwordTextureHandle_;
+    case HudItemKind::Stick:
+        return stickTextureHandle_;
+    case HudItemKind::RottenFlesh:
+        return rottenFleshTextureHandle_;
+    case HudItemKind::Leather:
+        return leatherTextureHandle_;
+    case HudItemKind::RawPorkchop:
+        return rawPorkchopTextureHandle_;
+    case HudItemKind::Mutton:
+        return muttonTextureHandle_;
+    case HudItemKind::Feather:
+        return featherTextureHandle_;
+    case HudItemKind::WoodSword:
+    case HudItemKind::StoneSword:
+    case HudItemKind::IronSword:
+    case HudItemKind::GoldSword:
+    case HudItemKind::WoodPickaxe:
+    case HudItemKind::StonePickaxe:
+    case HudItemKind::IronPickaxe:
+    case HudItemKind::GoldPickaxe:
+    case HudItemKind::DiamondPickaxe:
+    case HudItemKind::WoodAxe:
+    case HudItemKind::StoneAxe:
+    case HudItemKind::IronAxe:
+    case HudItemKind::GoldAxe:
+    case HudItemKind::DiamondAxe:
+        break;
+    }
+
+    const auto kindByte = static_cast<std::uint8_t>(kind);
+    constexpr std::uint8_t kFirstExtended = static_cast<std::uint8_t>(HudItemKind::WoodSword);
+    constexpr std::uint8_t kLastExtended = static_cast<std::uint8_t>(HudItemKind::DiamondAxe);
+    if (kindByte >= kFirstExtended && kindByte <= kLastExtended)
+    {
+        const std::size_t index = static_cast<std::size_t>(kindByte - kFirstExtended);
+        if (extendedToolTextureHandles_[index] != UINT16_MAX)
+        {
+            return extendedToolTextureHandles_[index];
+        }
+        if (kindByte <= static_cast<std::uint8_t>(HudItemKind::GoldSword))
+        {
+            return diamondSwordTextureHandle_;
+        }
+        return stickTextureHandle_;
+    }
+
+    return UINT16_MAX;
 }
 
 } // namespace vibecraft::render

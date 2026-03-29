@@ -19,6 +19,94 @@
 
 namespace vibecraft::render::detail
 {
+namespace
+{
+void stripWhiteEdgeMatteAlpha(
+    std::uint8_t* const rgbaPixels,
+    const int width,
+    const int height)
+{
+    if (rgbaPixels == nullptr || width <= 0 || height <= 0)
+    {
+        return;
+    }
+
+    constexpr std::uint8_t kWhiteThreshold = 245;
+    constexpr std::uint8_t kMinAlpha = 1;
+    const auto isEdgeMattePixel = [&](const int x, const int y)
+    {
+        const std::size_t idx = (static_cast<std::size_t>(y) * static_cast<std::size_t>(width)
+            + static_cast<std::size_t>(x))
+            * 4U;
+        const std::uint8_t r = rgbaPixels[idx + 0];
+        const std::uint8_t g = rgbaPixels[idx + 1];
+        const std::uint8_t b = rgbaPixels[idx + 2];
+        const std::uint8_t a = rgbaPixels[idx + 3];
+        return a >= kMinAlpha && r >= kWhiteThreshold && g >= kWhiteThreshold && b >= kWhiteThreshold;
+    };
+
+    const auto pixelIndex = [width](const int x, const int y)
+    {
+        return static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + static_cast<std::size_t>(x);
+    };
+
+    const std::size_t count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    std::vector<std::uint8_t> visited(count, 0);
+    std::vector<std::size_t> stack;
+    stack.reserve(count / 8U + 16U);
+
+    const auto pushIfMatte = [&](const int x, const int y)
+    {
+        if (x < 0 || x >= width || y < 0 || y >= height)
+        {
+            return;
+        }
+        const std::size_t p = pixelIndex(x, y);
+        if (visited[p] != 0 || !isEdgeMattePixel(x, y))
+        {
+            return;
+        }
+        stack.push_back(p);
+    };
+
+    for (int x = 0; x < width; ++x)
+    {
+        pushIfMatte(x, 0);
+        pushIfMatte(x, height - 1);
+    }
+    for (int y = 1; y < height - 1; ++y)
+    {
+        pushIfMatte(0, y);
+        pushIfMatte(width - 1, y);
+    }
+
+    while (!stack.empty())
+    {
+        const std::size_t p = stack.back();
+        stack.pop_back();
+        if (visited[p] != 0)
+        {
+            continue;
+        }
+        visited[p] = 1;
+
+        const int x = static_cast<int>(p % static_cast<std::size_t>(width));
+        const int y = static_cast<int>(p / static_cast<std::size_t>(width));
+        if (!isEdgeMattePixel(x, y))
+        {
+            continue;
+        }
+
+        const std::size_t idx = p * 4U;
+        rgbaPixels[idx + 3] = 0;
+
+        pushIfMatte(x - 1, y);
+        pushIfMatte(x + 1, y);
+        pushIfMatte(x, y - 1);
+        pushIfMatte(x, y + 1);
+    }
+}
+}  // namespace
 
 
 [[nodiscard]] std::filesystem::path runtimeAssetPath(const std::filesystem::path& relativePath)
@@ -216,7 +304,8 @@ namespace vibecraft::render::detail
     const std::filesystem::path& relativePath,
     const std::uint16_t textureFlags,
     std::uint16_t* const outWidthPx,
-    std::uint16_t* const outHeightPx)
+    std::uint16_t* const outHeightPx,
+    const bool stripWhiteEdgeMatte)
 {
     if (outWidthPx != nullptr)
     {
@@ -244,6 +333,11 @@ namespace vibecraft::render::detail
             stbi_image_free(rgbaPixels);
         }
         return BGFX_INVALID_HANDLE;
+    }
+
+    if (stripWhiteEdgeMatte)
+    {
+        stripWhiteEdgeMatteAlpha(rgbaPixels, width, height);
     }
 
     const std::size_t pixelCount = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);

@@ -25,7 +25,11 @@ enum class BlockType : std::uint8_t
     OakPlanks,
     CraftingTable,
     Cobblestone,
-    Sandstone
+    Sandstone,
+    Oven,
+    Chest,
+    SnowGrass,
+    JungleGrass
 };
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)

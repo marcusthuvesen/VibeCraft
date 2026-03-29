@@ -19,6 +19,20 @@ enum class EquippedItem : std::uint8_t
     RawPorkchop,
     Mutton,
     Feather,
+    WoodSword,
+    StoneSword,
+    IronSword,
+    GoldSword,
+    WoodPickaxe,
+    StonePickaxe,
+    IronPickaxe,
+    GoldPickaxe,
+    DiamondPickaxe,
+    WoodAxe,
+    StoneAxe,
+    IronAxe,
+    GoldAxe,
+    DiamondAxe,
 };
 
 struct InventorySlot

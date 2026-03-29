@@ -503,6 +503,41 @@ void drawFramedButton3(
         static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row + 4), borderAttr, "%s", border.c_str());
 }
 
+void drawTextFrame(
+    const int row,
+    const int col,
+    const int outerWidth,
+    const int outerHeight,
+    const std::uint16_t borderAttr,
+    const std::uint16_t fillAttr)
+{
+    if (outerWidth < 2 || outerHeight < 2)
+    {
+        return;
+    }
+
+    const int innerWidth = outerWidth - 2;
+    const std::string border = "+" + std::string(static_cast<std::size_t>(innerWidth), '-') + "+";
+    const std::string middle = "|" + std::string(static_cast<std::size_t>(innerWidth), ' ') + "|";
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), borderAttr, "%s", border.c_str());
+    for (int innerRow = 0; innerRow < outerHeight - 2; ++innerRow)
+    {
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(col),
+            static_cast<std::uint16_t>(row + 1 + innerRow),
+            fillAttr,
+            "%s",
+            middle.c_str());
+    }
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(col),
+        static_cast<std::uint16_t>(row + outerHeight - 1),
+        borderAttr,
+        "%s",
+        border.c_str());
+}
+
 void drawBottomButtonPair(
     const int row,
     const int centerCol,
@@ -823,23 +858,53 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
 
     if (frameDebugData.mainMenuLoadingActive)
     {
-        dbgTextPrintfCenteredRow(6, 0x0f, "LOADING SINGLEPLAYER");
         const int percent =
             static_cast<int>(std::round(std::clamp(frameDebugData.mainMenuLoadingProgress, 0.0f, 1.0f) * 100.0f));
-        dbgTextPrintfCenteredRow(9, 0x07, frameDebugData.mainMenuLoadingLabel);
-        dbgTextPrintfCenteredRow(11, 0x0f, fmt::format("{}%", percent));
+        const int panelWidth = std::clamp(tw - 12, 40, std::max(40, tw - 4));
+        const int panelHeight = std::min(13, std::max(11, th - 2));
+        const int panelCol = std::max(0, (tw - panelWidth) / 2);
+        const int panelRow = std::max(1, (th - panelHeight) / 2);
+        const int panelInnerWidth = panelWidth - 2;
+        const int titleRow = panelRow + 2;
+        const int labelRow = panelRow + 5;
+        const int percentRow = panelRow + 7;
+        const int barRow = panelRow + 9;
 
-        constexpr int kBarWidth = 34;
+        drawTextFrame(panelRow, panelCol, panelWidth, panelHeight, 0x1f, 0x17);
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(panelCol),
+            static_cast<std::uint16_t>(titleRow),
+            0x3f,
+            "%s",
+            ("|" + padLabelToInnerWidth(" LOADING SINGLEPLAYER ", panelInnerWidth) + "|").c_str());
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(panelCol),
+            static_cast<std::uint16_t>(labelRow),
+            0x17,
+            "%s",
+            ("|" + padLabelToInnerWidth(clampDbgTextLine(frameDebugData.mainMenuLoadingLabel, panelInnerWidth), panelInnerWidth) + "|").c_str());
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(panelCol),
+            static_cast<std::uint16_t>(percentRow),
+            0x3f,
+            "%s",
+            ("|" + padLabelToInnerWidth(fmt::format("{}%", percent), panelInnerWidth) + "|").c_str());
+
+        const int barWidth = std::clamp(panelInnerWidth - 10, 24, 56);
         const int fillChars = std::clamp(
-            static_cast<int>(std::round(frameDebugData.mainMenuLoadingProgress * static_cast<float>(kBarWidth))),
+            static_cast<int>(std::round(frameDebugData.mainMenuLoadingProgress * static_cast<float>(barWidth))),
             0,
-            kBarWidth);
+            barWidth);
         const std::string bar = "["
             + std::string(static_cast<std::size_t>(fillChars), '=')
-            + std::string(static_cast<std::size_t>(kBarWidth - fillChars), ' ')
+            + std::string(static_cast<std::size_t>(barWidth - fillChars), ' ')
             + "]";
-        dbgTextPrintfCenteredRow(13, 0x0a, bar);
-        dbgTextPrintfCenteredRow(footerRow, 0x07, "Preparing world...");
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(panelCol),
+            static_cast<std::uint16_t>(barRow),
+            0x2f,
+            "%s",
+            ("|" + padLabelToInnerWidth(bar, panelInnerWidth) + "|").c_str());
         return;
     }
 

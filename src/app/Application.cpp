@@ -66,6 +66,13 @@ struct PlayerMovementSettings
     float gravity = 32.0f;
     float jumpVelocity = 8.4f;
     float terminalFallVelocity = 45.0f;
+    float waterMoveSpeedMultiplier = 0.42f;
+    float waterGravity = 10.0f;
+    float waterTerminalFallVelocity = 4.2f;
+    float waterTerminalRiseVelocity = 4.0f;
+    float waterSwimUpAcceleration = 15.0f;
+    float waterSinkAcceleration = 6.0f;
+    float waterVerticalDrag = 4.0f;
     float collisionSweepStep = 0.2f;
     float groundProbeDistance = 0.05f;
 };
@@ -77,10 +84,19 @@ constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
 constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
 
+[[nodiscard]] std::int64_t chestStorageKey(const glm::ivec3& blockPosition)
+{
+    const std::int64_t x = static_cast<std::int64_t>(blockPosition.x) & 0x1fffffLL;
+    const std::int64_t y = static_cast<std::int64_t>(blockPosition.y) & 0x1fffffLL;
+    const std::int64_t z = static_cast<std::int64_t>(blockPosition.z) & 0x1fffffLL;
+    return (x << 42) | (y << 21) | z;
+}
+
 [[nodiscard]] bool isEarthyBlockType(const world::BlockType blockType)
 {
     return blockType == world::BlockType::Grass || blockType == world::BlockType::Dirt
-        || blockType == world::BlockType::Sand;
+        || blockType == world::BlockType::Sand || blockType == world::BlockType::SnowGrass
+        || blockType == world::BlockType::JungleGrass;
 }
 
 [[nodiscard]] bool isStoneFamilyBlockType(const world::BlockType blockType)
@@ -94,6 +110,140 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
 [[nodiscard]] bool isWoodFamilyBlockType(const world::BlockType blockType)
 {
     return blockType == world::BlockType::TreeTrunk || blockType == world::BlockType::TreeCrown;
+}
+
+[[nodiscard]] bool isPickaxeEffectiveTarget(const world::BlockType targetBlockType)
+{
+    return isStoneFamilyBlockType(targetBlockType) || targetBlockType == world::BlockType::Cobblestone
+        || targetBlockType == world::BlockType::Sandstone || targetBlockType == world::BlockType::Oven;
+}
+
+[[nodiscard]] bool isAxeEffectiveTarget(const world::BlockType targetBlockType)
+{
+    return isWoodFamilyBlockType(targetBlockType) || targetBlockType == world::BlockType::OakPlanks
+        || targetBlockType == world::BlockType::CraftingTable || targetBlockType == world::BlockType::Chest;
+}
+
+[[nodiscard]] bool isPickaxeItem(const EquippedItem equippedItem)
+{
+    switch (equippedItem)
+    {
+    case EquippedItem::WoodPickaxe:
+    case EquippedItem::StonePickaxe:
+    case EquippedItem::IronPickaxe:
+    case EquippedItem::GoldPickaxe:
+    case EquippedItem::DiamondPickaxe:
+        return true;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool isAxeItem(const EquippedItem equippedItem)
+{
+    switch (equippedItem)
+    {
+    case EquippedItem::WoodAxe:
+    case EquippedItem::StoneAxe:
+    case EquippedItem::IronAxe:
+    case EquippedItem::GoldAxe:
+    case EquippedItem::DiamondAxe:
+        return true;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool isSwordItem(const EquippedItem equippedItem)
+{
+    switch (equippedItem)
+    {
+    case EquippedItem::DiamondSword:
+    case EquippedItem::WoodSword:
+    case EquippedItem::StoneSword:
+    case EquippedItem::IronSword:
+    case EquippedItem::GoldSword:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/// 1 = wood ... 5 = diamond; 0 = not a tiered tool.
+[[nodiscard]] int toolMaterialTier(const EquippedItem equippedItem)
+{
+    switch (equippedItem)
+    {
+    case EquippedItem::WoodSword:
+    case EquippedItem::WoodPickaxe:
+    case EquippedItem::WoodAxe:
+        return 1;
+    case EquippedItem::StoneSword:
+    case EquippedItem::StonePickaxe:
+    case EquippedItem::StoneAxe:
+        return 2;
+    case EquippedItem::IronSword:
+    case EquippedItem::IronPickaxe:
+    case EquippedItem::IronAxe:
+        return 3;
+    case EquippedItem::GoldSword:
+    case EquippedItem::GoldPickaxe:
+    case EquippedItem::GoldAxe:
+        return 4;
+    case EquippedItem::DiamondSword:
+    case EquippedItem::DiamondPickaxe:
+    case EquippedItem::DiamondAxe:
+        return 5;
+    default:
+        return 0;
+    }
+}
+
+[[nodiscard]] float toolMiningSpeedMultiplier(
+    const EquippedItem equippedItem,
+    const world::BlockType targetBlockType)
+{
+    if (equippedItem == EquippedItem::None)
+    {
+        return 1.0f;
+    }
+
+    const int tier = toolMaterialTier(equippedItem);
+    if (tier <= 0)
+    {
+        return 1.0f;
+    }
+
+    const float t = static_cast<float>(tier);
+
+    if (isPickaxeItem(equippedItem))
+    {
+        if (!isPickaxeEffectiveTarget(targetBlockType))
+        {
+            return 1.06f;
+        }
+        return 1.12f + t * 0.64f;
+    }
+
+    if (isAxeItem(equippedItem))
+    {
+        if (!isAxeEffectiveTarget(targetBlockType))
+        {
+            return 1.05f;
+        }
+        return 1.22f + t * 0.8f;
+    }
+
+    if (isSwordItem(equippedItem))
+    {
+        if (isPickaxeEffectiveTarget(targetBlockType) || isAxeEffectiveTarget(targetBlockType))
+        {
+            return 0.58f + t * 0.06f;
+        }
+        return 1.04f + t * 0.05f;
+    }
+
+    return 1.0f;
 }
 
 [[nodiscard]] float miningSpeedMultiplier(
@@ -125,7 +275,8 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
 
 [[nodiscard]] float miningDurationSeconds(
     const world::BlockType targetBlockType,
-    const world::BlockType equippedBlockType)
+    const world::BlockType equippedBlockType,
+    const EquippedItem equippedItem)
 {
     constexpr float kHardnessToSeconds = 0.65f;
     constexpr float kMinimumBreakDurationSeconds = 0.06f;
@@ -135,7 +286,9 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         return std::numeric_limits<float>::max();
     }
 
-    const float speedMultiplier = miningSpeedMultiplier(equippedBlockType, targetBlockType);
+    const float blockMultiplier = miningSpeedMultiplier(equippedBlockType, targetBlockType);
+    const float toolMultiplier = toolMiningSpeedMultiplier(equippedItem, targetBlockType);
+    const float speedMultiplier = std::max(blockMultiplier, toolMultiplier);
     const float rawDurationSeconds = metadata.hardness * kHardnessToSeconds / speedMultiplier;
     return std::max(kMinimumBreakDurationSeconds, rawDurationSeconds);
 }
@@ -192,52 +345,6 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         static_cast<float>(world::kWorldMaxY + 1),
         static_cast<float>((coord.z + 1) * world::Chunk::kSize),
     };
-}
-
-void buildVertexNormals(render::SceneMeshData& sceneMesh)
-{
-    for (render::SceneMeshData::Vertex& vertex : sceneMesh.vertices)
-    {
-        vertex.normal = glm::vec3(0.0f);
-    }
-
-    for (std::size_t index = 0; index + 2 < sceneMesh.indices.size(); index += 3)
-    {
-        const std::uint32_t index0 = sceneMesh.indices[index + 0];
-        const std::uint32_t index1 = sceneMesh.indices[index + 1];
-        const std::uint32_t index2 = sceneMesh.indices[index + 2];
-
-        if (index0 >= sceneMesh.vertices.size() || index1 >= sceneMesh.vertices.size()
-            || index2 >= sceneMesh.vertices.size())
-        {
-            continue;
-        }
-
-        const glm::vec3 edge01 = sceneMesh.vertices[index1].position - sceneMesh.vertices[index0].position;
-        const glm::vec3 edge02 = sceneMesh.vertices[index2].position - sceneMesh.vertices[index0].position;
-        const glm::vec3 triangleNormal = glm::cross(edge01, edge02);
-
-        if (glm::dot(triangleNormal, triangleNormal) == 0.0f)
-        {
-            continue;
-        }
-
-        const glm::vec3 faceNormal = glm::normalize(triangleNormal);
-        sceneMesh.vertices[index0].normal += faceNormal;
-        sceneMesh.vertices[index1].normal += faceNormal;
-        sceneMesh.vertices[index2].normal += faceNormal;
-    }
-
-    for (render::SceneMeshData::Vertex& vertex : sceneMesh.vertices)
-    {
-        if (glm::dot(vertex.normal, vertex.normal) == 0.0f)
-        {
-            vertex.normal = glm::vec3(0.0f, 1.0f, 0.0f);
-            continue;
-        }
-
-        vertex.normal = glm::normalize(vertex.normal);
-    }
 }
 
 struct MeshSyncCpuData
@@ -351,6 +458,7 @@ struct MeshSyncCpuData
             const glm::vec3 p{vertex.x, vertex.y, vertex.z};
             sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
                 .position = p,
+                .normal = {vertex.nx, vertex.ny, vertex.nz},
                 .uv = {vertex.u, vertex.v},
                 .abgr = vertex.abgr,
             });
@@ -379,7 +487,6 @@ struct MeshSyncCpuData
             sceneMesh.boundsMax = chunkBoundsMax(coord);
         }
 
-        buildVertexNormals(sceneMesh);
         const world::ChunkMeshStats chunkMeshStats{
             .faceCount = meshData.faceCount,
             .vertexCount = static_cast<std::uint32_t>(meshData.vertices.size()),
@@ -618,8 +725,36 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
 {
     switch (slot.equippedItem)
     {
+    case EquippedItem::WoodSword:
+        return 3.0f;
+    case EquippedItem::StoneSword:
+        return 4.0f;
+    case EquippedItem::IronSword:
+        return 5.0f;
+    case EquippedItem::GoldSword:
+        return 3.5f;
     case EquippedItem::DiamondSword:
         return 7.0f;
+    case EquippedItem::WoodAxe:
+        return 4.0f;
+    case EquippedItem::StoneAxe:
+        return 5.5f;
+    case EquippedItem::IronAxe:
+        return 6.5f;
+    case EquippedItem::GoldAxe:
+        return 4.25f;
+    case EquippedItem::DiamondAxe:
+        return 9.0f;
+    case EquippedItem::WoodPickaxe:
+        return 2.0f;
+    case EquippedItem::StonePickaxe:
+        return 2.75f;
+    case EquippedItem::IronPickaxe:
+        return 3.5f;
+    case EquippedItem::GoldPickaxe:
+        return 2.25f;
+    case EquippedItem::DiamondPickaxe:
+        return 5.0f;
     case EquippedItem::None:
     default:
         return 1.0f;
@@ -630,8 +765,25 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
 {
     switch (slot.equippedItem)
     {
+    case EquippedItem::WoodSword:
+    case EquippedItem::StoneSword:
+    case EquippedItem::IronSword:
+    case EquippedItem::GoldSword:
+        return 3.05f;
     case EquippedItem::DiamondSword:
-        return 3.4f;
+        return 3.45f;
+    case EquippedItem::WoodAxe:
+    case EquippedItem::StoneAxe:
+    case EquippedItem::IronAxe:
+    case EquippedItem::GoldAxe:
+    case EquippedItem::DiamondAxe:
+        return 3.1f;
+    case EquippedItem::WoodPickaxe:
+    case EquippedItem::StonePickaxe:
+    case EquippedItem::IronPickaxe:
+    case EquippedItem::GoldPickaxe:
+    case EquippedItem::DiamondPickaxe:
+        return 2.85f;
     case EquippedItem::None:
     default:
         return 2.75f;
@@ -642,8 +794,29 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
 {
     switch (slot.equippedItem)
     {
+    case EquippedItem::WoodSword:
+    case EquippedItem::StoneSword:
+        return 0.55f;
+    case EquippedItem::IronSword:
+    case EquippedItem::GoldSword:
+        return 0.65f;
     case EquippedItem::DiamondSword:
         return 0.9f;
+    case EquippedItem::WoodAxe:
+    case EquippedItem::StoneAxe:
+        return 0.62f;
+    case EquippedItem::IronAxe:
+    case EquippedItem::GoldAxe:
+        return 0.72f;
+    case EquippedItem::DiamondAxe:
+        return 0.95f;
+    case EquippedItem::WoodPickaxe:
+    case EquippedItem::StonePickaxe:
+        return 0.48f;
+    case EquippedItem::IronPickaxe:
+    case EquippedItem::GoldPickaxe:
+    case EquippedItem::DiamondPickaxe:
+        return 0.52f;
     case EquippedItem::None:
     default:
         return 0.45f;
@@ -671,27 +844,7 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
 
 [[nodiscard]] render::HudItemKind hudItemKindForEquippedItem(const EquippedItem equippedItem)
 {
-    using HIK = render::HudItemKind;
-    switch (equippedItem)
-    {
-    case EquippedItem::DiamondSword:
-        return HIK::DiamondSword;
-    case EquippedItem::Stick:
-        return HIK::Stick;
-    case EquippedItem::RottenFlesh:
-        return HIK::RottenFlesh;
-    case EquippedItem::Leather:
-        return HIK::Leather;
-    case EquippedItem::RawPorkchop:
-        return HIK::RawPorkchop;
-    case EquippedItem::Mutton:
-        return HIK::Mutton;
-    case EquippedItem::Feather:
-        return HIK::Feather;
-    case EquippedItem::None:
-    default:
-        return HIK::None;
-    }
+    return static_cast<render::HudItemKind>(equippedItem);
 }
 
 [[nodiscard]] world::BlockType networkFallbackBlockTypeForEquippedItem(const EquippedItem equippedItem)
@@ -711,8 +864,26 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
         return BK::TreeCrown;
     case EquippedItem::Feather:
         return BK::Sand;
-    case EquippedItem::DiamondSword:
+    case EquippedItem::WoodSword:
+    case EquippedItem::WoodPickaxe:
+    case EquippedItem::WoodAxe:
+        return BK::OakPlanks;
+    case EquippedItem::StoneSword:
+    case EquippedItem::StonePickaxe:
+    case EquippedItem::StoneAxe:
+        return BK::Cobblestone;
+    case EquippedItem::IronSword:
+    case EquippedItem::IronPickaxe:
+    case EquippedItem::IronAxe:
         return BK::IronOre;
+    case EquippedItem::GoldSword:
+    case EquippedItem::GoldPickaxe:
+    case EquippedItem::GoldAxe:
+        return BK::GoldOre;
+    case EquippedItem::DiamondSword:
+    case EquippedItem::DiamondPickaxe:
+    case EquippedItem::DiamondAxe:
+        return BK::DiamondOre;
     case EquippedItem::None:
     default:
         return BK::Air;
@@ -781,7 +952,7 @@ template <std::size_t SlotCount>
         .blockType = slot.blockType,
         .count = slot.count,
         .itemKind = hudItemKindForEquippedItem(slot.equippedItem),
-        .hasDiamondSword = slot.equippedItem == EquippedItem::DiamondSword,
+        .heldItemUsesSwordPose = isSwordItem(slot.equippedItem),
     };
 }
 
@@ -1128,16 +1299,36 @@ void Application::update(const float deltaTimeSeconds)
     {
         frameDebugData.craftingMenuActive = true;
         frameDebugData.craftingUsesWorkbench = craftingMenuState_.usesWorkbench;
-        frameDebugData.craftingTitle =
-            craftingMenuState_.usesWorkbench ? "Crafting Table" : "Inventory Crafting";
-        frameDebugData.craftingHint = craftingMenuState_.hint;
-        frameDebugData.craftingCursorSlot = makeHudSlot(craftingMenuState_.carriedSlot);
-        if (const std::optional<CraftingMatch> craftingMatch = evaluateCraftingGrid(
-                craftingMenuState_.gridSlots,
-                craftingMenuState_.usesWorkbench ? CraftingMode::Workbench3x3 : CraftingMode::Inventory2x2);
-            craftingMatch.has_value())
+        if (craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage)
         {
-            frameDebugData.craftingResultSlot = makeHudSlot(craftingMatch->output);
+            frameDebugData.craftingTitle = "Chest";
+        }
+        else
+        {
+            frameDebugData.craftingTitle =
+                craftingMenuState_.usesWorkbench ? "Crafting Table" : "Inventory Crafting";
+        }
+        frameDebugData.craftingBagStartRow =
+            static_cast<std::uint8_t>(std::min<std::size_t>(craftingMenuState_.bagStartRow, 255));
+        const std::size_t visibleStart = craftingMenuState_.bagStartRow * 9;
+        const std::size_t visibleEndExclusive =
+            std::min<std::size_t>(visibleStart + 27, bagSlots_.size());
+        frameDebugData.craftingHint = fmt::format(
+            "{}  |  Bag slots: {}-{} / {} (mouse wheel to scroll)",
+            craftingMenuState_.hint,
+            visibleStart + 1,
+            visibleEndExclusive,
+            bagSlots_.size());
+        frameDebugData.craftingCursorSlot = makeHudSlot(craftingMenuState_.carriedSlot);
+        if (craftingMenuState_.mode != CraftingMenuState::Mode::ChestStorage)
+        {
+            if (const std::optional<CraftingMatch> craftingMatch = evaluateCraftingGrid(
+                    craftingMenuState_.gridSlots,
+                    craftingMenuState_.usesWorkbench ? CraftingMode::Workbench3x3 : CraftingMode::Inventory2x2);
+                craftingMatch.has_value())
+            {
+                frameDebugData.craftingResultSlot = makeHudSlot(craftingMatch->output);
+            }
         }
         for (std::size_t slotIndex = 0; slotIndex < frameDebugData.craftingGridSlots.size(); ++slotIndex)
         {
@@ -1779,6 +1970,28 @@ void Application::processInput(const float deltaTimeSeconds)
     {
         mouseCaptured_ = false;
         window_.setRelativeMouseMode(false);
+        constexpr std::size_t kBagColumns = 9;
+        constexpr std::size_t kVisibleBagRows = 3;
+        const std::size_t totalBagRows = bagSlots_.size() / kBagColumns;
+        const std::size_t maxBagStartRow =
+            totalBagRows > kVisibleBagRows ? totalBagRows - kVisibleBagRows : 0;
+        if (inputState_.mouseWheelDeltaY != 0)
+        {
+            const int scrollDelta = inputState_.mouseWheelDeltaY;
+            if (scrollDelta > 0)
+            {
+                const std::size_t step = static_cast<std::size_t>(scrollDelta);
+                craftingMenuState_.bagStartRow = craftingMenuState_.bagStartRow > step
+                    ? craftingMenuState_.bagStartRow - step
+                    : 0;
+            }
+            else
+            {
+                craftingMenuState_.bagStartRow = std::min<std::size_t>(
+                    maxBagStartRow,
+                    craftingMenuState_.bagStartRow + static_cast<std::size_t>(-scrollDelta));
+            }
+        }
         if (inputState_.leftMouseClicked)
         {
             handleCraftingMenuClick();
@@ -1877,6 +2090,13 @@ void Application::processInput(const float deltaTimeSeconds)
     {
         currentMoveSpeed *= kInputTuning.sprintSpeedMultiplier;
     }
+    const game::EnvironmentalHazards movementHazardsBeforeStep =
+        samplePlayerHazards(world_, playerFeetPosition_, colliderHeight, eyeHeight);
+    const bool inWaterForMovement = movementHazardsBeforeStep.bodyInWater;
+    if (inWaterForMovement)
+    {
+        currentMoveSpeed *= kPlayerMovementSettings.waterMoveSpeedMultiplier;
+    }
 
     glm::vec3 localMotion(0.0f);
     if (inputState_.isKeyDown(SDL_SCANCODE_W))
@@ -1936,15 +2156,35 @@ void Application::processInput(const float deltaTimeSeconds)
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, colliderHeight);
 
     const bool jumpHeld = inputState_.isKeyDown(SDL_SCANCODE_SPACE);
-    if (jumpHeld && !jumpWasHeld_ && isGrounded_)
+    if (!inWaterForMovement && jumpHeld && !jumpWasHeld_ && isGrounded_)
     {
         verticalVelocity_ = kPlayerMovementSettings.jumpVelocity;
         isGrounded_ = false;
     }
     jumpWasHeld_ = jumpHeld;
 
-    verticalVelocity_ -= kPlayerMovementSettings.gravity * deltaTimeSeconds;
-    verticalVelocity_ = std::max(verticalVelocity_, -kPlayerMovementSettings.terminalFallVelocity);
+    if (inWaterForMovement)
+    {
+        if (jumpHeld)
+        {
+            verticalVelocity_ += kPlayerMovementSettings.waterSwimUpAcceleration * deltaTimeSeconds;
+        }
+        if (sneaking)
+        {
+            verticalVelocity_ -= kPlayerMovementSettings.waterSinkAcceleration * deltaTimeSeconds;
+        }
+        verticalVelocity_ -= kPlayerMovementSettings.waterGravity * deltaTimeSeconds;
+        verticalVelocity_ = std::clamp(
+            verticalVelocity_,
+            -kPlayerMovementSettings.waterTerminalFallVelocity,
+            kPlayerMovementSettings.waterTerminalRiseVelocity);
+        verticalVelocity_ *= std::exp(-kPlayerMovementSettings.waterVerticalDrag * deltaTimeSeconds);
+    }
+    else
+    {
+        verticalVelocity_ -= kPlayerMovementSettings.gravity * deltaTimeSeconds;
+        verticalVelocity_ = std::max(verticalVelocity_, -kPlayerMovementSettings.terminalFallVelocity);
+    }
 
     const glm::vec3 verticalStartPosition = playerFeetPosition_;
     const float verticalDisplacement = verticalVelocity_ * deltaTimeSeconds;
@@ -1967,7 +2207,16 @@ void Application::processInput(const float deltaTimeSeconds)
         }
     }
 
+    const game::EnvironmentalHazards previousHazards = playerHazards_;
     playerHazards_ = samplePlayerHazards(world_, playerFeetPosition_, colliderHeight, eyeHeight);
+    if (!previousHazards.bodyInWater && playerHazards_.bodyInWater)
+    {
+        soundEffects_.playWaterEnter();
+    }
+    else if (previousHazards.bodyInWater && !playerHazards_.bodyInWater)
+    {
+        soundEffects_.playWaterExit();
+    }
     if (verticalDisplacement < 0.0f && !playerHazards_.bodyInWater)
     {
         accumulatedFallDistance_ += std::max(0.0f, verticalStartPosition.y - playerFeetPosition_.y);
@@ -2008,7 +2257,26 @@ void Application::processInput(const float deltaTimeSeconds)
             }
         }
     }
-    else if (!isGrounded_ || playerHazards_.bodyInWater)
+    else if (playerHazards_.bodyInWater)
+    {
+        const float verticalMoveDistance = std::abs(playerFeetPosition_.y - verticalStartPosition.y);
+        const float waterMoveDistance = horizontalMoveDistance + verticalMoveDistance;
+        if (waterMoveDistance > 0.0001f)
+        {
+            constexpr float kSwimStrokeIntervalMeters = 0.9f;
+            footstepDistanceAccumulator_ += waterMoveDistance;
+            while (footstepDistanceAccumulator_ >= kSwimStrokeIntervalMeters)
+            {
+                footstepDistanceAccumulator_ -= kSwimStrokeIntervalMeters;
+                soundEffects_.playFootstep(world::BlockType::Water);
+            }
+        }
+        else
+        {
+            footstepDistanceAccumulator_ = 0.0f;
+        }
+    }
+    else if (!isGrounded_)
     {
         footstepDistanceAccumulator_ = 0.0f;
     }
@@ -2088,18 +2356,22 @@ void Application::processInput(const float deltaTimeSeconds)
         const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
         const world::BlockType equippedBlockType =
             selectedSlot.count == 0 ? world::BlockType::Air : selectedSlot.blockType;
+        const EquippedItem equippedItem = selectedSlot.equippedItem;
         const bool targetChanged = !activeMiningState_.active
             || activeMiningState_.targetBlockPosition != raycastHit->solidBlock
             || activeMiningState_.targetBlockType != raycastHit->blockType
-            || activeMiningState_.equippedBlockType != equippedBlockType;
+            || activeMiningState_.equippedBlockType != equippedBlockType
+            || activeMiningState_.equippedItem != equippedItem;
         if (targetChanged)
         {
             activeMiningState_.active = true;
             activeMiningState_.targetBlockPosition = raycastHit->solidBlock;
             activeMiningState_.targetBlockType = raycastHit->blockType;
             activeMiningState_.equippedBlockType = equippedBlockType;
+            activeMiningState_.equippedItem = equippedItem;
             activeMiningState_.elapsedSeconds = 0.0f;
-            activeMiningState_.requiredSeconds = miningDurationSeconds(raycastHit->blockType, equippedBlockType);
+            activeMiningState_.requiredSeconds =
+                miningDurationSeconds(raycastHit->blockType, equippedBlockType, equippedItem);
             soundEffects_.playBlockDigTick(raycastHit->blockType);
             activeMiningState_.digSoundCooldownSeconds = 0.11f;
         }
@@ -2123,6 +2395,32 @@ void Application::processInput(const float deltaTimeSeconds)
             };
             if (world_.applyEditCommand(command))
             {
+                if (raycastHit->blockType == world::BlockType::Chest)
+                {
+                    const auto chestIt = chestSlotsByPosition_.find(chestStorageKey(raycastHit->solidBlock));
+                    if (chestIt != chestSlotsByPosition_.end())
+                    {
+                        for (const InventorySlot& slot : chestIt->second)
+                        {
+                            for (std::uint32_t i = 0; i < slot.count; ++i)
+                            {
+                                if (slot.equippedItem != EquippedItem::None)
+                                {
+                                    spawnDroppedItemAtPosition(
+                                        slot.equippedItem,
+                                        glm::vec3(raycastHit->solidBlock) + glm::vec3(0.5f, 0.4f, 0.5f));
+                                }
+                                else if (slot.blockType != world::BlockType::Air)
+                                {
+                                    spawnDroppedItemAtPosition(
+                                        slot.blockType,
+                                        glm::vec3(raycastHit->solidBlock) + glm::vec3(0.5f, 0.4f, 0.5f));
+                                }
+                            }
+                        }
+                        chestSlotsByPosition_.erase(chestIt);
+                    }
+                }
                 spawnDroppedItem(raycastHit->blockType, raycastHit->solidBlock);
                 soundEffects_.playBlockBreak(raycastHit->blockType);
                 if (hostSession_ != nullptr && hostSession_->running())
@@ -2159,6 +2457,11 @@ void Application::processInput(const float deltaTimeSeconds)
         if (raycastHit->blockType == world::BlockType::CraftingTable)
         {
             openCraftingMenu(true, raycastHit->solidBlock);
+            return;
+        }
+        if (raycastHit->blockType == world::BlockType::Chest)
+        {
+            openChestMenu(raycastHit->solidBlock);
             return;
         }
 
@@ -2377,11 +2680,35 @@ void Application::openCraftingMenu(
         craftingMenuState_ = CraftingMenuState{};
     }
     craftingMenuState_.active = true;
+    craftingMenuState_.mode = useWorkbench
+        ? CraftingMenuState::Mode::WorkbenchCrafting
+        : CraftingMenuState::Mode::InventoryCrafting;
     craftingMenuState_.usesWorkbench = useWorkbench;
     craftingMenuState_.workbenchBlockPosition = workbenchBlockPosition;
+    craftingMenuState_.chestBlockPosition = glm::ivec3(0);
+    craftingMenuState_.bagStartRow = 0;
     craftingMenuState_.hint = useWorkbench
-        ? "2x2 planks make a table. Two planks stacked make sticks."
-        : "Press E for 2x2 crafting. Logs make planks, and two planks stacked make sticks.";
+        ? "3x3 workbench crafting: left-click move, right-click split/place one."
+        : "2x2 inventory crafting: logs -> planks, planks -> sticks/table.";
+    mouseCaptured_ = false;
+    window_.setRelativeMouseMode(false);
+    inputState_.clearMouseMotion();
+}
+
+void Application::openChestMenu(const glm::ivec3& chestBlockPosition)
+{
+    if (!craftingMenuState_.active)
+    {
+        craftingMenuState_ = CraftingMenuState{};
+    }
+    craftingMenuState_.active = true;
+    craftingMenuState_.mode = CraftingMenuState::Mode::ChestStorage;
+    craftingMenuState_.usesWorkbench = true;
+    craftingMenuState_.workbenchBlockPosition = glm::ivec3(0);
+    craftingMenuState_.chestBlockPosition = chestBlockPosition;
+    craftingMenuState_.bagStartRow = 0;
+    craftingMenuState_.hint = "Chest storage: move stacks between chest and inventory.";
+    craftingMenuState_.gridSlots = chestSlotsByPosition_[chestStorageKey(chestBlockPosition)];
     mouseCaptured_ = false;
     window_.setRelativeMouseMode(false);
     inputState_.clearMouseMotion();
@@ -2492,6 +2819,27 @@ void Application::returnCraftingSlotsToInventory()
 
 void Application::closeCraftingMenu()
 {
+    if (craftingMenuState_.active && craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage)
+    {
+        const std::int64_t key = chestStorageKey(craftingMenuState_.chestBlockPosition);
+        bool hasAnyItem = false;
+        for (const InventorySlot& slot : craftingMenuState_.gridSlots)
+        {
+            if (!isInventorySlotEmpty(slot))
+            {
+                hasAnyItem = true;
+                break;
+            }
+        }
+        if (hasAnyItem)
+        {
+            chestSlotsByPosition_[key] = craftingMenuState_.gridSlots;
+        }
+        else
+        {
+            chestSlotsByPosition_.erase(key);
+        }
+    }
     returnCraftingSlotsToInventory();
     craftingMenuState_ = CraftingMenuState{};
     mouseCaptured_ = true;
@@ -2501,18 +2849,20 @@ void Application::closeCraftingMenu()
 
 void Application::handleCraftingMenuClick()
 {
+    const bool chestMode = craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage;
     const int hit = render::Renderer::hitTestCraftingMenu(
         inputState_.mouseWindowX,
         inputState_.mouseWindowY,
         window_.width(),
         window_.height(),
-        craftingMenuState_.usesWorkbench);
+        craftingMenuState_.usesWorkbench,
+        craftingMenuState_.bagStartRow);
     if (hit < 0)
     {
         return;
     }
 
-    if (hit == render::Renderer::kCraftingResultHit)
+    if (!chestMode && hit == render::Renderer::kCraftingResultHit)
     {
         const std::optional<CraftingMatch> craftingMatch = evaluateCraftingGrid(
             craftingMenuState_.gridSlots,
@@ -2531,6 +2881,10 @@ void Application::handleCraftingMenuClick()
         }
         consumeCraftingIngredients(craftingMenuState_.gridSlots, craftingMatch.value());
         soundEffects_.playBlockPlace(craftingMatch->output.blockType);
+        return;
+    }
+    if (chestMode && hit == render::Renderer::kCraftingResultHit)
+    {
         return;
     }
 
@@ -2557,7 +2911,7 @@ void Application::handleCraftingMenuClick()
         return;
     }
 
-    if (isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
+    if (!chestMode && isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
         && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
     {
         return;
@@ -2566,17 +2920,19 @@ void Application::handleCraftingMenuClick()
     mergeOrSwapInventorySlot(
         craftingMenuState_.carriedSlot,
         *targetSlot,
-        !isCraftingGridSlot);
+        chestMode || !isCraftingGridSlot);
 }
 
 void Application::handleCraftingMenuRightClick()
 {
+    const bool chestMode = craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage;
     const int hit = render::Renderer::hitTestCraftingMenu(
         inputState_.mouseWindowX,
         inputState_.mouseWindowY,
         window_.width(),
         window_.height(),
-        craftingMenuState_.usesWorkbench);
+        craftingMenuState_.usesWorkbench,
+        craftingMenuState_.bagStartRow);
     if (hit < 0 || hit == render::Renderer::kCraftingResultHit)
     {
         return;
@@ -2605,7 +2961,7 @@ void Application::handleCraftingMenuRightClick()
         return;
     }
 
-    if (isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
+    if (!chestMode && isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
         && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
     {
         return;
@@ -2614,7 +2970,7 @@ void Application::handleCraftingMenuRightClick()
     rightClickInventorySlot(
         craftingMenuState_.carriedSlot,
         *targetSlot,
-        !isCraftingGridSlot);
+        chestMode || !isCraftingGridSlot);
 }
 
 bool Application::startHostSession()

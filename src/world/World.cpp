@@ -1,5 +1,6 @@
 #include "vibecraft/world/World.hpp"
 
+#include <array>
 #include <algorithm>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
@@ -22,15 +23,27 @@ namespace vibecraft::world
 namespace
 {
 constexpr int kTreeCellSize = 6;
-constexpr int kTreeCrownRadius = 2;
-constexpr int kTreeMinTrunkHeight = 4;
-constexpr int kTreeMaxTrunkHeight = 6;
+constexpr int kTreeMaxCrownRadius = 3;
 constexpr int kTreeMinSurfaceY = 27;
 constexpr std::uint32_t kTreeSeed = 0x0ea52f4dU;
 constexpr std::uint32_t kTreeChanceSeed = 0x6f4a31deU;
 constexpr std::uint32_t kTreeOffsetXSeed = 0x34b6f0e1U;
 constexpr std::uint32_t kTreeOffsetZSeed = 0x5cd2a907U;
 constexpr std::uint32_t kTreeShapeSeed = 0x72f1a4b3U;
+
+struct TreeBiomeSettings
+{
+    float spawnChance = 0.0f;
+    int minTrunkHeight = 4;
+    int maxTrunkHeight = 6;
+    int crownRadius = 2;
+};
+
+[[nodiscard]] constexpr std::size_t chunkStorageIndex(const int localX, const int y, const int localZ)
+{
+    const int localY = y - kWorldMinY;
+    return static_cast<std::size_t>(localY * Chunk::kSize * Chunk::kSize + localZ * Chunk::kSize + localX);
+}
 
 [[nodiscard]] int floorDiv(const int value, const int divisor)
 {
@@ -42,18 +55,22 @@ constexpr std::uint32_t kTreeShapeSeed = 0x72f1a4b3U;
     const int worldX,
     const int worldZ,
     const int surfaceY,
-    const int trunkHeight)
+    const int trunkHeight,
+    const int crownRadius)
 {
     if (surfaceY < kTreeMinSurfaceY)
     {
         return false;
     }
-    if (terrainGenerator.blockTypeAt(worldX, surfaceY, worldZ) != BlockType::Grass)
+    const BlockType surfaceBlock = terrainGenerator.blockTypeAt(worldX, surfaceY, worldZ);
+    if (surfaceBlock != BlockType::Grass
+        && surfaceBlock != BlockType::JungleGrass
+        && surfaceBlock != BlockType::SnowGrass)
     {
         return false;
     }
 
-    const int canopyTopY = surfaceY + trunkHeight + 2;
+    const int canopyTopY = surfaceY + trunkHeight + crownRadius + 1;
     if (canopyTopY > kWorldMaxY)
     {
         return false;
@@ -68,6 +85,42 @@ constexpr std::uint32_t kTreeShapeSeed = 0x72f1a4b3U;
     }
 
     return true;
+}
+
+[[nodiscard]] TreeBiomeSettings treeBiomeSettingsForSurfaceBiome(const SurfaceBiome biome)
+{
+    switch (biome)
+    {
+    case SurfaceBiome::Jungle:
+        return TreeBiomeSettings{
+            .spawnChance = 0.58f,
+            .minTrunkHeight = 6,
+            .maxTrunkHeight = 9,
+            .crownRadius = 3,
+        };
+    case SurfaceBiome::Snowy:
+        return TreeBiomeSettings{
+            .spawnChance = 0.08f,
+            .minTrunkHeight = 4,
+            .maxTrunkHeight = 6,
+            .crownRadius = 2,
+        };
+    case SurfaceBiome::Sandy:
+        return TreeBiomeSettings{
+            .spawnChance = 0.0f,
+            .minTrunkHeight = 4,
+            .maxTrunkHeight = 6,
+            .crownRadius = 2,
+        };
+    case SurfaceBiome::TemperateGrassland:
+    default:
+        return TreeBiomeSettings{
+            .spawnChance = 0.28f,
+            .minTrunkHeight = 4,
+            .maxTrunkHeight = 6,
+            .crownRadius = 2,
+        };
+    }
 }
 
 void placeBlockIfInsideChunk(
@@ -107,13 +160,19 @@ void placeTreeForColumn(
     const ChunkCoord& coord,
     const TerrainGenerator& terrainGenerator,
     const int treeX,
-    const int treeZ)
+    const int treeZ,
+    const TreeBiomeSettings& settings)
 {
     const int surfaceY = terrainGenerator.surfaceHeightAt(treeX, treeZ);
+    if (settings.spawnChance <= 0.0f)
+    {
+        return;
+    }
     const std::uint32_t treeHash = noise::hashCoordinates(treeX, treeZ, kTreeSeed);
-    const int trunkHeight = kTreeMinTrunkHeight
-        + static_cast<int>(treeHash % static_cast<std::uint32_t>(kTreeMaxTrunkHeight - kTreeMinTrunkHeight + 1));
-    if (!canGrowTreeAt(terrainGenerator, treeX, treeZ, surfaceY, trunkHeight))
+    const int trunkHeight = settings.minTrunkHeight
+        + static_cast<int>(treeHash
+                            % static_cast<std::uint32_t>(settings.maxTrunkHeight - settings.minTrunkHeight + 1));
+    if (!canGrowTreeAt(terrainGenerator, treeX, treeZ, surfaceY, trunkHeight, settings.crownRadius))
     {
         return;
     }
@@ -124,9 +183,9 @@ void placeTreeForColumn(
     }
 
     const int crownCenterY = surfaceY + trunkHeight;
-    for (int dy = -2; dy <= 1; ++dy)
+    for (int dy = -settings.crownRadius; dy <= 1; ++dy)
     {
-        const int radius = dy <= -1 ? 2 : 1;
+        const int radius = dy <= -1 ? settings.crownRadius : std::max(1, settings.crownRadius - 1);
         for (int dz = -radius; dz <= radius; ++dz)
         {
             for (int dx = -radius; dx <= radius; ++dx)
@@ -141,7 +200,8 @@ void placeTreeForColumn(
                 const int crownZ = treeZ + dz;
                 const bool outerCorner = std::abs(dx) == radius && std::abs(dz) == radius;
                 if (outerCorner
-                    && noise::random01(crownX, crownZ, kTreeShapeSeed + static_cast<std::uint32_t>(crownY)) > 0.4)
+                    && noise::random01(crownX, crownZ, kTreeShapeSeed + static_cast<std::uint32_t>(crownY))
+                        > (settings.crownRadius >= 3 ? 0.26 : 0.4))
                 {
                     continue;
                 }
@@ -151,6 +211,10 @@ void placeTreeForColumn(
     }
 
     placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 2, treeZ, BlockType::TreeCrown);
+    if (settings.crownRadius >= 3)
+    {
+        placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 3, treeZ, BlockType::TreeCrown);
+    }
 }
 
 void populateTreesForChunk(
@@ -160,10 +224,10 @@ void populateTreesForChunk(
 {
     const int chunkWorldMinX = coord.x * Chunk::kSize;
     const int chunkWorldMinZ = coord.z * Chunk::kSize;
-    const int sampleMinX = chunkWorldMinX - kTreeCrownRadius;
-    const int sampleMinZ = chunkWorldMinZ - kTreeCrownRadius;
-    const int sampleMaxX = chunkWorldMinX + Chunk::kSize - 1 + kTreeCrownRadius;
-    const int sampleMaxZ = chunkWorldMinZ + Chunk::kSize - 1 + kTreeCrownRadius;
+    const int sampleMinX = chunkWorldMinX - kTreeMaxCrownRadius;
+    const int sampleMinZ = chunkWorldMinZ - kTreeMaxCrownRadius;
+    const int sampleMaxX = chunkWorldMinX + Chunk::kSize - 1 + kTreeMaxCrownRadius;
+    const int sampleMaxZ = chunkWorldMinZ + Chunk::kSize - 1 + kTreeMaxCrownRadius;
 
     const int minCellX = floorDiv(sampleMinX, kTreeCellSize);
     const int maxCellX = floorDiv(sampleMaxX, kTreeCellSize);
@@ -174,18 +238,19 @@ void populateTreesForChunk(
     {
         for (int cellX = minCellX; cellX <= maxCellX; ++cellX)
         {
-            if (noise::random01(cellX, cellZ, kTreeChanceSeed) > 0.28)
-            {
-                continue;
-            }
-
             const int treeX = cellX * kTreeCellSize
                 + static_cast<int>(noise::hashCoordinates(cellX, cellZ, kTreeOffsetXSeed)
                                     % static_cast<std::uint32_t>(kTreeCellSize));
             const int treeZ = cellZ * kTreeCellSize
                 + static_cast<int>(noise::hashCoordinates(cellX, cellZ, kTreeOffsetZSeed)
                                     % static_cast<std::uint32_t>(kTreeCellSize));
-            placeTreeForColumn(chunk, coord, terrainGenerator, treeX, treeZ);
+            const SurfaceBiome biome = terrainGenerator.surfaceBiomeAt(treeX, treeZ);
+            const TreeBiomeSettings settings = treeBiomeSettingsForSurfaceBiome(biome);
+            if (noise::random01(cellX, cellZ, kTreeChanceSeed) > settings.spawnChance)
+            {
+                continue;
+            }
+            placeTreeForColumn(chunk, coord, terrainGenerator, treeX, treeZ, settings);
         }
     }
 }
@@ -195,16 +260,18 @@ void populateChunkFromTerrain(
     const ChunkCoord& coord,
     const TerrainGenerator& terrainGenerator)
 {
+    std::array<BlockType, kWorldHeight> columnBlocks{};
+    auto& storage = chunk.mutableBlockStorage();
     for (int localZ = 0; localZ < Chunk::kSize; ++localZ)
     {
         for (int localX = 0; localX < Chunk::kSize; ++localX)
         {
             const int worldX = coord.x * Chunk::kSize + localX;
             const int worldZ = coord.z * Chunk::kSize + localZ;
-
+            terrainGenerator.fillColumn(worldX, worldZ, columnBlocks.data());
             for (int y = kWorldMinY; y <= kWorldMaxY; ++y)
             {
-                chunk.setBlock(localX, y, localZ, terrainGenerator.blockTypeAt(worldX, y, worldZ));
+                storage[chunkStorageIndex(localX, y, localZ)] = columnBlocks[y - kWorldMinY];
             }
         }
     }

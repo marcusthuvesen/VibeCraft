@@ -97,6 +97,10 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
     {
     case vibecraft::world::BlockType::Grass:
         return "Grass";
+    case vibecraft::world::BlockType::SnowGrass:
+        return "Snowy Grass";
+    case vibecraft::world::BlockType::JungleGrass:
+        return "Jungle Grass";
     case vibecraft::world::BlockType::Dirt:
         return "Dirt";
     case vibecraft::world::BlockType::Stone:
@@ -133,6 +137,10 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Cobblestone";
     case vibecraft::world::BlockType::Sandstone:
         return "Sandstone";
+    case vibecraft::world::BlockType::Oven:
+        return "Oven";
+    case vibecraft::world::BlockType::Chest:
+        return "Chest";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

@@ -32,6 +32,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (blockType)
     {
     case BlockType::Grass:
+    case BlockType::SnowGrass:
+    case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
         return {"dig/grass1.ogg", "dig/grass2.ogg", "dig/grass3.ogg", "dig/grass4.ogg"};
@@ -41,6 +43,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::TreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
+    case BlockType::Chest:
         return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {
@@ -54,6 +57,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
+    case BlockType::Oven:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
@@ -68,6 +72,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (blockType)
     {
     case BlockType::Grass:
+    case BlockType::SnowGrass:
+    case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
         step.assign(
@@ -86,9 +92,35 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
              "block/sand/sand3.ogg",
              "block/sand/sand4.ogg"});
         break;
+    case BlockType::Water:
+        step.assign(
+            {"liquid/swim1.ogg",
+             "liquid/swim2.ogg",
+             "liquid/swim3.ogg",
+             "liquid/swim4.ogg",
+             "liquid/swim5.ogg",
+             "liquid/swim6.ogg",
+             "liquid/swim7.ogg",
+             "liquid/swim8.ogg",
+             "liquid/swim9.ogg",
+             "liquid/swim10.ogg",
+             "liquid/swim11.ogg",
+             "liquid/swim12.ogg",
+             "liquid/swim13.ogg",
+             "liquid/swim14.ogg",
+             "liquid/swim15.ogg",
+             "liquid/swim16.ogg",
+             "liquid/swim17.ogg",
+             "liquid/swim18.ogg",
+             "liquid/splash.ogg",
+             "liquid/splash2.ogg",
+             "liquid/heavy_splash.ogg",
+             "liquid/water.ogg"});
+        break;
     case BlockType::TreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
+    case BlockType::Chest:
         step.assign(
             {"block/wood/step1.ogg",
              "block/wood/step2.ogg",
@@ -111,6 +143,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
+    case BlockType::Oven:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
@@ -124,8 +157,11 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
         break;
     }
 
-    const std::vector<std::string> dig = blockBreakOptions(blockType);
-    step.insert(step.end(), dig.begin(), dig.end());
+    if (blockType != BlockType::Water)
+    {
+        const std::vector<std::string> dig = blockBreakOptions(blockType);
+        step.insert(step.end(), dig.begin(), dig.end());
+    }
     return step;
 }
 
@@ -135,6 +171,8 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (blockType)
     {
     case BlockType::Grass:
+    case BlockType::SnowGrass:
+    case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
         return {"dig/grass1.ogg", "dig/grass2.ogg", "dig/grass3.ogg", "dig/grass4.ogg"};
@@ -144,6 +182,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::TreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
+    case BlockType::Chest:
         return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {
@@ -157,6 +196,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::DiamondOre:
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
+    case BlockType::Oven:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
@@ -182,6 +222,21 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
         "entity/player/hurt/fire_hurt1.ogg",
         "entity/player/hurt/fire_hurt2.ogg",
         "entity/player/hurt/fire_hurt3.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> waterEnterOptions()
+{
+    // Minecraft 26.1 pack: assets/minecraft/sounds/liquid (see mcasset.cloud liquid folder).
+    return {
+        "liquid/splash.ogg",
+        "liquid/splash2.ogg",
+        "liquid/heavy_splash.ogg",
+        "liquid/water.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> waterExitOptions()
+{
+    return {"liquid/splash.ogg", "liquid/splash2.ogg", "liquid/heavy_splash.ogg"};
 }
 
 [[nodiscard]] std::vector<std::string> mobHitOptions(const vibecraft::game::MobKind mobKind)
@@ -247,6 +302,9 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     append(footstepOptions(vibecraft::world::BlockType::Sand));
     append(footstepOptions(vibecraft::world::BlockType::TreeTrunk));
     append(footstepOptions(vibecraft::world::BlockType::Deepslate));
+    append(footstepOptions(vibecraft::world::BlockType::Water));
+    append(waterEnterOptions());
+    append(waterExitOptions());
 
     append(playerAttackOptions());
     append(playerHurtOptions());
@@ -385,6 +443,24 @@ void SoundEffects::playPlayerHurt()
         return;
     }
     queueProceduralSweep(280.0f, 130.0f, 0.095f, 0.33f, 0.26f);
+}
+
+void SoundEffects::playWaterEnter()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(waterEnterOptions(), 0.46f);
+}
+
+void SoundEffects::playWaterExit()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(waterExitOptions(), 0.42f);
 }
 
 void SoundEffects::playMobHit(const vibecraft::game::MobKind mobKind)
@@ -605,9 +681,20 @@ void SoundEffects::playRandomClipWithGain(const std::vector<std::string>& option
     }
 
     const float g = std::clamp(gain, 0.0f, 4.0f);
-    const int clipIndex = randomInclusive(0, static_cast<int>(options.size()) - 1);
-    const DecodedClip* const clip = getOrLoadClip(options[static_cast<std::size_t>(clipIndex)]);
-    if (clip == nullptr || clip->pcmF32Stereo.empty())
+    const int startClipIndex = randomInclusive(0, static_cast<int>(options.size()) - 1);
+    const DecodedClip* clip = nullptr;
+    for (std::size_t i = 0; i < options.size(); ++i)
+    {
+        const std::size_t clipIndex =
+            (static_cast<std::size_t>(startClipIndex) + i) % options.size();
+        const DecodedClip* const candidate = getOrLoadClip(options[clipIndex]);
+        if (candidate != nullptr && !candidate->pcmF32Stereo.empty())
+        {
+            clip = candidate;
+            break;
+        }
+    }
+    if (clip == nullptr)
     {
         queueProceduralFallbackScaled(g);
         return;

@@ -74,6 +74,20 @@ enum class HudItemKind : std::uint8_t
     RawPorkchop,
     Mutton,
     Feather,
+    WoodSword,
+    StoneSword,
+    IronSword,
+    GoldSword,
+    WoodPickaxe,
+    StonePickaxe,
+    IronPickaxe,
+    GoldPickaxe,
+    DiamondPickaxe,
+    WoodAxe,
+    StoneAxe,
+    IronAxe,
+    GoldAxe,
+    DiamondAxe,
 };
 
 struct FrameDebugData
@@ -83,7 +97,8 @@ struct FrameDebugData
         vibecraft::world::BlockType blockType = vibecraft::world::BlockType::Air;
         std::uint32_t count = 0;
         HudItemKind itemKind = HudItemKind::None;
-        bool hasDiamondSword = false;
+        /// True when the held item should use the first-person sword pose (all sword tiers).
+        bool heldItemUsesSwordPose = false;
     };
 
     static constexpr std::size_t kBagHudSlotCount = 81;
@@ -109,6 +124,7 @@ struct FrameDebugData
     std::array<HotbarSlotHud, 9> craftingGridSlots{};
     HotbarSlotHud craftingResultSlot{};
     HotbarSlotHud craftingCursorSlot{};
+    std::uint8_t craftingBagStartRow = 0;
     std::size_t hotbarSelectedIndex = 0;
     /// 0..1 short equip swing impulse, set by gameplay on primary attack.
     float heldItemSwing = 0.0f;
@@ -267,7 +283,8 @@ class Renderer
         float mouseY,
         std::uint32_t windowWidth,
         std::uint32_t windowHeight,
-        bool useWorkbench);
+        bool useWorkbench,
+        std::size_t bagStartRow);
 
   private:
     struct SceneGpuMesh
@@ -302,6 +319,7 @@ class Renderer
     void drawWorldMobSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     [[nodiscard]] std::uint16_t mobTextureHandleForKind(vibecraft::game::MobKind kind) const;
     [[nodiscard]] TextureUvRect mobTextureUvForKind(vibecraft::game::MobKind kind) const;
+    [[nodiscard]] std::uint16_t hudItemKindTextureHandle(HudItemKind kind) const;
 
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
@@ -332,6 +350,8 @@ class Renderer
     std::uint16_t rawPorkchopTextureHandle_ = UINT16_MAX;
     std::uint16_t muttonTextureHandle_ = UINT16_MAX;
     std::uint16_t featherTextureHandle_ = UINT16_MAX;
+    /// Optional textures for WoodSword..DiamondAxe (see HudItemKind); falls back in hudItemKindTextureHandle.
+    std::array<std::uint16_t, 14> extendedToolTextureHandles_{};
     std::array<std::uint16_t, 10> blockBreakStageTextureHandles_{};
     std::uint16_t fullHeartTextureHandle_ = UINT16_MAX;
     std::uint16_t halfHeartTextureHandle_ = UINT16_MAX;

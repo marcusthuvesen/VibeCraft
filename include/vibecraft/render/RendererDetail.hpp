@@ -145,7 +145,8 @@ struct CraftingOverlayLayoutPx
     const std::filesystem::path& relativePath,
     std::uint16_t textureFlags = BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
     std::uint16_t* outWidthPx = nullptr,
-    std::uint16_t* outHeightPx = nullptr);
+    std::uint16_t* outHeightPx = nullptr,
+    bool stripWhiteEdgeMatte = false);
 [[nodiscard]] bgfx::TextureHandle createLogoTextureFromPng(
     bx::AllocatorI& allocator,
     std::uint16_t& outWidth,

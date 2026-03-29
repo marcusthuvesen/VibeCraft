@@ -228,15 +228,21 @@ ChunkMeshData ChunkMesher::buildMesh(
                             .x = static_cast<float>(worldX) + corner[0],
                             .y = static_cast<float>(y) + corner[1],
                             .z = static_cast<float>(worldZ) + corner[2],
+                            .nx = static_cast<float>(face.offsetX),
+                            .ny = static_cast<float>(face.offsetY),
+                            .nz = static_cast<float>(face.offsetZ),
                             .u = atlasUv[0],
                             .v = atlasUv[1],
                             .abgr = metadata.debugColor,
                         });
                     }
 
-                    meshData.indices.insert(
-                        meshData.indices.end(),
-                        {baseIndex, baseIndex + 1, baseIndex + 2, baseIndex, baseIndex + 2, baseIndex + 3});
+                    meshData.indices.push_back(baseIndex);
+                    meshData.indices.push_back(baseIndex + 1);
+                    meshData.indices.push_back(baseIndex + 2);
+                    meshData.indices.push_back(baseIndex);
+                    meshData.indices.push_back(baseIndex + 2);
+                    meshData.indices.push_back(baseIndex + 3);
                     ++meshData.faceCount;
                 }
             }
