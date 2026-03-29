@@ -37,7 +37,9 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
             menuStats != nullptr && menuStats->textHeight > 0 ? menuStats->textHeight : 30;
         const std::uint16_t menuTextWidth =
             menuStats != nullptr && menuStats->textWidth > 0 ? menuStats->textWidth : 100;
-        detail::drawMainMenuOverlay(frameDebugData, menuTextWidth, menuTextHeight);
+        const int titleMenuRowBias = detail::mainMenuLogoReservedDbgRows(
+            width_, height_, menuTextHeight, logoWidthPx_, logoHeightPx_);
+        detail::drawMainMenuOverlay(frameDebugData, menuTextWidth, menuTextHeight, titleMenuRowBias);
         bgfx::frame();
         return;
     }

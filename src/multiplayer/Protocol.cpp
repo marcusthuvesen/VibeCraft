@@ -309,6 +309,13 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
                 writer.writeI32(message.coord.z);
                 writer.writeBytes(message.blocks);
             }
+            else if constexpr (std::is_same_v<MessageT, ChunkSnapshotPartMessage>)
+            {
+                writer.writeI32(message.coord.x);
+                writer.writeI32(message.coord.z);
+                writer.writeU8(message.sectionIndex);
+                writer.writeBytes(message.blocks);
+            }
             else if constexpr (std::is_same_v<MessageT, PingMessage>)
             {
                 writer.writeU32(message.clientTimeMs);
@@ -461,6 +468,21 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
     {
         ChunkSnapshotMessage message;
         if (!reader.readI32(message.coord.x) || !reader.readI32(message.coord.z) || !reader.readBytes(message.blocks))
+        {
+            return std::nullopt;
+        }
+        decoded.payload = message;
+        break;
+    }
+    case MessageType::ChunkSnapshotPart:
+    {
+        ChunkSnapshotPartMessage message;
+        if (!reader.readI32(message.coord.x) || !reader.readI32(message.coord.z)
+            || !reader.readU8(message.sectionIndex) || !reader.readBytes(message.blocks))
+        {
+            return std::nullopt;
+        }
+        if (message.sectionIndex >= kChunkSnapshotSectionCount)
         {
             return std::nullopt;
         }

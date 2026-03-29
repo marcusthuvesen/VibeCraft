@@ -135,8 +135,24 @@ struct BlockMetadata
         };
     case BlockType::TreeCrown:
         return {
-            .debugColor = 0xffffffff,
+            // Slight alpha makes leaves partially see-through while retaining atlas color.
+            .debugColor = 0xc8ffffff,
             .textureTiles = {.top = 16, .bottom = 16, .side = 16},
+            .hardness = 0.2f,
+            .breakable = true,
+        };
+    case BlockType::JungleTreeTrunk:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 34, .bottom = 34, .side = 35},
+            .hardness = 1.7f,
+            .breakable = true,
+        };
+    case BlockType::JungleTreeCrown:
+        return {
+            // Match leaf translucency used for regular tree canopies.
+            .debugColor = 0xc8ffffff,
+            .textureTiles = {.top = 60, .bottom = 60, .side = 60},
             .hardness = 0.2f,
             .breakable = true,
         };
@@ -201,10 +217,114 @@ struct BlockMetadata
             .breakable = true,
         };
     case BlockType::Torch:
-        // Reuse oak planks tile until dedicated torch atlas tile is added.
         return {
             .debugColor = 0xffffffff,
-            .textureTiles = {.top = 17, .bottom = 17, .side = 17},
+            .textureTiles = {.top = 36, .bottom = 36, .side = 36},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::TNT:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 37, .bottom = 38, .side = 39},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::Glass:
+        return {
+            .debugColor = 0xccffffff,
+            .textureTiles = {.top = 40, .bottom = 40, .side = 40},
+            .hardness = 0.3f,
+            .breakable = true,
+        };
+    case BlockType::Bricks:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 41, .bottom = 41, .side = 41},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
+    case BlockType::Bookshelf:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 17, .bottom = 17, .side = 42},
+            .hardness = 1.5f,
+            .breakable = true,
+        };
+    case BlockType::Glowstone:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 43, .bottom = 43, .side = 43},
+            .hardness = 0.3f,
+            .breakable = true,
+        };
+    case BlockType::Obsidian:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 44, .bottom = 44, .side = 44},
+            .hardness = 50.0f,
+            .breakable = true,
+        };
+    case BlockType::Gravel:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 45, .bottom = 45, .side = 45},
+            .hardness = 0.6f,
+            .breakable = true,
+        };
+    case BlockType::Cactus:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 46, .bottom = 47, .side = 48},
+            .hardness = 0.4f,
+            .breakable = true,
+        };
+    case BlockType::Dandelion:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 49, .bottom = 49, .side = 49},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::Poppy:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 50, .bottom = 50, .side = 50},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::BlueOrchid:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 51, .bottom = 51, .side = 51},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::Allium:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 52, .bottom = 52, .side = 52},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::OxeyeDaisy:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 53, .bottom = 53, .side = 53},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::BrownMushroom:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 54, .bottom = 54, .side = 54},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::RedMushroom:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 55, .bottom = 55, .side = 55},
             .hardness = 0.0f,
             .breakable = true,
         };

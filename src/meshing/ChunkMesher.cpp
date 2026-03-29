@@ -45,6 +45,14 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
      {{{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}}}},
 }};
 
+[[nodiscard]] constexpr bool usesCrossPlantMesh(const BlockType blockType)
+{
+    return blockType == BlockType::Dandelion || blockType == BlockType::Poppy
+        || blockType == BlockType::BlueOrchid || blockType == BlockType::Allium
+        || blockType == BlockType::OxeyeDaisy || blockType == BlockType::BrownMushroom
+        || blockType == BlockType::RedMushroom;
+}
+
 constexpr std::uint16_t kAtlasColumns = vibecraft::kChunkAtlasTileColumns;
 constexpr std::uint16_t kAtlasRows = vibecraft::kChunkAtlasTileRows;
 constexpr float kTileInsetU = 0.5f / static_cast<float>(vibecraft::kChunkAtlasWidthPx);
@@ -197,6 +205,56 @@ ChunkMeshData ChunkMesher::buildMesh(
                 const BlockType blockType = blockFromStorage(currentStorage, localX, y, localZ);
                 if (!vibecraft::world::isRenderable(blockType))
                 {
+                    continue;
+                }
+
+                if (usesCrossPlantMesh(blockType))
+                {
+                    // Flora meshes are centered crossed quads instead of a full cube.
+                    constexpr float kInset = 0.146f;
+                    constexpr std::array<std::array<std::array<float, 3>, 4>, 2> kPlantCrossQuads{{
+                        {{{kInset, 0.0f, kInset}, {kInset, 1.0f, kInset}, {1.0f - kInset, 1.0f, 1.0f - kInset}, {1.0f - kInset, 0.0f, 1.0f - kInset}}},
+                        {{{1.0f - kInset, 0.0f, kInset}, {1.0f - kInset, 1.0f, kInset}, {kInset, 1.0f, 1.0f - kInset}, {kInset, 0.0f, 1.0f - kInset}}},
+                    }};
+                    constexpr std::array<std::array<float, 2>, 4> kPlantUv{{
+                        {0.0f, 1.0f},
+                        {0.0f, 0.0f},
+                        {1.0f, 0.0f},
+                        {1.0f, 1.0f},
+                    }};
+
+                    const auto metadata = vibecraft::world::blockMetadata(blockType);
+                    const std::uint8_t tileIndex =
+                        vibecraft::world::textureTileIndex(blockType, vibecraft::world::BlockFace::Side);
+                    for (const auto& quad : kPlantCrossQuads)
+                    {
+                        const std::uint32_t baseIndex = static_cast<std::uint32_t>(meshData.vertices.size());
+                        for (std::size_t vertexIndex = 0; vertexIndex < quad.size(); ++vertexIndex)
+                        {
+                            const auto& corner = quad[vertexIndex];
+                            const auto atlasUv = atlasUvForBlockType(tileIndex, kPlantUv[vertexIndex]);
+                            meshData.vertices.push_back(DebugVertex{
+                                .x = static_cast<float>(worldX) + corner[0],
+                                .y = static_cast<float>(y) + corner[1],
+                                .z = static_cast<float>(worldZ) + corner[2],
+                                // Keep plant lighting stable from all directions.
+                                .nx = 0.0f,
+                                .ny = 1.0f,
+                                .nz = 0.0f,
+                                .u = atlasUv[0],
+                                .v = atlasUv[1],
+                                .abgr = metadata.debugColor,
+                            });
+                        }
+
+                        meshData.indices.push_back(baseIndex);
+                        meshData.indices.push_back(baseIndex + 1);
+                        meshData.indices.push_back(baseIndex + 2);
+                        meshData.indices.push_back(baseIndex);
+                        meshData.indices.push_back(baseIndex + 2);
+                        meshData.indices.push_back(baseIndex + 3);
+                        ++meshData.faceCount;
+                    }
                     continue;
                 }
 

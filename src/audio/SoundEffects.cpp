@@ -36,16 +36,50 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
-        return {"dig/grass1.ogg", "dig/grass2.ogg", "dig/grass3.ogg", "dig/grass4.ogg"};
+    case BlockType::Dandelion:
+    case BlockType::Poppy:
+    case BlockType::BlueOrchid:
+    case BlockType::Allium:
+    case BlockType::OxeyeDaisy:
+    case BlockType::BrownMushroom:
+    case BlockType::RedMushroom:
+    case BlockType::Cactus:
+        return {
+            "block/grass/break1.ogg",
+            "block/grass/break2.ogg",
+            "block/grass/break3.ogg",
+            "block/grass/break4.ogg",
+            "dig/grass1.ogg",
+            "dig/grass2.ogg",
+            "dig/grass3.ogg",
+            "dig/grass4.ogg"};
     case BlockType::Sand:
     case BlockType::Sandstone:
-        return {"block/sand/sand1.ogg", "block/sand/sand2.ogg", "block/sand/sand3.ogg", "block/sand/sand4.ogg"};
+    case BlockType::TNT:
+        return {
+            "block/sand/break1.ogg",
+            "block/sand/break2.ogg",
+            "block/sand/break3.ogg",
+            "block/sand/break4.ogg",
+            "block/sand/sand1.ogg",
+            "block/sand/sand2.ogg",
+            "block/sand/sand3.ogg",
+            "block/sand/sand4.ogg"};
     case BlockType::TreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
     case BlockType::Torch:
-        return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
+    case BlockType::Bookshelf:
+        return {
+            "block/wood/break1.ogg",
+            "block/wood/break2.ogg",
+            "block/wood/break3.ogg",
+            "block/wood/break4.ogg",
+            "dig/wood1.ogg",
+            "dig/wood2.ogg",
+            "dig/wood3.ogg",
+            "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {
             "block/deepslate/break1.ogg",
@@ -59,10 +93,78 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
     case BlockType::Oven:
+    case BlockType::Bricks:
+    case BlockType::Glowstone:
+    case BlockType::Obsidian:
+    case BlockType::Gravel:
+    case BlockType::Glass:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
-        return {"dig/stone1.ogg", "dig/stone2.ogg", "dig/stone3.ogg", "dig/stone4.ogg"};
+        return {
+            "block/stone/break1.ogg",
+            "block/stone/break2.ogg",
+            "block/stone/break3.ogg",
+            "block/stone/break4.ogg",
+            "dig/stone1.ogg",
+            "dig/stone2.ogg",
+            "dig/stone3.ogg",
+            "dig/stone4.ogg"};
+    }
+}
+
+[[nodiscard]] std::vector<std::string> blockHitOptions(const vibecraft::world::BlockType blockType)
+{
+    using vibecraft::world::BlockType;
+    switch (blockType)
+    {
+    case BlockType::Grass:
+    case BlockType::SnowGrass:
+    case BlockType::JungleGrass:
+    case BlockType::Dirt:
+    case BlockType::TreeCrown:
+    case BlockType::Dandelion:
+    case BlockType::Poppy:
+    case BlockType::BlueOrchid:
+    case BlockType::Allium:
+    case BlockType::OxeyeDaisy:
+    case BlockType::BrownMushroom:
+    case BlockType::RedMushroom:
+    case BlockType::Cactus:
+        return {"block/grass/hit1.ogg", "block/grass/hit2.ogg", "block/grass/hit3.ogg", "block/grass/hit4.ogg"};
+    case BlockType::Sand:
+    case BlockType::Sandstone:
+    case BlockType::TNT:
+        return {"block/sand/hit1.ogg", "block/sand/hit2.ogg", "block/sand/hit3.ogg", "block/sand/hit4.ogg"};
+    case BlockType::TreeTrunk:
+    case BlockType::OakPlanks:
+    case BlockType::CraftingTable:
+    case BlockType::Chest:
+    case BlockType::Torch:
+    case BlockType::Bookshelf:
+        return {"block/wood/hit1.ogg", "block/wood/hit2.ogg", "block/wood/hit3.ogg", "block/wood/hit4.ogg"};
+    case BlockType::Deepslate:
+        return {
+            "block/deepslate/hit1.ogg",
+            "block/deepslate/hit2.ogg",
+            "block/deepslate/hit3.ogg",
+            "block/deepslate/hit4.ogg"};
+    case BlockType::CoalOre:
+    case BlockType::IronOre:
+    case BlockType::GoldOre:
+    case BlockType::DiamondOre:
+    case BlockType::EmeraldOre:
+    case BlockType::Cobblestone:
+    case BlockType::Oven:
+    case BlockType::Bricks:
+    case BlockType::Glowstone:
+    case BlockType::Obsidian:
+    case BlockType::Gravel:
+    case BlockType::Glass:
+    case BlockType::Bedrock:
+    case BlockType::Stone:
+    default:
+        return {"block/stone/hit1.ogg", "block/stone/hit2.ogg", "block/stone/hit3.ogg", "block/stone/hit4.ogg"};
     }
 }
 
@@ -77,18 +179,35 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
+    case BlockType::Dandelion:
+    case BlockType::Poppy:
+    case BlockType::BlueOrchid:
+    case BlockType::Allium:
+    case BlockType::OxeyeDaisy:
+    case BlockType::BrownMushroom:
+    case BlockType::RedMushroom:
+    case BlockType::Cactus:
         step.assign(
             {"block/grass/step1.ogg",
              "block/grass/step2.ogg",
              "block/grass/step3.ogg",
              "block/grass/step4.ogg",
              "block/grass/step5.ogg",
-             "block/grass/step6.ogg"});
+             "block/grass/step6.ogg",
+             "dig/grass1.ogg",
+             "dig/grass2.ogg",
+             "dig/grass3.ogg",
+             "dig/grass4.ogg"});
         break;
     case BlockType::Sand:
     case BlockType::Sandstone:
+    case BlockType::TNT:
         step.assign(
-            {"block/sand/sand1.ogg",
+            {"block/sand/step1.ogg",
+             "block/sand/step2.ogg",
+             "block/sand/step3.ogg",
+             "block/sand/step4.ogg",
+             "block/sand/sand1.ogg",
              "block/sand/sand2.ogg",
              "block/sand/sand3.ogg",
              "block/sand/sand4.ogg"});
@@ -123,13 +242,18 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::CraftingTable:
     case BlockType::Chest:
     case BlockType::Torch:
+    case BlockType::Bookshelf:
         step.assign(
             {"block/wood/step1.ogg",
              "block/wood/step2.ogg",
              "block/wood/step3.ogg",
              "block/wood/step4.ogg",
              "block/wood/step5.ogg",
-             "block/wood/step6.ogg"});
+             "block/wood/step6.ogg",
+             "dig/wood1.ogg",
+             "dig/wood2.ogg",
+             "dig/wood3.ogg",
+             "dig/wood4.ogg"});
         break;
     case BlockType::Deepslate:
         step.assign(
@@ -146,6 +270,11 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
     case BlockType::Oven:
+    case BlockType::Bricks:
+    case BlockType::Glowstone:
+    case BlockType::Obsidian:
+    case BlockType::Gravel:
+    case BlockType::Glass:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
@@ -155,7 +284,11 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
              "block/stone/step3.ogg",
              "block/stone/step4.ogg",
              "block/stone/step5.ogg",
-             "block/stone/step6.ogg"});
+             "block/stone/step6.ogg",
+             "dig/stone1.ogg",
+             "dig/stone2.ogg",
+             "dig/stone3.ogg",
+             "dig/stone4.ogg"});
         break;
     }
 
@@ -177,16 +310,50 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::JungleGrass:
     case BlockType::Dirt:
     case BlockType::TreeCrown:
-        return {"dig/grass1.ogg", "dig/grass2.ogg", "dig/grass3.ogg", "dig/grass4.ogg"};
+    case BlockType::Dandelion:
+    case BlockType::Poppy:
+    case BlockType::BlueOrchid:
+    case BlockType::Allium:
+    case BlockType::OxeyeDaisy:
+    case BlockType::BrownMushroom:
+    case BlockType::RedMushroom:
+    case BlockType::Cactus:
+        return {
+            "block/grass/place1.ogg",
+            "block/grass/place2.ogg",
+            "block/grass/place3.ogg",
+            "block/grass/place4.ogg",
+            "dig/grass1.ogg",
+            "dig/grass2.ogg",
+            "dig/grass3.ogg",
+            "dig/grass4.ogg"};
     case BlockType::Sand:
     case BlockType::Sandstone:
-        return {"block/sand/sand5.ogg", "block/sand/sand6.ogg", "block/sand/sand7.ogg", "block/sand/sand8.ogg"};
+    case BlockType::TNT:
+        return {
+            "block/sand/place1.ogg",
+            "block/sand/place2.ogg",
+            "block/sand/place3.ogg",
+            "block/sand/place4.ogg",
+            "block/sand/sand5.ogg",
+            "block/sand/sand6.ogg",
+            "block/sand/sand7.ogg",
+            "block/sand/sand8.ogg"};
     case BlockType::TreeTrunk:
     case BlockType::OakPlanks:
     case BlockType::CraftingTable:
     case BlockType::Chest:
     case BlockType::Torch:
-        return {"dig/wood1.ogg", "dig/wood2.ogg", "dig/wood3.ogg", "dig/wood4.ogg"};
+    case BlockType::Bookshelf:
+        return {
+            "block/wood/place1.ogg",
+            "block/wood/place2.ogg",
+            "block/wood/place3.ogg",
+            "block/wood/place4.ogg",
+            "dig/wood1.ogg",
+            "dig/wood2.ogg",
+            "dig/wood3.ogg",
+            "dig/wood4.ogg"};
     case BlockType::Deepslate:
         return {
             "block/deepslate/place1.ogg",
@@ -200,16 +367,34 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     case BlockType::EmeraldOre:
     case BlockType::Cobblestone:
     case BlockType::Oven:
+    case BlockType::Bricks:
+    case BlockType::Glowstone:
+    case BlockType::Obsidian:
+    case BlockType::Gravel:
+    case BlockType::Glass:
     case BlockType::Bedrock:
     case BlockType::Stone:
     default:
-        return {"dig/stone1.ogg", "dig/stone2.ogg", "dig/stone3.ogg", "dig/stone4.ogg"};
+        return {
+            "block/stone/place1.ogg",
+            "block/stone/place2.ogg",
+            "block/stone/place3.ogg",
+            "block/stone/place4.ogg",
+            "dig/stone1.ogg",
+            "dig/stone2.ogg",
+            "dig/stone3.ogg",
+            "dig/stone4.ogg"};
     }
 }
 
 [[nodiscard]] std::vector<std::string> playerAttackOptions()
 {
     return {
+        "entity/player/attack/crit1.ogg",
+        "entity/player/attack/crit2.ogg",
+        "entity/player/attack/crit3.ogg",
+        "entity/player/attack/knockback1.ogg",
+        "entity/player/attack/knockback2.ogg",
         "entity/player/attack/sweep1.ogg",
         "entity/player/attack/sweep2.ogg",
         "entity/player/attack/sweep3.ogg",
@@ -222,15 +407,39 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 [[nodiscard]] std::vector<std::string> playerHurtOptions()
 {
     return {
+        "entity/player/hurt1.ogg",
+        "entity/player/hurt2.ogg",
+        "entity/player/hurt3.ogg",
         "entity/player/hurt/fire_hurt1.ogg",
         "entity/player/hurt/fire_hurt2.ogg",
         "entity/player/hurt/fire_hurt3.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> playerJumpOptions()
+{
+    return {"entity/player/big_fall1.ogg", "entity/player/big_fall2.ogg", "entity/player/small_fall1.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> playerLandOptions(const bool hardLanding)
+{
+    if (hardLanding)
+    {
+        return {"entity/player/big_fall1.ogg", "entity/player/big_fall2.ogg"};
+    }
+    return {"entity/player/small_fall1.ogg", "entity/player/small_fall2.ogg", "entity/player/small_fall3.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> playerDeathOptions()
+{
+    return {"entity/player/death1.ogg", "entity/player/death2.ogg", "entity/player/death3.ogg"};
 }
 
 [[nodiscard]] std::vector<std::string> waterEnterOptions()
 {
     // Minecraft 26.1 pack: assets/minecraft/sounds/liquid (see mcasset.cloud liquid folder).
     return {
+        "entity/player/splash.high_speed.big1.ogg",
+        "entity/player/splash.high_speed.big2.ogg",
         "liquid/splash.ogg",
         "liquid/splash2.ogg",
         "liquid/heavy_splash.ogg",
@@ -239,7 +448,12 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 
 [[nodiscard]] std::vector<std::string> waterExitOptions()
 {
-    return {"liquid/splash.ogg", "liquid/splash2.ogg", "liquid/heavy_splash.ogg"};
+    return {
+        "entity/player/splash.high_speed.small1.ogg",
+        "entity/player/splash.high_speed.small2.ogg",
+        "liquid/splash.ogg",
+        "liquid/splash2.ogg",
+        "liquid/heavy_splash.ogg"};
 }
 
 [[nodiscard]] std::vector<std::string> mobHitOptions(const vibecraft::game::MobKind mobKind)
@@ -248,15 +462,49 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::HostileStalker:
-        return {"mob/zombie/hurt1.ogg", "mob/zombie/hurt2.ogg", "mob/zombie/say1.ogg", "mob/zombie/say2.ogg"};
+        return {
+            "entity/zombie/hurt1.ogg",
+            "entity/zombie/hurt2.ogg",
+            "entity/zombie/hurt3.ogg",
+            "entity/zombie/ambient1.ogg",
+            "entity/zombie/ambient2.ogg",
+            "mob/zombie/hurt1.ogg",
+            "mob/zombie/hurt2.ogg",
+            "mob/zombie/say1.ogg",
+            "mob/zombie/say2.ogg"};
     case MobKind::Cow:
-        return {"mob/cow/hurt1.ogg", "mob/cow/hurt2.ogg", "mob/cow/hurt3.ogg"};
+        return {"entity/cow/hurt1.ogg",
+                "entity/cow/hurt2.ogg",
+                "entity/cow/ambient1.ogg",
+                "entity/cow/ambient2.ogg",
+                "mob/cow/hurt1.ogg",
+                "mob/cow/hurt2.ogg",
+                "mob/cow/hurt3.ogg"};
     case MobKind::Pig:
-        return {"mob/pig/say1.ogg", "mob/pig/say2.ogg", "mob/pig/say3.ogg"};
+        return {"entity/pig/hurt1.ogg",
+                "entity/pig/hurt2.ogg",
+                "entity/pig/ambient1.ogg",
+                "entity/pig/ambient2.ogg",
+                "mob/pig/say1.ogg",
+                "mob/pig/say2.ogg",
+                "mob/pig/say3.ogg"};
     case MobKind::Sheep:
-        return {"mob/sheep/say1.ogg", "mob/sheep/say2.ogg", "mob/sheep/say3.ogg"};
+        return {"entity/sheep/hurt1.ogg",
+                "entity/sheep/hurt2.ogg",
+                "entity/sheep/ambient1.ogg",
+                "entity/sheep/ambient2.ogg",
+                "mob/sheep/say1.ogg",
+                "mob/sheep/say2.ogg",
+                "mob/sheep/say3.ogg"};
     case MobKind::Chicken:
-        return {"mob/chicken/hurt1.ogg", "mob/chicken/hurt2.ogg", "mob/chicken/say1.ogg", "mob/chicken/say2.ogg"};
+        return {"entity/chicken/hurt1.ogg",
+                "entity/chicken/hurt2.ogg",
+                "entity/chicken/ambient1.ogg",
+                "entity/chicken/ambient2.ogg",
+                "mob/chicken/hurt1.ogg",
+                "mob/chicken/hurt2.ogg",
+                "mob/chicken/say1.ogg",
+                "mob/chicken/say2.ogg"};
     }
     return {};
 }
@@ -267,15 +515,15 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::HostileStalker:
-        return {"mob/zombie/death.ogg"};
+        return {"entity/zombie/death.ogg", "mob/zombie/death.ogg"};
     case MobKind::Cow:
-        return {"mob/cow/hurt1.ogg", "mob/cow/hurt2.ogg"};
+        return {"entity/cow/death.ogg", "mob/cow/hurt1.ogg", "mob/cow/hurt2.ogg"};
     case MobKind::Pig:
-        return {"mob/pig/death.ogg"};
+        return {"entity/pig/death.ogg", "mob/pig/death.ogg"};
     case MobKind::Sheep:
-        return {"mob/sheep/say1.ogg", "mob/sheep/say2.ogg"};
+        return {"entity/sheep/death.ogg", "mob/sheep/say1.ogg", "mob/sheep/say2.ogg"};
     case MobKind::Chicken:
-        return {"mob/chicken/hurt1.ogg", "mob/chicken/hurt2.ogg"};
+        return {"entity/chicken/death.ogg", "mob/chicken/hurt1.ogg", "mob/chicken/hurt2.ogg"};
     }
     return {};
 }
@@ -311,6 +559,10 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 
     append(playerAttackOptions());
     append(playerHurtOptions());
+    append(playerJumpOptions());
+    append(playerLandOptions(false));
+    append(playerLandOptions(true));
+    append(playerDeathOptions());
 
     using MK = vibecraft::game::MobKind;
     append(mobHitOptions(MK::HostileStalker));
@@ -406,6 +658,12 @@ void SoundEffects::playBlockDigTick(const vibecraft::world::BlockType blockType)
     {
         return;
     }
+    const std::vector<std::string> hit = blockHitOptions(blockType);
+    if (!hit.empty() && getOrLoadClip(hit.front()) != nullptr)
+    {
+        playRandomClipWithGain(hit, 0.58f);
+        return;
+    }
     playRandomClipWithGain(blockBreakOptions(blockType), 0.58f);
 }
 
@@ -425,7 +683,7 @@ void SoundEffects::playPlayerAttack()
         return;
     }
     const std::vector<std::string> options = playerAttackOptions();
-    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    if (!options.empty())
     {
         playRandomClipWithGain(options, 0.52f);
         return;
@@ -440,12 +698,57 @@ void SoundEffects::playPlayerHurt()
         return;
     }
     const std::vector<std::string> options = playerHurtOptions();
-    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    if (!options.empty())
     {
         playRandomClipWithGain(options, 0.65f);
         return;
     }
     queueProceduralSweep(280.0f, 130.0f, 0.095f, 0.33f, 0.26f);
+}
+
+void SoundEffects::playPlayerJump()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    const std::vector<std::string> options = playerJumpOptions();
+    if (!options.empty())
+    {
+        playRandomClipWithGain(options, 0.30f);
+        return;
+    }
+    queueProceduralSweep(420.0f, 560.0f, 0.045f, 0.14f, 0.12f);
+}
+
+void SoundEffects::playPlayerLand(const bool hardLanding)
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    const std::vector<std::string> options = playerLandOptions(hardLanding);
+    if (!options.empty())
+    {
+        playRandomClipWithGain(options, hardLanding ? 0.55f : 0.34f);
+        return;
+    }
+    queueProceduralSweep(240.0f, 95.0f, hardLanding ? 0.085f : 0.055f, hardLanding ? 0.28f : 0.16f, 0.32f);
+}
+
+void SoundEffects::playPlayerDeath()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    const std::vector<std::string> options = playerDeathOptions();
+    if (!options.empty())
+    {
+        playRandomClipWithGain(options, 0.74f);
+        return;
+    }
+    queueProceduralSweep(190.0f, 52.0f, 0.18f, 0.45f, 0.30f);
 }
 
 void SoundEffects::playWaterEnter()
@@ -473,7 +776,7 @@ void SoundEffects::playMobHit(const vibecraft::game::MobKind mobKind)
         return;
     }
     const std::vector<std::string> options = mobHitOptions(mobKind);
-    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    if (!options.empty())
     {
         playRandomClipWithGain(options, 0.85f);
         return;
@@ -488,7 +791,7 @@ void SoundEffects::playMobDefeat(const vibecraft::game::MobKind mobKind)
         return;
     }
     const std::vector<std::string> options = mobDefeatOptions(mobKind);
-    if (!options.empty() && getOrLoadClip(options.front()) != nullptr)
+    if (!options.empty())
     {
         playRandomClipWithGain(options, 0.92f);
         return;

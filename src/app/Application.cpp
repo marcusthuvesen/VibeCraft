@@ -98,7 +98,11 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
 {
     return blockType == world::BlockType::Grass || blockType == world::BlockType::Dirt
         || blockType == world::BlockType::Sand || blockType == world::BlockType::SnowGrass
-        || blockType == world::BlockType::JungleGrass;
+        || blockType == world::BlockType::JungleGrass || blockType == world::BlockType::Gravel
+        || blockType == world::BlockType::Cactus || blockType == world::BlockType::Dandelion
+        || blockType == world::BlockType::Poppy || blockType == world::BlockType::BlueOrchid
+        || blockType == world::BlockType::Allium || blockType == world::BlockType::OxeyeDaisy
+        || blockType == world::BlockType::BrownMushroom || blockType == world::BlockType::RedMushroom;
 }
 
 [[nodiscard]] bool isStoneFamilyBlockType(const world::BlockType blockType)
@@ -106,24 +110,31 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
     return blockType == world::BlockType::Stone || blockType == world::BlockType::Deepslate
         || blockType == world::BlockType::CoalOre || blockType == world::BlockType::IronOre
         || blockType == world::BlockType::GoldOre || blockType == world::BlockType::DiamondOre
-        || blockType == world::BlockType::EmeraldOre;
+        || blockType == world::BlockType::EmeraldOre || blockType == world::BlockType::Bricks
+        || blockType == world::BlockType::Glowstone || blockType == world::BlockType::Obsidian
+        || blockType == world::BlockType::Glass;
 }
 
 [[nodiscard]] bool isWoodFamilyBlockType(const world::BlockType blockType)
 {
-    return blockType == world::BlockType::TreeTrunk || blockType == world::BlockType::TreeCrown;
+    return blockType == world::BlockType::TreeTrunk || blockType == world::BlockType::TreeCrown
+        || blockType == world::BlockType::JungleTreeTrunk
+        || blockType == world::BlockType::JungleTreeCrown
+        || blockType == world::BlockType::Bookshelf;
 }
 
 [[nodiscard]] bool isPickaxeEffectiveTarget(const world::BlockType targetBlockType)
 {
     return isStoneFamilyBlockType(targetBlockType) || targetBlockType == world::BlockType::Cobblestone
-        || targetBlockType == world::BlockType::Sandstone || targetBlockType == world::BlockType::Oven;
+        || targetBlockType == world::BlockType::Sandstone || targetBlockType == world::BlockType::Oven
+        || targetBlockType == world::BlockType::Glass;
 }
 
 [[nodiscard]] bool isAxeEffectiveTarget(const world::BlockType targetBlockType)
 {
     return isWoodFamilyBlockType(targetBlockType) || targetBlockType == world::BlockType::OakPlanks
-        || targetBlockType == world::BlockType::CraftingTable || targetBlockType == world::BlockType::Chest;
+        || targetBlockType == world::BlockType::CraftingTable || targetBlockType == world::BlockType::Chest
+        || targetBlockType == world::BlockType::Bookshelf;
 }
 
 [[nodiscard]] bool isPickaxeItem(const EquippedItem equippedItem)
@@ -589,6 +600,63 @@ void applyMeshSyncGpuData(
     }
 }
 
+[[nodiscard]] const char* spawnBiomeTargetLabel(const SpawnBiomeTarget target)
+{
+    switch (target)
+    {
+    case SpawnBiomeTarget::Temperate:
+        return "Temperate";
+    case SpawnBiomeTarget::Sandy:
+        return "Sandy";
+    case SpawnBiomeTarget::Snowy:
+        return "Snowy";
+    case SpawnBiomeTarget::Jungle:
+        return "Jungle";
+    case SpawnBiomeTarget::Any:
+    default:
+        return "Any";
+    }
+}
+
+[[nodiscard]] SpawnBiomeTarget nextSpawnBiomeTarget(const SpawnBiomeTarget target)
+{
+    switch (target)
+    {
+    case SpawnBiomeTarget::Any:
+        return SpawnBiomeTarget::Temperate;
+    case SpawnBiomeTarget::Temperate:
+        return SpawnBiomeTarget::Sandy;
+    case SpawnBiomeTarget::Sandy:
+        return SpawnBiomeTarget::Snowy;
+    case SpawnBiomeTarget::Snowy:
+        return SpawnBiomeTarget::Jungle;
+    case SpawnBiomeTarget::Jungle:
+    default:
+        return SpawnBiomeTarget::Any;
+    }
+}
+
+[[nodiscard]] bool matchesSpawnBiomeTarget(
+    const world::SurfaceBiome biome,
+    const SpawnBiomeTarget target)
+{
+    using SB = world::SurfaceBiome;
+    switch (target)
+    {
+    case SpawnBiomeTarget::Any:
+        return true;
+    case SpawnBiomeTarget::Temperate:
+        return biome == SB::TemperateGrassland;
+    case SpawnBiomeTarget::Sandy:
+        return biome == SB::Sandy;
+    case SpawnBiomeTarget::Snowy:
+        return biome == SB::Snowy;
+    case SpawnBiomeTarget::Jungle:
+        return biome == SB::Jungle;
+    }
+    return true;
+}
+
 [[nodiscard]] SpawnPreset nextSpawnPreset(const SpawnPreset preset)
 {
     switch (preset)
@@ -626,6 +694,52 @@ void applyMeshSyncGpuData(
     default:
         return fallbackCameraPosition;
     }
+}
+
+[[nodiscard]] glm::vec3 resolveSpawnFeetPosition(
+    const world::World& worldState,
+    const world::TerrainGenerator& terrainGenerator,
+    const SpawnPreset spawnPreset,
+    const SpawnBiomeTarget spawnBiomeTarget,
+    const glm::vec3& fallbackCameraPosition,
+    const float colliderHeight)
+{
+    const glm::vec3 spawnProbePosition = preferredSpawnProbePosition(spawnPreset, fallbackCameraPosition);
+    if (spawnBiomeTarget == SpawnBiomeTarget::Any)
+    {
+        return findInitialSpawnFeetPosition(worldState, terrainGenerator, spawnProbePosition, colliderHeight);
+    }
+
+    // Search around the preferred spawn area for the requested biome.
+    constexpr int kSearchStep = 24;
+    constexpr int kSearchRadius = 1200;
+    for (int radius = 0; radius <= kSearchRadius; radius += kSearchStep)
+    {
+        for (int dz = -radius; dz <= radius; dz += kSearchStep)
+        {
+            for (int dx = -radius; dx <= radius; dx += kSearchStep)
+            {
+                if (radius > 0 && std::abs(dx) != radius && std::abs(dz) != radius)
+                {
+                    continue;
+                }
+                const int sampleX = static_cast<int>(std::floor(spawnProbePosition.x)) + dx;
+                const int sampleZ = static_cast<int>(std::floor(spawnProbePosition.z)) + dz;
+                if (!matchesSpawnBiomeTarget(terrainGenerator.surfaceBiomeAt(sampleX, sampleZ), spawnBiomeTarget))
+                {
+                    continue;
+                }
+                const glm::vec3 biomeProbe{
+                    static_cast<float>(sampleX),
+                    spawnProbePosition.y,
+                    static_cast<float>(sampleZ),
+                };
+                return findInitialSpawnFeetPosition(worldState, terrainGenerator, biomeProbe, colliderHeight);
+            }
+        }
+    }
+
+    return findInitialSpawnFeetPosition(worldState, terrainGenerator, spawnProbePosition, colliderHeight);
 }
 
 [[nodiscard]] bool movePlayerAxisWithCollision(
@@ -1534,12 +1648,26 @@ void Application::update(const float deltaTimeSeconds)
                 window_.width(),
                 window_.height(),
                 textWidth,
-                textHeight);
+                textHeight,
+                renderer_.menuLogoWidthPx(),
+                renderer_.menuLogoHeightPx());
         }
         if (singleplayerLoadState_.active)
         {
             frameDebugData.mainMenuLoadingActive = true;
             frameDebugData.mainMenuLoadingProgress = singleplayerLoadState_.progress;
+            if (pendingHostStartAfterWorldLoad_)
+            {
+                frameDebugData.mainMenuLoadingTitle = "STARTING MULTIPLAYER HOST";
+            }
+            else if (pendingClientJoinAfterWorldLoad_)
+            {
+                frameDebugData.mainMenuLoadingTitle = "JOINING MULTIPLAYER";
+            }
+            else
+            {
+                frameDebugData.mainMenuLoadingTitle = "LOADING SINGLEPLAYER";
+            }
             frameDebugData.mainMenuLoadingLabel = singleplayerLoadState_.label;
         }
     }
@@ -1557,6 +1685,7 @@ void Application::update(const float deltaTimeSeconds)
         {
             frameDebugData.pauseGameSettingsActive = true;
             frameDebugData.mobSpawningEnabled = mobSpawningEnabled_;
+            frameDebugData.pauseSpawnBiomeLabel = spawnBiomeTargetLabel(spawnBiomeTarget_);
             frameDebugData.pauseGameSettingsHoveredControl = render::Renderer::hitTestPauseGameSettingsMenu(
                 inputState_.mouseWindowX,
                 inputState_.mouseWindowY,
@@ -1570,13 +1699,38 @@ void Application::update(const float deltaTimeSeconds)
             frameDebugData.pauseSoundSettingsActive = true;
             frameDebugData.pauseSoundMusicVolume = musicVolume_;
             frameDebugData.pauseSoundSfxVolume = sfxVolume_;
-            frameDebugData.pauseSoundSettingsHoveredControl = render::Renderer::hitTestPauseSoundMenu(
+            int hoveredControl = render::Renderer::hitTestPauseSoundMenu(
                 inputState_.mouseWindowX,
                 inputState_.mouseWindowY,
                 window_.width(),
                 window_.height(),
                 pauseTextWidth,
                 pauseTextHeight);
+            if (render::Renderer::pauseSoundSliderValueFromMouse(
+                    inputState_.mouseWindowX,
+                    inputState_.mouseWindowY,
+                    window_.width(),
+                    window_.height(),
+                    pauseTextWidth,
+                    pauseTextHeight,
+                    true)
+                .has_value())
+            {
+                hoveredControl = 1;
+            }
+            else if (render::Renderer::pauseSoundSliderValueFromMouse(
+                         inputState_.mouseWindowX,
+                         inputState_.mouseWindowY,
+                         window_.width(),
+                         window_.height(),
+                         pauseTextWidth,
+                         pauseTextHeight,
+                         false)
+                         .has_value())
+            {
+                hoveredControl = 3;
+            }
+            frameDebugData.pauseSoundSettingsHoveredControl = hoveredControl;
         }
         else
         {
@@ -1897,10 +2051,13 @@ void Application::processInput(const float deltaTimeSeconds)
                     window_.width(),
                     window_.height(),
                     textWidth,
-                    textHeight);
+                    textHeight,
+                    renderer_.menuLogoWidthPx(),
+                    renderer_.menuLogoHeightPx());
                 switch (hit)
                 {
                 case 0:
+                    pendingHostStartAfterWorldLoad_ = false;
                     beginSingleplayerLoad();
                     break;
                 case 1:
@@ -1967,6 +2124,34 @@ void Application::processInput(const float deltaTimeSeconds)
                     }
                     pauseMenuNotice_ = mobSpawningEnabled_ ? "Mob spawning enabled." : "Mob spawning disabled.";
                     break;
+                case 2:
+                {
+                    spawnBiomeTarget_ = nextSpawnBiomeTarget(spawnBiomeTarget_);
+                    spawnFeetPosition_ = resolveSpawnFeetPosition(
+                        world_,
+                        terrainGenerator_,
+                        spawnPreset_,
+                        spawnBiomeTarget_,
+                        camera_.position(),
+                        kPlayerMovementSettings.standingColliderHeight);
+                    playerFeetPosition_ = spawnFeetPosition_;
+                    verticalVelocity_ = 0.0f;
+                    accumulatedFallDistance_ = 0.0f;
+                    jumpWasHeld_ = false;
+                    isGrounded_ = isGroundedAtFeetPosition(
+                        world_,
+                        playerFeetPosition_,
+                        kPlayerMovementSettings.standingColliderHeight);
+                    camera_.setPosition(
+                        playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+                    playerHazards_ = samplePlayerHazards(
+                        world_,
+                        playerFeetPosition_,
+                        kPlayerMovementSettings.standingColliderHeight,
+                        kPlayerMovementSettings.standingEyeHeight);
+                    pauseMenuNotice_ = fmt::format("Spawn biome: {}", spawnBiomeTargetLabel(spawnBiomeTarget_));
+                    break;
+                }
                 default:
                     break;
                 }
@@ -1986,24 +2171,36 @@ void Application::processInput(const float deltaTimeSeconds)
                     pauseSoundSettingsOpen_ = false;
                     pauseMenuNotice_ = "Sound settings saved.";
                     break;
-                case 1:
-                    musicVolume_ = std::max(0.0f, musicVolume_ - 0.05f);
-                    musicDirector_.setMasterGain(musicVolume_);
-                    break;
-                case 2:
-                    musicVolume_ = std::min(1.0f, musicVolume_ + 0.05f);
-                    musicDirector_.setMasterGain(musicVolume_);
-                    break;
-                case 3:
-                    sfxVolume_ = std::max(0.0f, sfxVolume_ - 0.05f);
-                    soundEffects_.setMasterGain(sfxVolume_);
-                    break;
-                case 4:
-                    sfxVolume_ = std::min(1.0f, sfxVolume_ + 0.05f);
-                    soundEffects_.setMasterGain(sfxVolume_);
-                    break;
                 default:
+                {
+                    if (const std::optional<float> sliderValue = render::Renderer::pauseSoundSliderValueFromMouse(
+                            inputState_.mouseWindowX,
+                            inputState_.mouseWindowY,
+                            window_.width(),
+                            window_.height(),
+                            textWidth,
+                            textHeight,
+                            true);
+                        sliderValue.has_value())
+                    {
+                        musicVolume_ = std::clamp(*sliderValue, 0.0f, 1.0f);
+                        musicDirector_.setMasterGain(musicVolume_);
+                    }
+                    else if (const std::optional<float> sliderValue = render::Renderer::pauseSoundSliderValueFromMouse(
+                                 inputState_.mouseWindowX,
+                                 inputState_.mouseWindowY,
+                                 window_.width(),
+                                 window_.height(),
+                                 textWidth,
+                                 textHeight,
+                                 false);
+                             sliderValue.has_value())
+                    {
+                        sfxVolume_ = std::clamp(*sliderValue, 0.0f, 1.0f);
+                        soundEffects_.setMasterGain(sfxVolume_);
+                    }
                     break;
+                }
                 }
             }
             else
@@ -2256,6 +2453,7 @@ void Application::processInput(const float deltaTimeSeconds)
     {
         verticalVelocity_ = kPlayerMovementSettings.jumpVelocity;
         isGrounded_ = false;
+        soundEffects_.playPlayerJump();
     }
     jumpWasHeld_ = jumpHeld;
 
@@ -2322,6 +2520,7 @@ void Application::processInput(const float deltaTimeSeconds)
     bool playerTookDamageThisFrame = false;
     if (landedThisFrame)
     {
+        const float landingDistance = accumulatedFallDistance_;
         if (!creativeModeEnabled_)
         {
             const float healthBeforeLanding = playerVitals_.health();
@@ -2330,6 +2529,11 @@ void Application::processInput(const float deltaTimeSeconds)
             {
                 playerTookDamageThisFrame = true;
             }
+        }
+        if (!playerHazards_.bodyInWater)
+        {
+            const bool hardLanding = landingDistance > 4.2f || playerTookDamageThisFrame;
+            soundEffects_.playPlayerLand(hardLanding);
         }
         accumulatedFallDistance_ = 0.0f;
         footstepDistanceAccumulator_ = 0.0f;
@@ -2402,6 +2606,7 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (!creativeModeEnabled_ && playerVitals_.isDead())
     {
+        soundEffects_.playPlayerDeath();
         respawnNotice_ = fmt::format("Respawned after {} damage.", game::damageCauseName(playerVitals_.lastDamageCause()));
         respawnPlayer();
     }
@@ -3045,7 +3250,7 @@ void Application::handleCraftingMenuClick()
     mergeOrSwapInventorySlot(
         craftingMenuState_.carriedSlot,
         *targetSlot,
-        chestMode || !isCraftingGridSlot);
+        true);
 }
 
 void Application::handleCraftingMenuRightClick()
@@ -3095,7 +3300,7 @@ void Application::handleCraftingMenuRightClick()
     rightClickInventorySlot(
         craftingMenuState_.carriedSlot,
         *targetSlot,
-        chestMode || !isCraftingGridSlot);
+        true);
 }
 
 bool Application::startHostSession()
@@ -3113,6 +3318,10 @@ bool Application::startHostSession()
     multiplayerMode_ = MultiplayerRuntimeMode::Host;
     localClientId_ = 0;
     worldSyncSentClients_.clear();
+    clientChunkSyncCoordsById_.clear();
+    clientChunkSyncCursorById_.clear();
+    clientChunkSyncCenterById_.clear();
+    clientSpawnLockFramesById_.clear();
     remotePlayers_.clear();
     multiplayerStatusLine_ = fmt::format("hosting on :{}", multiplayerPort_);
     return true;
@@ -3153,6 +3362,10 @@ void Application::stopMultiplayerSessions()
     localClientId_ = 0;
     remotePlayers_.clear();
     worldSyncSentClients_.clear();
+    clientChunkSyncCoordsById_.clear();
+    clientChunkSyncCursorById_.clear();
+    clientChunkSyncCenterById_.clear();
+    clientSpawnLockFramesById_.clear();
 }
 
 std::filesystem::path Application::multiplayerPrefsPath() const
@@ -3273,19 +3486,8 @@ void Application::processJoinMenuTextInput()
 void Application::tryStartHostFromMenu()
 {
     refreshDetectedLanAddress();
-    if (!startHostSession())
-    {
-        mainMenuNotice_ = "Could not start hosting. Is the port already in use?";
-        return;
-    }
-
-    mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
-    window_.setTextInputActive(false);
-    gameScreen_ = GameScreen::Playing;
-    mouseCaptured_ = true;
-    window_.setRelativeMouseMode(true);
-    mainMenuNotice_.clear();
-    inputState_.clearMouseMotion();
+    pendingHostStartAfterWorldLoad_ = true;
+    beginSingleplayerLoad();
 }
 
 void Application::tryConnectFromJoinMenu()
@@ -3325,13 +3527,32 @@ void Application::tryConnectFromJoinMenu()
         return;
     }
 
+    clearClientWorldAwaitingHostChunks();
+    beginClientJoinLoad();
+
     saveMultiplayerPrefs();
+}
+
+void Application::beginClientJoinLoad()
+{
+    if (gameScreen_ != GameScreen::MainMenu || singleplayerLoadState_.active)
+    {
+        return;
+    }
+
+    pendingHostStartAfterWorldLoad_ = false;
+    pendingClientJoinAfterWorldLoad_ = true;
+    singleplayerLoadState_.active = true;
+    singleplayerLoadState_.worldPrepared = false;
+    singleplayerLoadState_.progress = 0.02f;
+    singleplayerLoadState_.label = "Connecting to host...";
+
     mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
-    window_.setTextInputActive(false);
-    gameScreen_ = GameScreen::Playing;
-    mouseCaptured_ = true;
-    window_.setRelativeMouseMode(true);
+    mainMenuSoundSettingsOpen_ = false;
     mainMenuNotice_.clear();
+    window_.setTextInputActive(false);
+    mouseCaptured_ = false;
+    window_.setRelativeMouseMode(false);
     inputState_.clearMouseMotion();
 }
 
@@ -3435,12 +3656,100 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
     if (hostSession_ != nullptr && hostSession_->running())
     {
         hostSession_->poll();
+        const auto rebuildChunkSyncList = [this](const std::uint16_t clientId, const world::ChunkCoord& centerChunk)
+        {
+            std::vector<world::ChunkCoord> coords;
+            const int radius = kStreamingSettings.generationChunkRadius;
+            coords.reserve(static_cast<std::size_t>((radius * 2 + 1) * (radius * 2 + 1)));
+            for (int chunkZ = centerChunk.z - radius; chunkZ <= centerChunk.z + radius; ++chunkZ)
+            {
+                for (int chunkX = centerChunk.x - radius; chunkX <= centerChunk.x + radius; ++chunkX)
+                {
+                    const world::ChunkCoord coord{chunkX, chunkZ};
+                    if (world_.chunks().contains(coord))
+                    {
+                        coords.push_back(coord);
+                    }
+                }
+            }
+            std::sort(
+                coords.begin(),
+                coords.end(),
+                [&centerChunk](const world::ChunkCoord& lhs, const world::ChunkCoord& rhs)
+                {
+                    const int lhsDx = lhs.x - centerChunk.x;
+                    const int lhsDz = lhs.z - centerChunk.z;
+                    const int rhsDx = rhs.x - centerChunk.x;
+                    const int rhsDz = rhs.z - centerChunk.z;
+                    const int lhsDistanceSq = lhsDx * lhsDx + lhsDz * lhsDz;
+                    const int rhsDistanceSq = rhsDx * rhsDx + rhsDz * rhsDz;
+                    if (lhsDistanceSq != rhsDistanceSq)
+                    {
+                        return lhsDistanceSq < rhsDistanceSq;
+                    }
+                    if (lhs.z != rhs.z)
+                    {
+                        return lhs.z < rhs.z;
+                    }
+                    return lhs.x < rhs.x;
+                });
+            clientChunkSyncCoordsById_[clientId] = std::move(coords);
+            clientChunkSyncCursorById_[clientId] = 0;
+            clientChunkSyncCenterById_[clientId] = centerChunk;
+        };
+
+        constexpr std::size_t kChunkSnapshotsPerClientPerFrame = 2;
         for (const multiplayer::ConnectedClient& client : hostSession_->clients())
         {
-            if (!worldSyncSentClients_.contains(client.clientId))
+            const auto remotePlayerIt = std::find_if(
+                remotePlayers_.begin(),
+                remotePlayers_.end(),
+                [&client](const RemotePlayerState& remote)
+                {
+                    return remote.clientId == client.clientId;
+                });
+            const world::ChunkCoord centerChunk = remotePlayerIt != remotePlayers_.end()
+                ? world::worldToChunkCoord(
+                    static_cast<int>(std::floor(remotePlayerIt->position.x)),
+                    static_cast<int>(std::floor(remotePlayerIt->position.z)))
+                : world::worldToChunkCoord(
+                    static_cast<int>(std::floor(playerFeetPosition_.x)),
+                    static_cast<int>(std::floor(playerFeetPosition_.z)));
+            if (!clientChunkSyncCenterById_.contains(client.clientId)
+                || !(clientChunkSyncCenterById_.at(client.clientId) == centerChunk))
             {
-                sendInitialWorldToClient(client.clientId);
-                worldSyncSentClients_.insert(client.clientId);
+                rebuildChunkSyncList(client.clientId, centerChunk);
+            }
+
+            const auto coordsIt = clientChunkSyncCoordsById_.find(client.clientId);
+            if (coordsIt == clientChunkSyncCoordsById_.end() || coordsIt->second.empty())
+            {
+                continue;
+            }
+
+            std::size_t& cursor = clientChunkSyncCursorById_[client.clientId];
+            const std::vector<world::ChunkCoord>& coords = coordsIt->second;
+            for (std::size_t i = 0; i < kChunkSnapshotsPerClientPerFrame; ++i)
+            {
+                if (cursor >= coords.size())
+                {
+                    cursor = 0;
+                }
+                const world::ChunkCoord coord = coords[cursor++];
+                const auto chunkIt = world_.chunks().find(coord);
+                if (chunkIt == world_.chunks().end())
+                {
+                    continue;
+                }
+                multiplayer::protocol::ChunkSnapshotMessage snapshot{
+                    .coord = coord,
+                };
+                const auto& blockStorage = chunkIt->second.blockStorage();
+                for (std::size_t blockIndex = 0; blockIndex < blockStorage.size(); ++blockIndex)
+                {
+                    snapshot.blocks[blockIndex] = static_cast<std::uint8_t>(blockStorage[blockIndex]);
+                }
+                hostSession_->sendChunkSnapshot(client.clientId, snapshot);
             }
         }
 
@@ -3691,6 +4000,27 @@ glm::vec3 Application::findSafeMultiplayerJoinFeetPosition(const glm::vec3& anch
     return findInitialSpawnFeetPosition(world_, terrainGenerator_, fallbackProbe, colliderHeight);
 }
 
+void Application::clearClientWorldAwaitingHostChunks()
+{
+    std::vector<std::uint64_t> removedMeshIds(residentChunkMeshIds_.begin(), residentChunkMeshIds_.end());
+    if (!removedMeshIds.empty())
+    {
+        renderer_.updateSceneMeshes({}, removedMeshIds);
+    }
+    residentChunkMeshIds_.clear();
+
+    vibecraft::world::World::ChunkMap emptyChunks;
+    world_.replaceChunks(std::move(emptyChunks));
+    droppedItems_.clear();
+    mobSpawnSystem_.clearAllMobs();
+    activeMiningState_ = {};
+    verticalVelocity_ = 0.0f;
+    accumulatedFallDistance_ = 0.0f;
+    jumpWasHeld_ = false;
+    footstepDistanceAccumulator_ = 0.0f;
+    heldItemSwing_ = 0.0f;
+}
+
 void Application::beginSingleplayerLoad()
 {
     if (gameScreen_ != GameScreen::MainMenu || singleplayerLoadState_.active)
@@ -3698,6 +4028,7 @@ void Application::beginSingleplayerLoad()
         return;
     }
 
+    pendingClientJoinAfterWorldLoad_ = false;
     singleplayerLoadState_.active = true;
     singleplayerLoadState_.worldPrepared = false;
     singleplayerLoadState_.progress = 0.0f;
@@ -3727,6 +4058,10 @@ void Application::beginSingleplayerLoad()
     droppedItems_.clear();
     remotePlayers_.clear();
     worldSyncSentClients_.clear();
+    clientChunkSyncCoordsById_.clear();
+    clientChunkSyncCursorById_.clear();
+    clientChunkSyncCenterById_.clear();
+    clientSpawnLockFramesById_.clear();
     mobSpawnSystem_.clearAllMobs();
     applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
     bagSlots_.fill({});
@@ -3746,6 +4081,158 @@ void Application::beginSingleplayerLoad()
 
 void Application::updateSingleplayerLoad()
 {
+    if (pendingClientJoinAfterWorldLoad_)
+    {
+        if (clientSession_ == nullptr)
+        {
+            singleplayerLoadState_.active = false;
+            pendingClientJoinAfterWorldLoad_ = false;
+            mainMenuNotice_ = "Could not connect. Check address, firewall, and that the host is running.";
+            return;
+        }
+
+        world::ChunkCoord cameraChunk = world::worldToChunkCoord(
+            static_cast<int>(std::floor(camera_.position().x)),
+            static_cast<int>(std::floor(camera_.position().z)));
+        const std::size_t residentTarget = static_cast<std::size_t>(
+            (kStreamingSettings.residentChunkRadius * 2 + 1) * (kStreamingSettings.residentChunkRadius * 2 + 1));
+        const bool connected = clientSession_->connected();
+
+        // While connected but before the first chunk snapshot arrives, keep a clear waiting phase.
+        if (connected && world_.chunks().empty())
+        {
+            singleplayerLoadState_.progress = std::max(singleplayerLoadState_.progress, 0.18f);
+            singleplayerLoadState_.label = "Waiting for world data from host...";
+            return;
+        }
+
+        // If our current camera chunk is outside the received host snapshot area (e.g. stale local position),
+        // re-anchor loading to the first received chunk so resident counting can progress.
+        if (!world_.chunks().empty())
+        {
+            bool hasChunkNearCamera = false;
+            for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
+                 chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius && !hasChunkNearCamera;
+                 ++chunkZ)
+            {
+                for (int chunkX = cameraChunk.x - kStreamingSettings.residentChunkRadius;
+                     chunkX <= cameraChunk.x + kStreamingSettings.residentChunkRadius;
+                     ++chunkX)
+                {
+                    if (world_.chunks().contains(world::ChunkCoord{chunkX, chunkZ}))
+                    {
+                        hasChunkNearCamera = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasChunkNearCamera)
+            {
+                const world::ChunkCoord firstReceivedCoord = world_.chunks().begin()->first;
+                playerFeetPosition_.x = static_cast<float>(firstReceivedCoord.x * world::Chunk::kSize)
+                    + static_cast<float>(world::Chunk::kSize) * 0.5f;
+                playerFeetPosition_.z = static_cast<float>(firstReceivedCoord.z * world::Chunk::kSize)
+                    + static_cast<float>(world::Chunk::kSize) * 0.5f;
+                camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+                cameraChunk = firstReceivedCoord;
+            }
+        }
+
+        const std::vector<world::ChunkCoord> dirtyCoords = world_.dirtyChunkCoords();
+        std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> dirtyCoordSet(
+            dirtyCoords.begin(),
+            dirtyCoords.end());
+        const MeshSyncCpuData cpuData = buildMeshSyncCpuData(
+            world_,
+            chunkMesher_,
+            residentChunkMeshIds_,
+            dirtyCoordSet,
+            cameraChunk,
+            std::max<std::size_t>(12, kStreamingSettings.meshBuildBudgetPerFrame * 3));
+        applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
+        if (!cpuData.dirtyResidentMeshUpdates.empty())
+        {
+            world_.applyMeshStatsAndClearDirty(cpuData.dirtyResidentMeshUpdates);
+        }
+
+        std::size_t residentGeneratedCount = 0;
+        std::size_t residentMeshCount = 0;
+        std::size_t residentDirtyCount = 0;
+        for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
+             chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius;
+             ++chunkZ)
+        {
+            for (int chunkX = cameraChunk.x - kStreamingSettings.residentChunkRadius;
+                 chunkX <= cameraChunk.x + kStreamingSettings.residentChunkRadius;
+                 ++chunkX)
+            {
+                const world::ChunkCoord coord{chunkX, chunkZ};
+                if (world_.chunks().contains(coord))
+                {
+                    ++residentGeneratedCount;
+                }
+                if (residentChunkMeshIds_.contains(chunkMeshId(coord)))
+                {
+                    ++residentMeshCount;
+                }
+                if (dirtyCoordSet.contains(coord))
+                {
+                    ++residentDirtyCount;
+                }
+            }
+        }
+
+        if (connected)
+        {
+            singleplayerLoadState_.label = fmt::format(
+                "Receiving world... terrain {}/{}  meshes {}/{}",
+                residentGeneratedCount,
+                residentTarget,
+                residentMeshCount,
+                residentTarget);
+            const float residentGeneratedProgress = residentTarget > 0
+                ? static_cast<float>(residentGeneratedCount) / static_cast<float>(residentTarget)
+                : 1.0f;
+            const float residentMeshProgress = residentTarget > 0
+                ? static_cast<float>(residentMeshCount) / static_cast<float>(residentTarget)
+                : 1.0f;
+            singleplayerLoadState_.progress =
+                std::clamp(0.25f + residentGeneratedProgress * 0.35f + residentMeshProgress * 0.40f, 0.0f, 1.0f);
+        }
+        else if (clientSession_->connecting())
+        {
+            singleplayerLoadState_.progress = std::max(singleplayerLoadState_.progress, 0.08f);
+            singleplayerLoadState_.label = fmt::format("Connecting to {}:{}...", multiplayerAddress_, multiplayerPort_);
+            return;
+        }
+        else
+        {
+            singleplayerLoadState_.active = false;
+            pendingClientJoinAfterWorldLoad_ = false;
+            mainMenuNotice_ = clientSession_->lastError().empty()
+                ? "Could not connect. Check address, firewall, and that the host is running."
+                : "Could not connect: " + clientSession_->lastError();
+            stopMultiplayerSessions();
+            return;
+        }
+
+        if (connected && residentGeneratedCount >= residentTarget && residentMeshCount >= residentTarget
+            && residentDirtyCount == 0)
+        {
+            singleplayerLoadState_.progress = 1.0f;
+            singleplayerLoadState_.label = "World ready";
+            singleplayerLoadState_.active = false;
+            pendingClientJoinAfterWorldLoad_ = false;
+
+            gameScreen_ = GameScreen::Playing;
+            mouseCaptured_ = true;
+            window_.setRelativeMouseMode(true);
+            inputState_.clearMouseMotion();
+        }
+        return;
+    }
+
     const std::size_t bootstrapTarget = static_cast<std::size_t>(
         (kStreamingSettings.bootstrapChunkRadius * 2 + 1) * (kStreamingSettings.bootstrapChunkRadius * 2 + 1));
     const world::ChunkCoord originChunk{0, 0};
@@ -3770,8 +4257,13 @@ void Application::updateSingleplayerLoad()
         }
 
         const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
-        const glm::vec3 spawnProbePosition = preferredSpawnProbePosition(spawnPreset_, camera_.position());
-        playerFeetPosition_ = findInitialSpawnFeetPosition(world_, terrainGenerator_, spawnProbePosition, spawnHeight);
+        playerFeetPosition_ = resolveSpawnFeetPosition(
+            world_,
+            terrainGenerator_,
+            spawnPreset_,
+            spawnBiomeTarget_,
+            camera_.position(),
+            spawnHeight);
         isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
         spawnFeetPosition_ = playerFeetPosition_;
         accumulatedFallDistance_ = 0.0f;
@@ -3860,6 +4352,18 @@ void Application::updateSingleplayerLoad()
         singleplayerLoadState_.progress = 1.0f;
         singleplayerLoadState_.label = "World ready";
         singleplayerLoadState_.active = false;
+
+        if (pendingHostStartAfterWorldLoad_)
+        {
+            if (!startHostSession())
+            {
+                pendingHostStartAfterWorldLoad_ = false;
+                mainMenuNotice_ = "Could not start hosting. Is the port already in use?";
+                return;
+            }
+            pendingHostStartAfterWorldLoad_ = false;
+        }
+
         gameScreen_ = GameScreen::Playing;
         mouseCaptured_ = true;
         window_.setRelativeMouseMode(true);
@@ -3872,31 +4376,35 @@ void Application::syncWorldData()
     const world::ChunkCoord cameraChunk = world::worldToChunkCoord(
         static_cast<int>(std::floor(camera_.position().x)),
         static_cast<int>(std::floor(camera_.position().z)));
-    world_.generateMissingChunksAround(
-        terrainGenerator_,
-        cameraChunk,
-        kStreamingSettings.generationChunkRadius,
-        kStreamingSettings.generationChunkBudgetPerFrame);
-
-    glm::vec3 prefetchDirection = camera_.forward();
-    prefetchDirection.y = 0.0f;
-    if (glm::dot(prefetchDirection, prefetchDirection) > 0.0f)
+    // Clients must only render chunks sent by the host; local procedural fill would desync terrain.
+    if (multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
-        prefetchDirection = glm::normalize(prefetchDirection);
-        const float prefetchDistanceWorldUnits =
-            static_cast<float>(kStreamingSettings.forwardPrefetchChunks * world::Chunk::kSize);
-        const int prefetchWorldX =
-            static_cast<int>(std::floor(camera_.position().x + prefetchDirection.x * prefetchDistanceWorldUnits));
-        const int prefetchWorldZ =
-            static_cast<int>(std::floor(camera_.position().z + prefetchDirection.z * prefetchDistanceWorldUnits));
-        const world::ChunkCoord prefetchChunk = world::worldToChunkCoord(prefetchWorldX, prefetchWorldZ);
-        if (!(prefetchChunk == cameraChunk))
+        world_.generateMissingChunksAround(
+            terrainGenerator_,
+            cameraChunk,
+            kStreamingSettings.generationChunkRadius,
+            kStreamingSettings.generationChunkBudgetPerFrame);
+
+        glm::vec3 prefetchDirection = camera_.forward();
+        prefetchDirection.y = 0.0f;
+        if (glm::dot(prefetchDirection, prefetchDirection) > 0.0f)
         {
-            world_.generateMissingChunksAround(
-                terrainGenerator_,
-                prefetchChunk,
-                kStreamingSettings.generationChunkRadius,
-                kStreamingSettings.prefetchGenerationBudgetPerFrame);
+            prefetchDirection = glm::normalize(prefetchDirection);
+            const float prefetchDistanceWorldUnits =
+                static_cast<float>(kStreamingSettings.forwardPrefetchChunks * world::Chunk::kSize);
+            const int prefetchWorldX =
+                static_cast<int>(std::floor(camera_.position().x + prefetchDirection.x * prefetchDistanceWorldUnits));
+            const int prefetchWorldZ =
+                static_cast<int>(std::floor(camera_.position().z + prefetchDirection.z * prefetchDistanceWorldUnits));
+            const world::ChunkCoord prefetchChunk = world::worldToChunkCoord(prefetchWorldX, prefetchWorldZ);
+            if (!(prefetchChunk == cameraChunk))
+            {
+                world_.generateMissingChunksAround(
+                    terrainGenerator_,
+                    prefetchChunk,
+                    kStreamingSettings.generationChunkRadius,
+                    kStreamingSettings.prefetchGenerationBudgetPerFrame);
+            }
         }
     }
 

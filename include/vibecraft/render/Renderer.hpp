@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -158,6 +159,7 @@ struct FrameDebugData
     std::string mainMenuSpawnPresetLabel;
     bool mainMenuLoadingActive = false;
     float mainMenuLoadingProgress = 0.0f;
+    std::string mainMenuLoadingTitle;
     std::string mainMenuLoadingLabel;
     bool mainMenuSoundSettingsActive = false;
     int mainMenuSoundSettingsHoveredControl = -1;
@@ -192,6 +194,7 @@ struct FrameDebugData
     bool pauseGameSettingsActive = false;
     int pauseGameSettingsHoveredControl = -1;
     bool mobSpawningEnabled = true;
+    std::string pauseSpawnBiomeLabel;
     bool craftingMenuActive = false;
     bool craftingUsesWorkbench = false;
     std::string craftingTitle;
@@ -212,6 +215,9 @@ class Renderer
         const std::vector<std::uint64_t>& removedMeshIds);
     void renderFrame(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
 
+    [[nodiscard]] std::uint16_t menuLogoWidthPx() const { return logoWidthPx_; }
+    [[nodiscard]] std::uint16_t menuLogoHeightPx() const { return logoHeightPx_; }
+
     /// Returns a button id for the main menu hit test, or -1. Layout must match drawMainMenuOverlay().
     [[nodiscard]] static int hitTestMainMenu(
         float mouseX,
@@ -219,7 +225,9 @@ class Renderer
         std::uint32_t windowWidth,
         std::uint32_t windowHeight,
         std::uint16_t textWidth,
-        std::uint16_t textHeight);
+        std::uint16_t textHeight,
+        std::uint16_t menuLogoWidthPx = 0,
+        std::uint16_t menuLogoHeightPx = 0);
 
     /// Pause menu: 0 Resume, 1 Sound settings, 2 Quit to title, 3 Quit game, 4 Game options.
     [[nodiscard]] static int hitTestPauseMenu(
@@ -230,7 +238,7 @@ class Renderer
         std::uint16_t textWidth,
         std::uint16_t textHeight);
 
-    /// Pause game options: 0 Back, 1 Mob spawning toggle.
+    /// Pause game options: 0 Back, 1 Mob spawning toggle, 2 Spawn biome cycle.
     [[nodiscard]] static int hitTestPauseGameSettingsMenu(
         float mouseX,
         float mouseY,
@@ -247,6 +255,15 @@ class Renderer
         std::uint32_t windowHeight,
         std::uint16_t textWidth,
         std::uint16_t textHeight);
+    /// Pause sound menu slider hit test: returns normalized volume [0..1] when mouse is over slider fill area.
+    [[nodiscard]] static std::optional<float> pauseSoundSliderValueFromMouse(
+        float mouseX,
+        float mouseY,
+        std::uint32_t windowWidth,
+        std::uint32_t windowHeight,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight,
+        bool musicSlider);
 
     /// Multiplayer hub: 0 Host, 1 Join, 2 Back.
     [[nodiscard]] static int hitTestMainMenuMultiplayerHub(

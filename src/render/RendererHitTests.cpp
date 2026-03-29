@@ -14,7 +14,9 @@ int Renderer::hitTestMainMenu(
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
     const std::uint16_t textWidth,
-    const std::uint16_t textHeight)
+    const std::uint16_t textHeight,
+    const std::uint16_t menuLogoWidthPx,
+    const std::uint16_t menuLogoHeightPx)
 {
     if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
     {
@@ -28,7 +30,9 @@ int Renderer::hitTestMainMenu(
     const int clampedRow = std::clamp(row, 0, static_cast<int>(textHeight) - 1);
 
     const int th = static_cast<int>(textHeight);
-    const detail::MainMenuComputedLayout menu = detail::computeMainMenuLayout(tw, th);
+    const int titleMenuRowBias = detail::mainMenuLogoReservedDbgRows(
+        windowWidth, windowHeight, textHeight, menuLogoWidthPx, menuLogoHeightPx);
+    const detail::MainMenuComputedLayout menu = detail::computeMainMenuLayout(tw, th, titleMenuRowBias);
 
     for (int buttonIndex = 0; buttonIndex < 5; ++buttonIndex)
     {
@@ -122,8 +126,9 @@ int Renderer::hitTestPauseGameSettingsMenu(
     constexpr int kWide = detail::PauseMenuLayout::kWideChars;
     const int centerCol = std::max(0, (tw - kWide) / 2);
     constexpr int kSpan = detail::PauseMenuLayout::kButtonRowSpan;
-    const int backRow = detail::PauseMenuLayout::kGameBackButtonRow;
-    const int mobRow = detail::PauseMenuLayout::kGameMobButtonRow;
+    const int backRow = detail::PauseMenuLayout::pauseGameBackButtonRow(th);
+    const int mobRow = detail::PauseMenuLayout::pauseGameMobButtonRow(th);
+    const int biomeRow = detail::PauseMenuLayout::pauseGameBiomeButtonRow(th);
 
     if (clampedRow >= backRow && clampedRow <= backRow + kSpan - 1 && clampedCol >= centerCol
         && clampedCol <= centerCol + kWide - 1)
@@ -134,6 +139,11 @@ int Renderer::hitTestPauseGameSettingsMenu(
         && clampedCol <= centerCol + kWide - 1)
     {
         return 1;
+    }
+    if (clampedRow >= biomeRow && clampedRow <= biomeRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
+    {
+        return 2;
     }
 
     return -1;
@@ -162,9 +172,9 @@ int Renderer::hitTestPauseSoundMenu(
     constexpr int kWide = detail::PauseMenuLayout::kWideChars;
     const int centerCol = std::max(0, (tw - kWide) / 2);
     constexpr int kSpan = detail::PauseMenuLayout::kButtonRowSpan;
-    const int backRow = detail::PauseMenuLayout::kSoundBackButtonRow;
-    const int musicRow = detail::PauseMenuLayout::kSoundMusicButtonRow;
-    const int sfxRow = detail::PauseMenuLayout::kSoundSfxButtonRow;
+    const int backRow = detail::PauseMenuLayout::pauseSoundBackButtonRow(th);
+    const int musicRow = detail::PauseMenuLayout::pauseSoundMusicButtonRow(th);
+    const int sfxRow = detail::PauseMenuLayout::pauseSoundSfxButtonRow(th);
 
     if (clampedRow >= backRow && clampedRow <= backRow + kSpan - 1 && clampedCol >= centerCol
         && clampedCol <= centerCol + kWide - 1)
@@ -205,6 +215,50 @@ int Renderer::hitTestPauseSoundMenu(
     }
 
     return -1;
+}
+
+std::optional<float> Renderer::pauseSoundSliderValueFromMouse(
+    const float mouseX,
+    const float mouseY,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight,
+    const bool musicSlider)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
+    {
+        return std::nullopt;
+    }
+
+    const int col = static_cast<int>(mouseX * static_cast<float>(textWidth) / static_cast<float>(windowWidth));
+    const int row = static_cast<int>(mouseY * static_cast<float>(textHeight) / static_cast<float>(windowHeight));
+    const int tw = static_cast<int>(textWidth);
+    const int th = static_cast<int>(textHeight);
+    const int clampedCol = std::clamp(col, 0, tw - 1);
+    const int clampedRow = std::clamp(row, 0, th - 1);
+
+    constexpr int kWide = detail::PauseMenuLayout::kWideChars;
+    const int centerCol = std::max(0, (tw - kWide) / 2);
+    const int sliderRow = (musicSlider ? detail::PauseMenuLayout::pauseSoundMusicButtonRow(th)
+                                       : detail::PauseMenuLayout::pauseSoundSfxButtonRow(th))
+        + 1;
+    if (clampedRow != sliderRow)
+    {
+        return std::nullopt;
+    }
+
+    const int innerStartCol = centerCol + 1;
+    const int fillStartCol = innerStartCol + detail::PauseMenuLayout::kSoundSliderFillStartInner;
+    const int fillEndCol = fillStartCol + detail::PauseMenuLayout::kSoundSliderFillChars - 1;
+    if (clampedCol < fillStartCol || clampedCol > fillEndCol)
+    {
+        return std::nullopt;
+    }
+
+    const float t = static_cast<float>(clampedCol - fillStartCol + 1)
+        / static_cast<float>(detail::PauseMenuLayout::kSoundSliderFillChars);
+    return std::clamp(t, 0.0f, 1.0f);
 }
 
 int Renderer::hitTestMainMenuMultiplayerHub(

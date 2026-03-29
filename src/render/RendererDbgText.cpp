@@ -12,6 +12,36 @@
 namespace vibecraft::render::detail
 {
 
+[[nodiscard]] int mainMenuLogoReservedDbgRows(
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textHeight,
+    const std::uint16_t logoWidthPx,
+    const std::uint16_t logoHeightPx)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textHeight == 0 || logoWidthPx == 0 || logoHeightPx == 0)
+    {
+        return 0;
+    }
+
+    const float aspect = static_cast<float>(logoWidthPx) / static_cast<float>(logoHeightPx);
+    constexpr float kMarginTop = 32.0f;
+    const float maxWidth = std::min(640.0f, static_cast<float>(windowWidth) * 0.82f);
+    float drawW = maxWidth;
+    float drawH = drawW / aspect;
+    const float maxHeight = std::min(static_cast<float>(windowHeight) * 0.17f, 200.0f);
+    if (drawH > maxHeight)
+    {
+        drawH = maxHeight;
+        drawW = drawH * aspect;
+    }
+
+    const float logoBottomPx = kMarginTop + drawH;
+    const float cellHeightPx = static_cast<float>(windowHeight) / static_cast<float>(textHeight);
+    const int rowsOccupied =
+        static_cast<int>(std::ceil(logoBottomPx / std::max(cellHeightPx, 1.0f))) + 1;
+    return std::clamp(rowsOccupied, 0, static_cast<int>(textHeight) - 1);
+}
 
 [[nodiscard]] std::string formatHotbarCell(const FrameDebugData::HotbarSlotHud& slot)
 {
@@ -401,7 +431,41 @@ void drawBagHud(
         + std::string(static_cast<std::size_t>(rightPad), ' ');
 }
 
-[[nodiscard]] MainMenuComputedLayout computeMainMenuLayout(const int textWidth, const int textHeight)
+[[nodiscard]] std::string sliderFillBar(const float value)
+{
+    const int fillChars = detail::PauseMenuLayout::kSoundSliderFillChars;
+    const int filled = std::clamp(
+        static_cast<int>(std::round(std::clamp(value, 0.0f, 1.0f) * static_cast<float>(fillChars))),
+        0,
+        fillChars);
+    return std::string(static_cast<std::size_t>(filled), '=')
+        + std::string(static_cast<std::size_t>(fillChars - filled), '-');
+}
+
+[[nodiscard]] std::string buildPauseSoundSliderLabel(const std::string& prefix, const int percent, const float value)
+{
+    const int innerWidth = detail::PauseMenuLayout::kWideChars - 2;
+    std::string line(static_cast<std::size_t>(std::max(0, innerWidth)), ' ');
+    const std::string left = fmt::format("{} {:3d}% ", prefix, percent);
+    const std::string bar = "[" + sliderFillBar(value) + "]";
+
+    for (std::size_t i = 0; i < left.size() && i < line.size(); ++i)
+    {
+        line[i] = left[i];
+    }
+    const int barStart = std::clamp(
+        detail::PauseMenuLayout::kSoundSliderFillStartInner - 1,
+        0,
+        std::max(0, innerWidth - static_cast<int>(bar.size())));
+    for (std::size_t i = 0; i < bar.size() && static_cast<int>(i) + barStart < static_cast<int>(line.size()); ++i)
+    {
+        line[static_cast<std::size_t>(barStart) + i] = bar[i];
+    }
+    return line;
+}
+
+[[nodiscard]] MainMenuComputedLayout computeMainMenuLayout(
+    const int textWidth, const int textHeight, const int contentTopRowOffset)
 {
     using namespace MainMenuLayout;
     MainMenuComputedLayout layout{};
@@ -417,8 +481,11 @@ void drawBagHud(
         contentRows = kSubtitleRuleAndGapRows + kButtonCount * buttonLineCount + 1;
     }
     layout.buttonLineCount = buttonLineCount;
-    layout.firstContentRow =
-        std::clamp((textHeight - contentRows) / 2, 1, std::max(1, textHeight - contentRows));
+    const int centeredBase = (textHeight - contentRows) / 2;
+    layout.firstContentRow = std::clamp(
+        centeredBase + contentTopRowOffset,
+        1,
+        std::max(1, textHeight - contentRows));
 
     layout.subtitleRow = layout.firstContentRow;
     layout.ruleRow = layout.firstContentRow + 1;
@@ -799,7 +866,11 @@ void drawMainMenuMultiplayerOverlay(
     }
 }
 
-void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16_t textWidth, const std::uint16_t textHeight)
+void drawMainMenuOverlay(
+    const FrameDebugData& frameDebugData,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight,
+    const int mainMenuTitleContentRowOffset)
 {
     const int tw = static_cast<int>(textWidth);
     const int th = static_cast<int>(textHeight);
@@ -871,12 +942,15 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
         const int barRow = panelRow + 9;
 
         drawTextFrame(panelRow, panelCol, panelWidth, panelHeight, 0x1f, 0x17);
+        const std::string loadingTitle = frameDebugData.mainMenuLoadingTitle.empty()
+            ? std::string(" LOADING WORLD ")
+            : " " + frameDebugData.mainMenuLoadingTitle + " ";
         bgfx::dbgTextPrintf(
             static_cast<std::uint16_t>(panelCol),
             static_cast<std::uint16_t>(titleRow),
             0x3f,
             "%s",
-            ("|" + padLabelToInnerWidth(" LOADING SINGLEPLAYER ", panelInnerWidth) + "|").c_str());
+            ("|" + padLabelToInnerWidth(clampDbgTextLine(loadingTitle, panelInnerWidth), panelInnerWidth) + "|").c_str());
         bgfx::dbgTextPrintf(
             static_cast<std::uint16_t>(panelCol),
             static_cast<std::uint16_t>(labelRow),
@@ -908,7 +982,7 @@ void drawMainMenuOverlay(const FrameDebugData& frameDebugData, const std::uint16
         return;
     }
 
-    const MainMenuComputedLayout menu = computeMainMenuLayout(tw, th);
+    const MainMenuComputedLayout menu = computeMainMenuLayout(tw, th, mainMenuTitleContentRowOffset);
     dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.subtitleRow), 0x07, "DESKTOP EDITION");
 
     const int ruleWidth = std::clamp(menu.outerWidth, 24, tw - 4);
@@ -997,29 +1071,33 @@ void drawPauseMenuOverlay(
     const std::uint16_t textWidth,
     const std::uint16_t textHeight)
 {
+    const int th = static_cast<int>(textHeight);
     constexpr int kWide = PauseMenuLayout::kWideChars;
     const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
 
     if (frameDebugData.pauseSoundSettingsActive)
     {
-        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(PauseMenuLayout::kSoundTitleRow), 0x1f, " SOUND SETTINGS ");
+        dbgTextPrintfCenteredRow(
+            static_cast<std::uint16_t>(PauseMenuLayout::pauseSoundTitleRow(th)),
+            0x1f,
+            " SOUND SETTINGS ");
         const int hovered = frameDebugData.pauseSoundSettingsHoveredControl;
         const int musicPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundMusicVolume, 0.0f, 1.0f) * 100.0f));
         const int sfxPercent = static_cast<int>(std::round(std::clamp(frameDebugData.pauseSoundSfxVolume, 0.0f, 1.0f) * 100.0f));
         drawPauseMenuFramedButton(
-            PauseMenuLayout::kSoundMusicButtonRow,
+            PauseMenuLayout::pauseSoundMusicButtonRow(th),
             centerCol,
             kWide,
-            fmt::format("Music volume: {:3d}%   [-] [+]", musicPercent),
-            hovered == 1 || hovered == 2);
+            buildPauseSoundSliderLabel("Music volume:", musicPercent, frameDebugData.pauseSoundMusicVolume),
+            hovered == 1);
         drawPauseMenuFramedButton(
-            PauseMenuLayout::kSoundSfxButtonRow,
+            PauseMenuLayout::pauseSoundSfxButtonRow(th),
             centerCol,
             kWide,
-            fmt::format("SFX volume:   {:3d}%   [-] [+]", sfxPercent),
-            hovered == 3 || hovered == 4);
+            buildPauseSoundSliderLabel("SFX volume:", sfxPercent, frameDebugData.pauseSoundSfxVolume),
+            hovered == 3);
         drawPauseMenuFramedButton(
-            PauseMenuLayout::kSoundBackButtonRow,
+            PauseMenuLayout::pauseSoundBackButtonRow(th),
             centerCol,
             kWide,
             "Back",
@@ -1027,17 +1105,28 @@ void drawPauseMenuOverlay(
     }
     else if (frameDebugData.pauseGameSettingsActive)
     {
-        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(PauseMenuLayout::kGameTitleRow), 0x1f, " GAME OPTIONS ");
+        dbgTextPrintfCenteredRow(
+            static_cast<std::uint16_t>(PauseMenuLayout::pauseGameTitleRow(th)),
+            0x1f,
+            " GAME OPTIONS ");
         const int hovered = frameDebugData.pauseGameSettingsHoveredControl;
         const char* const mobState = frameDebugData.mobSpawningEnabled ? "ON" : "OFF";
         drawPauseMenuFramedButton(
-            PauseMenuLayout::kGameMobButtonRow,
+            PauseMenuLayout::pauseGameMobButtonRow(th),
             centerCol,
             kWide,
             fmt::format("Mob spawning: {}", mobState),
             hovered == 1);
         drawPauseMenuFramedButton(
-            PauseMenuLayout::kGameBackButtonRow,
+            PauseMenuLayout::pauseGameBiomeButtonRow(th),
+            centerCol,
+            kWide,
+            fmt::format(
+                "Spawn biome: {}",
+                frameDebugData.pauseSpawnBiomeLabel.empty() ? "Any" : frameDebugData.pauseSpawnBiomeLabel),
+            hovered == 2);
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::pauseGameBackButtonRow(th),
             centerCol,
             kWide,
             "Back",

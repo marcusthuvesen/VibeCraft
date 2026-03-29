@@ -87,6 +87,8 @@ class ClientSession
     std::vector<protocol::ServerSnapshotMessage> pendingSnapshots_;
     std::vector<protocol::BlockEditEventMessage> pendingBlockEdits_;
     std::vector<protocol::ChunkSnapshotMessage> pendingChunkSnapshots_;
+    std::unordered_map<std::uint64_t, protocol::ChunkSnapshotMessage> partialChunkSnapshots_;
+    std::unordered_map<std::uint64_t, std::uint32_t> partialChunkSectionMasks_;
     std::optional<protocol::JoinAcceptMessage> pendingJoinAccept_;
 
     void sendMessage(protocol::MessageType type, const protocol::MessagePayload& payload, std::uint32_t tick = 0);

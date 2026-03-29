@@ -813,7 +813,6 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     {
         const float cursorX = frameDebugData.uiCursorX - layout.slotSize * 0.34f;
         const float cursorY = frameDebugData.uiCursorY - layout.slotSize * 0.34f;
-        drawUiSolidRect(cursorX - 1.0f, cursorY - 1.0f, cursorX + layout.slotSize * 0.68f + 1.0f, cursorY + layout.slotSize * 0.68f + 1.0f, cursorOutlineAbgr);
         drawSlotContents(frameDebugData.craftingCursorSlot, cursorX, cursorY);
     }
 }
@@ -836,17 +835,22 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
             break;
         }
 
-        std::uint16_t textureHandle = chunkAtlasTextureHandle_;
+        std::uint16_t textureHandle = UINT16_MAX;
         float minU = 0.0f;
         float maxU = 1.0f;
         float minV = 0.0f;
         float maxV = 1.0f;
+
         if (pickup.itemKind != HudItemKind::None)
         {
             textureHandle = hudItemKindTextureHandle(pickup.itemKind);
         }
         if (textureHandle == UINT16_MAX && pickup.blockType != vibecraft::world::BlockType::Air)
         {
+            if (chunkAtlasTextureHandle_ == UINT16_MAX)
+            {
+                continue;
+            }
             textureHandle = chunkAtlasTextureHandle_;
             const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
                 pickup.blockType,
@@ -954,7 +958,6 @@ void Renderer::drawWorldMobSprites(
     const FrameDebugData& frameDebugData,
     const CameraFrameData& cameraFrameData)
 {
-    static_cast<void>(cameraFrameData);
     if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX)
     {
         return;
@@ -1160,13 +1163,24 @@ void Renderer::drawWorldMobSprites(
         switch (mob.mobKind)
         {
         case MK::HostileStalker:
-            if (!submitCuboid(glm::vec3(0.0f, 18.0f, 0.0f), glm::vec3(4.0f, 6.0f, 2.0f), uv.body)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 28.0f, 0.0f), glm::vec3(4.0f, 4.0f, 4.0f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(-6.0f, 18.0f, 0.0f), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
-            if (!submitCuboid(glm::vec3(6.0f, 18.0f, 0.0f), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
-            if (!submitCuboid(glm::vec3(-2.0f, 6.0f, 0.0f), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(2.0f, 6.0f, 0.0f), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
+        {
+            // A mild procedural walk cycle makes hostile mobs read as "alive" without a full skeleton.
+            constexpr float kPi = 3.14159265358979323846f;
+            const float gaitPhase = cameraFrameData.weatherTimeSeconds * 3.2f
+                + mob.feetPosition.x * 0.37f
+                + mob.feetPosition.z * 0.29f;
+            const float armSwing = std::sin(gaitPhase) * 1.25f;
+            const float legSwing = std::sin(gaitPhase + kPi) * 1.05f;
+            const float bodyBob = std::abs(std::sin(gaitPhase * 2.0f)) * 0.35f;
+
+            if (!submitCuboid(glm::vec3(0.0f, 18.2f + bodyBob, -0.45f), glm::vec3(3.8f, 5.8f, 2.3f), uv.body)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 28.0f + bodyBob, 0.85f), glm::vec3(4.1f, 4.1f, 4.1f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(-5.8f, 18.1f + bodyBob, 0.45f + armSwing), glm::vec3(1.9f, 5.8f, 1.9f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(5.8f, 18.1f + bodyBob, 0.45f - armSwing), glm::vec3(1.9f, 5.8f, 1.9f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(-2.0f, 6.0f, 0.2f + legSwing), glm::vec3(1.95f, 6.0f, 1.95f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.0f, 6.0f, 0.2f - legSwing), glm::vec3(1.95f, 6.0f, 1.95f), uv.leg)) break;
             break;
+        }
         case MK::Cow:
             if (!submitHorizontalBody(
                     glm::vec3(0.0f, 13.8f, 0.3f),

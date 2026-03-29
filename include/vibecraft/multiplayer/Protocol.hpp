@@ -31,6 +31,7 @@ enum class MessageType : std::uint8_t
     Ping = 8,
     Pong = 9,
     Disconnect = 10,
+    ChunkSnapshotPart = 11,
 };
 
 struct MessageHeader
@@ -137,6 +138,22 @@ struct ChunkSnapshotMessage
     std::array<std::uint8_t, static_cast<std::size_t>(world::Chunk::kBlockCount)> blocks{};
 };
 
+inline constexpr int kChunkSnapshotSectionHeight = 16;
+inline constexpr std::size_t kChunkSnapshotSectionBlockCount =
+    static_cast<std::size_t>(world::Chunk::kSize * world::Chunk::kSize * kChunkSnapshotSectionHeight);
+inline constexpr std::size_t kChunkSnapshotSectionCount =
+    static_cast<std::size_t>(world::Chunk::kHeight / kChunkSnapshotSectionHeight);
+static_assert(
+    world::Chunk::kHeight % kChunkSnapshotSectionHeight == 0,
+    "Chunk snapshot sections require chunk height divisible by section height.");
+
+struct ChunkSnapshotPartMessage
+{
+    world::ChunkCoord coord{};
+    std::uint8_t sectionIndex = 0;
+    std::array<std::uint8_t, kChunkSnapshotSectionBlockCount> blocks{};
+};
+
 struct PingMessage
 {
     std::uint32_t clientTimeMs = 0;
@@ -161,6 +178,7 @@ using MessagePayload = std::variant<
     ServerSnapshotMessage,
     BlockEditEventMessage,
     ChunkSnapshotMessage,
+    ChunkSnapshotPartMessage,
     PingMessage,
     PongMessage,
     DisconnectMessage>;

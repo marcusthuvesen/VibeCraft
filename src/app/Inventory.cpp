@@ -129,6 +129,10 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Tree Trunk";
     case vibecraft::world::BlockType::TreeCrown:
         return "Tree Crown";
+    case vibecraft::world::BlockType::JungleTreeTrunk:
+        return "Jungle Trunk";
+    case vibecraft::world::BlockType::JungleTreeCrown:
+        return "Jungle Leaves";
     case vibecraft::world::BlockType::OakPlanks:
         return "Oak Planks";
     case vibecraft::world::BlockType::CraftingTable:
@@ -143,6 +147,36 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Chest";
     case vibecraft::world::BlockType::Torch:
         return "Torch";
+    case vibecraft::world::BlockType::TNT:
+        return "TNT";
+    case vibecraft::world::BlockType::Glass:
+        return "Glass";
+    case vibecraft::world::BlockType::Bricks:
+        return "Bricks";
+    case vibecraft::world::BlockType::Bookshelf:
+        return "Bookshelf";
+    case vibecraft::world::BlockType::Glowstone:
+        return "Glowstone";
+    case vibecraft::world::BlockType::Obsidian:
+        return "Obsidian";
+    case vibecraft::world::BlockType::Gravel:
+        return "Gravel";
+    case vibecraft::world::BlockType::Cactus:
+        return "Cactus";
+    case vibecraft::world::BlockType::Dandelion:
+        return "Dandelion";
+    case vibecraft::world::BlockType::Poppy:
+        return "Poppy";
+    case vibecraft::world::BlockType::BlueOrchid:
+        return "Blue Orchid";
+    case vibecraft::world::BlockType::Allium:
+        return "Allium";
+    case vibecraft::world::BlockType::OxeyeDaisy:
+        return "Oxeye Daisy";
+    case vibecraft::world::BlockType::BrownMushroom:
+        return "Brown Mushroom";
+    case vibecraft::world::BlockType::RedMushroom:
+        return "Red Mushroom";
     case vibecraft::world::BlockType::Air:
     default:
         return "Empty";

@@ -30,6 +30,9 @@ constexpr std::uint32_t kTreeChanceSeed = 0x6f4a31deU;
 constexpr std::uint32_t kTreeOffsetXSeed = 0x34b6f0e1U;
 constexpr std::uint32_t kTreeOffsetZSeed = 0x5cd2a907U;
 constexpr std::uint32_t kTreeShapeSeed = 0x72f1a4b3U;
+constexpr std::uint32_t kFloraChanceSeed = 0x3af402d1U;
+constexpr std::uint32_t kFloraTypeSeed = 0x28fd99b6U;
+constexpr std::uint32_t kCactusChanceSeed = 0x4c1aafe3U;
 
 struct TreeBiomeSettings
 {
@@ -37,6 +40,8 @@ struct TreeBiomeSettings
     int minTrunkHeight = 4;
     int maxTrunkHeight = 6;
     int crownRadius = 2;
+    BlockType trunkBlock = BlockType::TreeTrunk;
+    BlockType crownBlock = BlockType::TreeCrown;
 };
 
 [[nodiscard]] constexpr std::size_t chunkStorageIndex(const int localX, const int y, const int localZ)
@@ -97,6 +102,8 @@ struct TreeBiomeSettings
             .minTrunkHeight = 6,
             .maxTrunkHeight = 9,
             .crownRadius = 3,
+            .trunkBlock = BlockType::JungleTreeTrunk,
+            .crownBlock = BlockType::JungleTreeCrown,
         };
     case SurfaceBiome::Snowy:
         return TreeBiomeSettings{
@@ -179,7 +186,7 @@ void placeTreeForColumn(
 
     for (int y = surfaceY + 1; y <= surfaceY + trunkHeight; ++y)
     {
-        placeBlockIfInsideChunk(chunk, coord, treeX, y, treeZ, BlockType::TreeTrunk);
+        placeBlockIfInsideChunk(chunk, coord, treeX, y, treeZ, settings.trunkBlock);
     }
 
     const int crownCenterY = surfaceY + trunkHeight;
@@ -205,15 +212,15 @@ void placeTreeForColumn(
                 {
                     continue;
                 }
-                placeBlockIfInsideChunk(chunk, coord, crownX, crownY, crownZ, BlockType::TreeCrown);
+                placeBlockIfInsideChunk(chunk, coord, crownX, crownY, crownZ, settings.crownBlock);
             }
         }
     }
 
-    placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 2, treeZ, BlockType::TreeCrown);
+    placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 2, treeZ, settings.crownBlock);
     if (settings.crownRadius >= 3)
     {
-        placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 3, treeZ, BlockType::TreeCrown);
+        placeBlockIfInsideChunk(chunk, coord, treeX, crownCenterY + 3, treeZ, settings.crownBlock);
     }
 }
 
@@ -255,6 +262,101 @@ void populateTreesForChunk(
     }
 }
 
+void populateSurfaceFloraForChunk(
+    Chunk& chunk,
+    const ChunkCoord& coord,
+    const TerrainGenerator& terrainGenerator)
+{
+    const int chunkWorldMinX = coord.x * Chunk::kSize;
+    const int chunkWorldMinZ = coord.z * Chunk::kSize;
+    for (int localZ = 0; localZ < Chunk::kSize; ++localZ)
+    {
+        for (int localX = 0; localX < Chunk::kSize; ++localX)
+        {
+            const int worldX = chunkWorldMinX + localX;
+            const int worldZ = chunkWorldMinZ + localZ;
+            const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            if (surfaceY < kWorldMinY || surfaceY >= kWorldMaxY)
+            {
+                continue;
+            }
+            if (chunk.blockAt(localX, surfaceY + 1, localZ) != BlockType::Air)
+            {
+                continue;
+            }
+
+            const BlockType surfaceBlock = chunk.blockAt(localX, surfaceY, localZ);
+            const SurfaceBiome biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
+            if (biome == SurfaceBiome::Sandy)
+            {
+                if (surfaceBlock == BlockType::Sand
+                    && noise::random01(worldX, worldZ, kCactusChanceSeed) < 0.055f)
+                {
+                    chunk.setBlock(localX, surfaceY + 1, localZ, BlockType::Cactus);
+                }
+                continue;
+            }
+
+            if (surfaceBlock != BlockType::Grass
+                && surfaceBlock != BlockType::JungleGrass
+                && surfaceBlock != BlockType::SnowGrass)
+            {
+                continue;
+            }
+
+            const float floraChance = biome == SurfaceBiome::Jungle ? 0.12f : (biome == SurfaceBiome::Snowy ? 0.025f : 0.085f);
+            if (noise::random01(worldX, worldZ, kFloraChanceSeed) >= floraChance)
+            {
+                continue;
+            }
+
+            const std::uint32_t floraHash = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed);
+            if (biome == SurfaceBiome::Snowy)
+            {
+                chunk.setBlock(
+                    localX,
+                    surfaceY + 1,
+                    localZ,
+                    (floraHash & 1U) == 0U ? BlockType::BrownMushroom : BlockType::RedMushroom);
+                continue;
+            }
+
+            constexpr std::array<BlockType, 7> kTemperateFlora{
+                BlockType::Dandelion,
+                BlockType::Poppy,
+                BlockType::OxeyeDaisy,
+                BlockType::BlueOrchid,
+                BlockType::Allium,
+                BlockType::BrownMushroom,
+                BlockType::RedMushroom,
+            };
+            constexpr std::array<BlockType, 5> kJungleFlora{
+                BlockType::BlueOrchid,
+                BlockType::Allium,
+                BlockType::Poppy,
+                BlockType::BrownMushroom,
+                BlockType::RedMushroom,
+            };
+            if (biome == SurfaceBiome::Jungle)
+            {
+                const BlockType floraBlock = kJungleFlora[floraHash % kJungleFlora.size()];
+                if (isNaturalDecorationBlock(floraBlock))
+                {
+                    chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                }
+            }
+            else
+            {
+                const BlockType floraBlock = kTemperateFlora[floraHash % kTemperateFlora.size()];
+                if (isNaturalDecorationBlock(floraBlock))
+                {
+                    chunk.setBlock(localX, surfaceY + 1, localZ, floraBlock);
+                }
+            }
+        }
+    }
+}
+
 void populateChunkFromTerrain(
     Chunk& chunk,
     const ChunkCoord& coord,
@@ -271,12 +373,19 @@ void populateChunkFromTerrain(
             terrainGenerator.fillColumn(worldX, worldZ, columnBlocks.data());
             for (int y = kWorldMinY; y <= kWorldMaxY; ++y)
             {
-                storage[chunkStorageIndex(localX, y, localZ)] = columnBlocks[y - kWorldMinY];
+                BlockType blockType = columnBlocks[y - kWorldMinY];
+                // Guardrail: keep crafted/player-only blocks out of procedural terrain.
+                if (!isNaturalTerrainBlock(blockType))
+                {
+                    blockType = BlockType::Air;
+                }
+                storage[chunkStorageIndex(localX, y, localZ)] = blockType;
             }
         }
     }
 
     populateTreesForChunk(chunk, coord, terrainGenerator);
+    populateSurfaceFloraForChunk(chunk, coord, terrainGenerator);
 }
 }  // namespace
 
@@ -435,7 +544,7 @@ std::optional<RaycastHit> World::raycast(
     glm::ivec3 previousCell = cell;
 
     const BlockType startingBlock = blockAt(cell.x, cell.y, cell.z);
-    if (isSolid(startingBlock))
+    if (isRaycastTarget(startingBlock))
     {
         return RaycastHit{
             .solidBlock = cell,
@@ -500,7 +609,7 @@ std::optional<RaycastHit> World::raycast(
         }
 
         const BlockType blockType = blockAt(cell.x, cell.y, cell.z);
-        if (isSolid(blockType))
+        if (isRaycastTarget(blockType))
         {
             return RaycastHit{
                 .solidBlock = cell,

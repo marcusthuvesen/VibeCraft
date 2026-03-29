@@ -321,6 +321,43 @@ struct RecipeDefinition
                 .equippedItem = EquippedItem::None,
             },
         });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(BlockType::Sand),
+                ingredientItem(EquippedItem::Coal),
+                ingredientBlock(BlockType::Sand),
+                ingredientItem(EquippedItem::Coal),
+                ingredientBlock(BlockType::Sand),
+                ingredientItem(EquippedItem::Coal),
+                ingredientBlock(BlockType::Sand),
+                ingredientItem(EquippedItem::Coal),
+                ingredientBlock(BlockType::Sand),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::TNT,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Sand),
+                ingredientBlock(BlockType::Sand),
+                ingredientBlock(BlockType::Sand),
+                ingredientBlock(BlockType::Sand),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Glass,
+                .count = 2,
+                .equippedItem = EquippedItem::None,
+            },
+        });
 
         r.push_back(makeSwordRecipe(BlockType::OakPlanks, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::Cobblestone, EquippedItem::StoneSword, true));

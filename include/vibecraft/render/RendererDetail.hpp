@@ -52,6 +52,7 @@ constexpr int kButtonRowSpan = 3;
 constexpr int kButtonGapRows = 2;
 constexpr int kButtonPitch = kButtonRowSpan + kButtonGapRows;
 constexpr int kMainButtonCount = 5;
+constexpr int kSubmenuButtonCount = 3;
 
 [[nodiscard]] inline int mainPauseMenuTotalRows()
 {
@@ -61,18 +62,74 @@ constexpr int kMainButtonCount = 5;
 [[nodiscard]] inline int mainPauseMenuFirstButtonRow(const int textHeight)
 {
     const int total = mainPauseMenuTotalRows();
-    const int maxFirst = std::max(5, textHeight - total - 2);
-    return std::clamp((textHeight - total) / 2, 5, maxFirst);
+    const int maxFirst = std::max(1, textHeight - total - 1);
+    return std::clamp((textHeight - total) / 2, 1, maxFirst);
+}
+
+[[nodiscard]] inline int submenuTotalRows()
+{
+    return kSubmenuButtonCount * kButtonRowSpan + (kSubmenuButtonCount - 1) * kButtonGapRows;
+}
+
+[[nodiscard]] inline int submenuFirstButtonRow(const int textHeight)
+{
+    const int total = submenuTotalRows();
+    const int maxFirst = std::max(2, textHeight - total - 1);
+    return std::clamp((textHeight - total) / 2, 2, maxFirst);
+}
+
+[[nodiscard]] inline int pauseSoundTitleRow(const int textHeight)
+{
+    return std::max(1, submenuFirstButtonRow(textHeight) - 3);
+}
+
+[[nodiscard]] inline int pauseSoundMusicButtonRow(const int textHeight)
+{
+    return submenuFirstButtonRow(textHeight);
+}
+
+[[nodiscard]] inline int pauseSoundSfxButtonRow(const int textHeight)
+{
+    return pauseSoundMusicButtonRow(textHeight) + kButtonPitch;
+}
+
+[[nodiscard]] inline int pauseSoundBackButtonRow(const int textHeight)
+{
+    return pauseSoundSfxButtonRow(textHeight) + kButtonPitch;
+}
+
+[[nodiscard]] inline int pauseGameTitleRow(const int textHeight)
+{
+    return std::max(1, submenuFirstButtonRow(textHeight) - 3);
+}
+
+[[nodiscard]] inline int pauseGameMobButtonRow(const int textHeight)
+{
+    return submenuFirstButtonRow(textHeight);
+}
+
+[[nodiscard]] inline int pauseGameBiomeButtonRow(const int textHeight)
+{
+    return pauseGameMobButtonRow(textHeight) + kButtonPitch;
+}
+
+[[nodiscard]] inline int pauseGameBackButtonRow(const int textHeight)
+{
+    return pauseGameBiomeButtonRow(textHeight) + kButtonPitch;
 }
 
 constexpr int kSoundTitleRow = 3;
 constexpr int kSoundMusicButtonRow = 6;
 constexpr int kSoundSfxButtonRow = kSoundMusicButtonRow + kButtonPitch;
 constexpr int kSoundBackButtonRow = kSoundSfxButtonRow + kButtonPitch;
+/// Slider fill region inside the framed button's inner text area.
+constexpr int kSoundSliderFillStartInner = 38;
+constexpr int kSoundSliderFillChars = 18;
 
 constexpr int kGameTitleRow = 3;
 constexpr int kGameMobButtonRow = 6;
-constexpr int kGameBackButtonRow = kGameMobButtonRow + kButtonPitch;
+constexpr int kGameBiomeButtonRow = kGameMobButtonRow + kButtonPitch;
+constexpr int kGameBackButtonRow = kGameBiomeButtonRow + kButtonPitch;
 }  // namespace PauseMenuLayout
 
 struct MainMenuComputedLayout
@@ -86,6 +143,14 @@ struct MainMenuComputedLayout
     std::array<int, 5> buttonTopRows{};
     int iconHintsRow = 1;
 };
+
+/// Dbg-text rows consumed by `drawMainMenuLogo` (plus one gap); 0 if no logo.
+[[nodiscard]] int mainMenuLogoReservedDbgRows(
+    std::uint32_t windowWidth,
+    std::uint32_t windowHeight,
+    std::uint16_t textHeight,
+    std::uint16_t logoWidthPx,
+    std::uint16_t logoHeightPx);
 
 struct HotbarLayoutPx
 {
@@ -112,7 +177,8 @@ struct CraftingOverlayLayoutPx
     float inventoryOriginY = 0.0f;
 };
 
-[[nodiscard]] MainMenuComputedLayout computeMainMenuLayout(int textWidth, int textHeight);
+[[nodiscard]] MainMenuComputedLayout computeMainMenuLayout(
+    int textWidth, int textHeight, int contentTopRowOffset = 0);
 
 [[nodiscard]] HotbarLayoutPx computeHotbarLayoutPx(
     std::uint32_t windowWidth,
@@ -183,7 +249,11 @@ void drawBagHud(
     std::uint16_t row2,
     const FrameDebugData& frameDebugData);
 
-void drawMainMenuOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
+void drawMainMenuOverlay(
+    const FrameDebugData& frameDebugData,
+    std::uint16_t textWidth,
+    std::uint16_t textHeight,
+    int mainMenuTitleContentRowOffset = 0);
 void drawMainMenuMultiplayerOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
 void drawPauseMenuOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
 

@@ -5,6 +5,20 @@
 
 namespace vibecraft::multiplayer
 {
+namespace
+{
+[[nodiscard]] std::uint64_t chunkCoordKey(const world::ChunkCoord& coord)
+{
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(coord.x)) << 32U)
+        | static_cast<std::uint32_t>(coord.z);
+}
+
+constexpr std::uint32_t chunkSectionBit(const std::uint8_t sectionIndex)
+{
+    return static_cast<std::uint32_t>(1U) << sectionIndex;
+}
+}  // namespace
+
 HostSession::HostSession(std::unique_ptr<INetworkTransport> transport) : transport_(std::move(transport)) {}
 
 bool HostSession::start(const std::uint16_t port)
@@ -192,7 +206,19 @@ void HostSession::sendChunkSnapshot(const std::uint16_t clientId, const protocol
     {
         return;
     }
-    sendToClient(clients_[it->second], protocol::MessageType::ChunkSnapshot, chunk);
+    for (std::size_t section = 0; section < protocol::kChunkSnapshotSectionCount; ++section)
+    {
+        protocol::ChunkSnapshotPartMessage part{
+            .coord = chunk.coord,
+            .sectionIndex = static_cast<std::uint8_t>(section),
+        };
+        const std::size_t sourceOffset = section * protocol::kChunkSnapshotSectionBlockCount;
+        std::copy_n(
+            chunk.blocks.begin() + sourceOffset,
+            protocol::kChunkSnapshotSectionBlockCount,
+            part.blocks.begin());
+        sendToClient(clients_[it->second], protocol::MessageType::ChunkSnapshotPart, part);
+    }
 }
 
 void HostSession::sendToClient(
@@ -214,7 +240,10 @@ void HostSession::sendToClient(
         .tick = tick,
     };
     const std::vector<std::uint8_t> encoded = protocol::encodeMessage(header, payload);
-    static_cast<void>(transport_->sendTo(client.endpoint, encoded));
+    if (!transport_->sendTo(client.endpoint, encoded))
+    {
+        lastError_ = transport_->lastError();
+    }
 }
 
 std::optional<ConnectedClient> HostSession::findClientByEndpoint(const NetworkEndpoint& endpoint) const
@@ -260,6 +289,8 @@ bool ClientSession::connect(const std::string& host, const std::uint16_t port, s
     pendingSnapshots_.clear();
     pendingBlockEdits_.clear();
     pendingChunkSnapshots_.clear();
+    partialChunkSnapshots_.clear();
+    partialChunkSectionMasks_.clear();
     pendingJoinAccept_.reset();
     lastError_.clear();
     sendMessage(
@@ -286,6 +317,8 @@ void ClientSession::disconnect()
     pendingSnapshots_.clear();
     pendingBlockEdits_.clear();
     pendingChunkSnapshots_.clear();
+    partialChunkSnapshots_.clear();
+    partialChunkSectionMasks_.clear();
     pendingJoinAccept_.reset();
     if (transport_ != nullptr)
     {
@@ -360,6 +393,42 @@ void ClientSession::poll()
             if (chunk != nullptr)
             {
                 pendingChunkSnapshots_.push_back(*chunk);
+            }
+            break;
+        }
+        case protocol::MessageType::ChunkSnapshotPart:
+        {
+            const auto* const chunkPart = std::get_if<protocol::ChunkSnapshotPartMessage>(&decoded->payload);
+            if (chunkPart == nullptr)
+            {
+                break;
+            }
+
+            static_assert(protocol::kChunkSnapshotSectionCount <= 32, "Section mask assumes <= 32 parts.");
+            constexpr std::uint32_t kCompleteSectionMask =
+                protocol::kChunkSnapshotSectionCount == 32
+                ? 0xffffffffU
+                : (static_cast<std::uint32_t>(1U) << protocol::kChunkSnapshotSectionCount) - 1U;
+
+            const std::uint64_t key = chunkCoordKey(chunkPart->coord);
+            protocol::ChunkSnapshotMessage& assembledChunk = partialChunkSnapshots_[key];
+            std::uint32_t& sectionMask = partialChunkSectionMasks_[key];
+            if (sectionMask == 0U)
+            {
+                assembledChunk.coord = chunkPart->coord;
+            }
+            const std::size_t destinationOffset =
+                static_cast<std::size_t>(chunkPart->sectionIndex) * protocol::kChunkSnapshotSectionBlockCount;
+            std::copy_n(
+                chunkPart->blocks.begin(),
+                protocol::kChunkSnapshotSectionBlockCount,
+                assembledChunk.blocks.begin() + destinationOffset);
+            sectionMask |= chunkSectionBit(chunkPart->sectionIndex);
+            if ((sectionMask & kCompleteSectionMask) == kCompleteSectionMask)
+            {
+                pendingChunkSnapshots_.push_back(assembledChunk);
+                partialChunkSnapshots_.erase(key);
+                partialChunkSectionMasks_.erase(key);
             }
             break;
         }

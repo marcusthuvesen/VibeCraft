@@ -18,6 +18,12 @@ void Camera::setPosition(const glm::vec3& position)
     position_ = position;
 }
 
+void Camera::setYawPitch(const float yawDegrees, const float pitchDegrees)
+{
+    yawDegrees_ = yawDegrees;
+    pitchDegrees_ = glm::clamp(pitchDegrees, -kMaxPitchDegrees, kMaxPitchDegrees);
+}
+
 void Camera::addYawPitch(const float yawDeltaDegrees, const float pitchDeltaDegrees)
 {
     yawDegrees_ += yawDeltaDegrees;

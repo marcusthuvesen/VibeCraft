@@ -57,6 +57,15 @@ enum class SpawnPreset : std::uint8_t
     West,
 };
 
+enum class SpawnBiomeTarget : std::uint8_t
+{
+    Any = 0,
+    Temperate,
+    Sandy,
+    Snowy,
+    Jungle,
+};
+
 class Application
 {
   public:
@@ -151,11 +160,14 @@ class Application
     void processJoinMenuTextInput();
     void tryStartHostFromMenu();
     void tryConnectFromJoinMenu();
+    void beginClientJoinLoad();
     void sendInitialWorldToClient(std::uint16_t clientId);
     void applyChunkSnapshot(const vibecraft::multiplayer::protocol::ChunkSnapshotMessage& chunkMessage);
     void applyRemoteBlockEdit(const vibecraft::multiplayer::protocol::BlockEditEventMessage& editMessage);
     [[nodiscard]] vibecraft::multiplayer::protocol::ServerSnapshotMessage buildServerSnapshot() const;
     [[nodiscard]] glm::vec3 findSafeMultiplayerJoinFeetPosition(const glm::vec3& anchorFeetPosition) const;
+    /// Strip local chunks/meshes so the client cannot mix procedural terrain with host snapshots.
+    void clearClientWorldAwaitingHostChunks();
 
     void update(float deltaTimeSeconds);
     void processInput(float deltaTimeSeconds);
@@ -220,12 +232,17 @@ class Application
     std::string detectedLanAddress_;
     std::vector<RemotePlayerState> remotePlayers_;
     std::unordered_set<std::uint16_t> worldSyncSentClients_;
+    std::unordered_map<std::uint16_t, std::vector<world::ChunkCoord>> clientChunkSyncCoordsById_;
+    std::unordered_map<std::uint16_t, std::size_t> clientChunkSyncCursorById_;
+    std::unordered_map<std::uint16_t, world::ChunkCoord> clientChunkSyncCenterById_;
+    std::unordered_map<std::uint16_t, int> clientSpawnLockFramesById_;
     float mainMenuTimeSeconds_ = 0.0f;
     std::string mainMenuNotice_;
     std::string pauseMenuNotice_;
     bool pauseSoundSettingsOpen_ = false;
     bool pauseGameSettingsOpen_ = false;
     bool mobSpawningEnabled_ = true;
+    SpawnBiomeTarget spawnBiomeTarget_ = SpawnBiomeTarget::Any;
     bool mainMenuSoundSettingsOpen_ = false;
     bool creativeModeEnabled_ = false;
     SpawnPreset spawnPreset_ = SpawnPreset::Origin;
@@ -241,6 +258,8 @@ class Application
     std::unordered_map<std::int64_t, CraftingGridSlots> chestSlotsByPosition_;
     ActiveMiningState activeMiningState_{};
     SingleplayerLoadState singleplayerLoadState_{};
+    bool pendingHostStartAfterWorldLoad_ = false;
+    bool pendingClientJoinAfterWorldLoad_ = false;
     CraftingMenuState craftingMenuState_{};
     /// Run-loop frame index (used to delay main-menu mouse activation until layout is stable).
     std::uint32_t runFrameIndex_ = 0;

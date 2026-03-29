@@ -10,6 +10,7 @@ class Camera
     Camera();
 
     void setPosition(const glm::vec3& position);
+    void setYawPitch(float yawDegrees, float pitchDegrees);
     void addYawPitch(float yawDeltaDegrees, float pitchDeltaDegrees);
     void moveLocal(const glm::vec3& localMotion);
 

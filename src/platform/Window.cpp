@@ -2,8 +2,42 @@
 
 #include "vibecraft/core/Logger.hpp"
 
+#include <SDL3/SDL_mouse.h>
+
 namespace vibecraft::platform
 {
+namespace
+{
+void accumulateVerticalMouseWheel(InputState& inputState, const SDL_MouseWheelEvent& wheel)
+{
+    const bool flip = (wheel.direction == SDL_MOUSEWHEEL_FLIPPED);
+    Sint32 tickY = wheel.integer_y;
+    float y = wheel.y;
+    if (flip)
+    {
+        tickY = -tickY;
+        y = -y;
+    }
+
+    if (tickY != 0)
+    {
+        inputState.mouseWheelDeltaY += static_cast<int>(tickY);
+        return;
+    }
+
+    inputState.mouseWheelPreciseRemainderY += y;
+    while (inputState.mouseWheelPreciseRemainderY >= 1.0f)
+    {
+        inputState.mouseWheelDeltaY += 1;
+        inputState.mouseWheelPreciseRemainderY -= 1.0f;
+    }
+    while (inputState.mouseWheelPreciseRemainderY <= -1.0f)
+    {
+        inputState.mouseWheelDeltaY -= 1;
+        inputState.mouseWheelPreciseRemainderY += 1.0f;
+    }
+}
+}  // namespace
 Window::~Window()
 {
     destroy();
@@ -82,6 +116,7 @@ void Window::pollEvents(InputState& inputState)
         case SDL_EVENT_WINDOW_FOCUS_LOST:
             inputState.windowFocused = false;
             inputState.releaseMouseRequested = true;
+            inputState.mouseWheelPreciseRemainderY = 0.0f;
             break;
 
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
@@ -115,7 +150,7 @@ void Window::pollEvents(InputState& inputState)
             }
             break;
         case SDL_EVENT_MOUSE_WHEEL:
-            inputState.mouseWheelDeltaY += static_cast<int>(event.wheel.y);
+            accumulateVerticalMouseWheel(inputState, event.wheel);
             break;
 
         default:

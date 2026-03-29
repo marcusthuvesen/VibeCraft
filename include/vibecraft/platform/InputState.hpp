@@ -26,6 +26,8 @@ struct InputState
     /// UTF-8 text from SDL_EVENT_TEXT_INPUT this frame (after beginFrame).
     std::string textInputUtf8;
     int mouseWheelDeltaY = 0;
+    /// Fractional vertical wheel amount carried across frames (SDL3 uses float deltas; truncating loses trackpads).
+    float mouseWheelPreciseRemainderY = 0.0f;
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
     /// Window-relative cursor position from the last event pump (SDL_GetMouseState).

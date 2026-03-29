@@ -383,9 +383,12 @@ void stripWhiteEdgeMatteAlpha(
     std::uint16_t& outHeight)
 {
     static_cast<void>(allocator);
-    outWidth = 0;
-    outHeight = 0;
-    return BGFX_INVALID_HANDLE;
+    return createTextureFromPng(
+        std::filesystem::path("textures/ui/vibecraft_logo.png"),
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        &outWidth,
+        &outHeight,
+        true);
 }
 
 [[nodiscard]] bgfx::TextureHandle createMinecraftStyleCrosshairTexture()
