@@ -11,6 +11,7 @@
 #include <glm/vec3.hpp>
 
 #include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/SingleplayerSave.hpp"
 #include "vibecraft/game/DayNightCycle.hpp"
 #include "vibecraft/game/MobSpawnSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
@@ -484,6 +485,95 @@ TEST_CASE("world save and load round-trips edited blocks")
 
     std::error_code errorCode;
     std::filesystem::remove(tempPath, errorCode);
+}
+
+TEST_CASE("singleplayer save serializer round-trips metadata and player state")
+{
+    namespace fs = std::filesystem;
+    const fs::path tempDir = fs::temp_directory_path() / "vibecraft_singleplayer_save_test";
+    fs::remove_all(tempDir);
+    fs::create_directories(tempDir);
+
+    vibecraft::app::SingleplayerWorldMetadata metadata{
+        .displayName = "World 7",
+        .seed = 0x2468ace0U,
+        .createdUnixSeconds = 111,
+        .lastPlayedUnixSeconds = 222,
+    };
+    REQUIRE(vibecraft::app::SingleplayerSaveSerializer::saveMetadata(metadata, tempDir / "meta.json"));
+    const auto loadedMetadata =
+        vibecraft::app::SingleplayerSaveSerializer::loadMetadata(tempDir / "meta.json");
+    REQUIRE(loadedMetadata.has_value());
+    CHECK(loadedMetadata->displayName == metadata.displayName);
+    CHECK(loadedMetadata->seed == metadata.seed);
+    CHECK(loadedMetadata->createdUnixSeconds == metadata.createdUnixSeconds);
+    CHECK(loadedMetadata->lastPlayedUnixSeconds == metadata.lastPlayedUnixSeconds);
+
+    vibecraft::app::SingleplayerPlayerState playerState;
+    playerState.playerFeetPosition = {10.0f, 65.0f, -12.0f};
+    playerState.spawnFeetPosition = {8.0f, 70.0f, -6.0f};
+    playerState.cameraYawDegrees = 135.0f;
+    playerState.cameraPitchDegrees = -18.0f;
+    playerState.health = 14.0f;
+    playerState.air = 6.0f;
+    playerState.creativeModeEnabled = true;
+    playerState.selectedHotbarIndex = 4;
+    playerState.dayNightElapsedSeconds = 123.0f;
+    playerState.weatherElapsedSeconds = 45.0f;
+    playerState.hotbarSlots[0] = {
+        .blockType = vibecraft::world::BlockType::Stone,
+        .count = 32,
+        .equippedItem = vibecraft::app::EquippedItem::None,
+    };
+    playerState.hotbarSlots[1] = {
+        .blockType = vibecraft::world::BlockType::Air,
+        .count = 1,
+        .equippedItem = vibecraft::app::EquippedItem::StonePickaxe,
+    };
+    playerState.bagSlots[3] = {
+        .blockType = vibecraft::world::BlockType::Torch,
+        .count = 12,
+        .equippedItem = vibecraft::app::EquippedItem::None,
+    };
+    playerState.droppedItems.push_back({
+        .blockType = vibecraft::world::BlockType::Cobblestone,
+        .equippedItem = vibecraft::app::EquippedItem::None,
+        .worldPosition = {1.0f, 2.0f, 3.0f},
+        .velocity = {0.1f, 0.2f, 0.3f},
+        .ageSeconds = 4.0f,
+        .pickupDelaySeconds = 0.5f,
+        .spinRadians = 1.25f,
+    });
+    playerState.chestSlotsByPosition[123456789LL][0] = {
+        .blockType = vibecraft::world::BlockType::OakPlanks,
+        .count = 16,
+        .equippedItem = vibecraft::app::EquippedItem::None,
+    };
+
+    REQUIRE(vibecraft::app::SingleplayerSaveSerializer::savePlayerState(playerState, tempDir / "player.bin"));
+    const auto loadedPlayerState =
+        vibecraft::app::SingleplayerSaveSerializer::loadPlayerState(tempDir / "player.bin");
+    REQUIRE(loadedPlayerState.has_value());
+    CHECK(loadedPlayerState->playerFeetPosition.x == doctest::Approx(playerState.playerFeetPosition.x));
+    CHECK(loadedPlayerState->playerFeetPosition.y == doctest::Approx(playerState.playerFeetPosition.y));
+    CHECK(loadedPlayerState->playerFeetPosition.z == doctest::Approx(playerState.playerFeetPosition.z));
+    CHECK(loadedPlayerState->spawnFeetPosition.y == doctest::Approx(playerState.spawnFeetPosition.y));
+    CHECK(loadedPlayerState->cameraYawDegrees == doctest::Approx(playerState.cameraYawDegrees));
+    CHECK(loadedPlayerState->cameraPitchDegrees == doctest::Approx(playerState.cameraPitchDegrees));
+    CHECK(loadedPlayerState->health == doctest::Approx(playerState.health));
+    CHECK(loadedPlayerState->air == doctest::Approx(playerState.air));
+    CHECK(loadedPlayerState->creativeModeEnabled == playerState.creativeModeEnabled);
+    CHECK(loadedPlayerState->selectedHotbarIndex == playerState.selectedHotbarIndex);
+    CHECK(loadedPlayerState->hotbarSlots[0].blockType == vibecraft::world::BlockType::Stone);
+    CHECK(loadedPlayerState->hotbarSlots[1].equippedItem == vibecraft::app::EquippedItem::StonePickaxe);
+    CHECK(loadedPlayerState->bagSlots[3].blockType == vibecraft::world::BlockType::Torch);
+    REQUIRE(loadedPlayerState->droppedItems.size() == 1);
+    CHECK(loadedPlayerState->droppedItems[0].blockType == vibecraft::world::BlockType::Cobblestone);
+    CHECK(loadedPlayerState->droppedItems[0].pickupDelaySeconds == doctest::Approx(0.5f));
+    REQUIRE(loadedPlayerState->chestSlotsByPosition.contains(123456789LL));
+    CHECK(loadedPlayerState->chestSlotsByPosition.at(123456789LL)[0].count == 16);
+
+    fs::remove_all(tempDir);
 }
 
 TEST_CASE("world raycast hits the first solid block and reports the previous empty cell")

@@ -161,6 +161,7 @@ struct FrameDebugData
     std::string mainMenuNotice;
     bool mainMenuCreativeModeEnabled = false;
     std::string mainMenuSpawnPresetLabel;
+    std::string mainMenuSelectedWorldLabel;
     bool mainMenuLoadingActive = false;
     float mainMenuLoadingProgress = 0.0f;
     std::string mainMenuLoadingTitle;
@@ -225,6 +226,7 @@ class Renderer
     [[nodiscard]] std::uint16_t menuLogoHeightPx() const { return logoHeightPx_; }
 
     /// Returns a button id for the main menu hit test, or -1. Layout must match drawMainMenuOverlay().
+    /// 0..4 main buttons, 5 creative shortcut, 6 spawn shortcut, 7 previous world, 8 new world, 9 next world.
     [[nodiscard]] static int hitTestMainMenu(
         float mouseX,
         float mouseY,

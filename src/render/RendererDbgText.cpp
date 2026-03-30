@@ -999,6 +999,9 @@ void drawMainMenuOverlay(
     }
 
     const std::uint16_t iconAttrG = hovered == 5 ? 0x0f : 0x07;
+    const std::uint16_t iconAttrPrev = hovered == 7 ? 0x0f : 0x07;
+    const std::uint16_t iconAttrNew = hovered == 8 ? 0x0f : 0x07;
+    const std::uint16_t iconAttrNext = hovered == 9 ? 0x0f : 0x07;
     const std::uint16_t iconAttrA = hovered == 6 ? 0x0f : 0x07;
     if (menu.centerCol >= 7)
     {
@@ -1008,6 +1011,22 @@ void drawMainMenuOverlay(
             iconAttrG,
             "[C]");
     }
+    const int worldPrevCol = menu.centerCol + menu.outerWidth / 2 - 5;
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(worldPrevCol),
+        static_cast<std::uint16_t>(menu.iconHintsRow),
+        iconAttrPrev,
+        "[<]");
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(worldPrevCol + 4),
+        static_cast<std::uint16_t>(menu.iconHintsRow),
+        iconAttrNew,
+        "[N]");
+    bgfx::dbgTextPrintf(
+        static_cast<std::uint16_t>(worldPrevCol + 8),
+        static_cast<std::uint16_t>(menu.iconHintsRow),
+        iconAttrNext,
+        "[>]");
     bgfx::dbgTextPrintf(
         static_cast<std::uint16_t>(menu.centerCol + menu.outerWidth - 3),
         static_cast<std::uint16_t>(menu.iconHintsRow),
@@ -1030,11 +1049,21 @@ void drawMainMenuOverlay(
         dbgTextPrintfCenteredRow(noticeRow, 0x07, frameDebugData.mainMenuNotice);
     }
 
+    if (!frameDebugData.mainMenuSelectedWorldLabel.empty() && footerRow >= 4)
+    {
+        const std::uint16_t worldRow =
+            footerRow >= 28 ? static_cast<std::uint16_t>(footerRow - 3) : static_cast<std::uint16_t>(1);
+        dbgTextPrintfCenteredRow(
+            worldRow,
+            0x0f,
+            clampDbgTextLine(fmt::format("Selected world: {}", frameDebugData.mainMenuSelectedWorldLabel), tw - 2));
+    }
+
     dbgTextPrintfCenteredRow(
         footerRow,
         0x07,
         fmt::format(
-            "Spawn preset: {}   C/[C]: creative   V/[V]: cycle spawn",
+            "Spawn: {}   C/[C]: creative   [<]/[>]: cycle world   N/[N]: new world   V/[V]: cycle spawn",
             frameDebugData.mainMenuSpawnPresetLabel.empty() ? "Origin" : frameDebugData.mainMenuSpawnPresetLabel));
 }
 

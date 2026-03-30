@@ -37,6 +37,19 @@ void PlayerVitals::reset()
     lastDamageCause_ = DamageCause::EnemyAttack;
 }
 
+void PlayerVitals::setHealthAndAir(const float health, const float air)
+{
+    health_ = std::clamp(health, 0.0f, settings_.maxHealth);
+    air_ = std::clamp(air, 0.0f, settings_.maxAir);
+    lavaTickAccumulator_ = 0.0f;
+    drowningTickAccumulator_ = 0.0f;
+    isDead_ = health_ <= 0.0f;
+    if (!isDead_)
+    {
+        lastDamageCause_ = DamageCause::EnemyAttack;
+    }
+}
+
 void PlayerVitals::tickEnvironment(const float deltaTimeSeconds, const EnvironmentalHazards& hazards)
 {
     if (isDead_ || deltaTimeSeconds <= 0.0f)

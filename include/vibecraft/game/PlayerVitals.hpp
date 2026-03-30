@@ -46,6 +46,7 @@ class PlayerVitals
     explicit PlayerVitals(const PlayerVitalsSettings& settings = {});
 
     void reset();
+    void setHealthAndAir(float health, float air);
     void tickEnvironment(float deltaTimeSeconds, const EnvironmentalHazards& hazards);
 
     [[nodiscard]] float applyDamage(const DamageEvent& event);

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cctype>
 #include <cstdlib>
@@ -122,6 +123,12 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         seed = 0x6d2b79f5U;
     }
     return seed;
+}
+
+[[nodiscard]] std::int64_t currentUnixTimeSeconds()
+{
+    using Clock = std::chrono::system_clock;
+    return std::chrono::duration_cast<std::chrono::seconds>(Clock::now().time_since_epoch()).count();
 }
 
 [[nodiscard]] float normalizeDegrees(float degrees)
@@ -1414,6 +1421,7 @@ bool Application::initialize()
     multiplayerAddress_ = resolveJoinAddressFromEnvironment();
     loadMultiplayerPrefs();
     loadAudioPrefs();
+    refreshSingleplayerWorldList();
 
     if (!renderer_.initialize(window_.nativeWindowHandle(), window_.width(), window_.height()))
     {
@@ -1449,7 +1457,9 @@ bool Application::initialize()
     gameScreen_ = GameScreen::MainMenu;
     mouseCaptured_ = false;
     window_.setRelativeMouseMode(false);
-    mainMenuNotice_ = "Multiplayer: open Multiplayer, then Host game or Join game.";
+    mainMenuNotice_ = singleplayerWorlds_.empty()
+        ? "No worlds yet. Press N or Singleplayer to create one."
+        : "Singleplayer resumes the selected world. Multiplayer: Host or Join.";
     applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
     return true;
 }
@@ -1471,6 +1481,10 @@ int Application::run()
         update(deltaTimeSeconds);
     }
 
+    if (!activeSingleplayerWorldFolderName_.empty() && multiplayerMode_ != MultiplayerRuntimeMode::Client)
+    {
+        static_cast<void>(saveActiveSingleplayerWorld(false));
+    }
     saveAudioPrefs();
     stopMultiplayerSessions();
     musicDirector_.shutdown();
@@ -1532,6 +1546,14 @@ void Application::update(const float deltaTimeSeconds)
         syncWorldData();
         const float currentEyeHeight = std::max(0.0f, camera_.position().y - playerFeetPosition_.y);
         updateDroppedItems(deltaTimeSeconds, currentEyeHeight);
+        if (!activeSingleplayerWorldFolderName_.empty() && multiplayerMode_ != MultiplayerRuntimeMode::Client)
+        {
+            autosaveAccumulatorSeconds_ += deltaTimeSeconds;
+            if (autosaveAccumulatorSeconds_ >= 30.0f)
+            {
+                saveActiveSingleplayerWorld(false);
+            }
+        }
     }
 
     // Multiplayer clients do not receive mob state from the host yet; skip local simulation.
@@ -1710,6 +1732,15 @@ void Application::update(const float deltaTimeSeconds)
         frameDebugData.mainMenuNotice = mainMenuNotice_;
         frameDebugData.mainMenuCreativeModeEnabled = creativeModeEnabled_;
         frameDebugData.mainMenuSpawnPresetLabel = spawnPresetLabel(spawnPreset_);
+        if (!singleplayerWorlds_.empty() && selectedSingleplayerWorldIndex_ < singleplayerWorlds_.size())
+        {
+            frameDebugData.mainMenuSelectedWorldLabel =
+                singleplayerWorlds_[selectedSingleplayerWorldIndex_].metadata.displayName;
+        }
+        else
+        {
+            frameDebugData.mainMenuSelectedWorldLabel = "No world selected";
+        }
         const bgfx::Stats* const stats = bgfx::getStats();
         const std::uint16_t textWidth =
             stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
@@ -2071,11 +2102,26 @@ void Application::processInput(const float deltaTimeSeconds)
         const std::uint16_t textHeight =
             stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
         const bool creativeToggleKeyDown = inputState_.isKeyDown(SDL_SCANCODE_C);
+        const bool previousWorldKeyDown = inputState_.isKeyDown(SDL_SCANCODE_LEFTBRACKET);
+        const bool newWorldKeyDown = inputState_.isKeyDown(SDL_SCANCODE_N);
+        const bool nextWorldKeyDown = inputState_.isKeyDown(SDL_SCANCODE_RIGHTBRACKET);
         const bool spawnPresetToggleKeyDown = inputState_.isKeyDown(SDL_SCANCODE_V);
         if (creativeToggleKeyDown && !creativeToggleKeyWasDown_)
         {
             creativeModeEnabled_ = !creativeModeEnabled_;
             mainMenuNotice_ = creativeModeEnabled_ ? "Creative mode enabled." : "Creative mode disabled.";
+        }
+        if (previousWorldKeyDown && !previousWorldKeyWasDown_)
+        {
+            cycleSelectedSingleplayerWorld(-1);
+        }
+        if (newWorldKeyDown && !newWorldKeyWasDown_)
+        {
+            static_cast<void>(createNewSingleplayerWorld());
+        }
+        if (nextWorldKeyDown && !nextWorldKeyWasDown_)
+        {
+            cycleSelectedSingleplayerWorld(1);
         }
         if (spawnPresetToggleKeyDown && !spawnPresetToggleKeyWasDown_)
         {
@@ -2083,6 +2129,9 @@ void Application::processInput(const float deltaTimeSeconds)
             mainMenuNotice_ = fmt::format("Spawn preset: {}", spawnPresetLabel(spawnPreset_));
         }
         creativeToggleKeyWasDown_ = creativeToggleKeyDown;
+        previousWorldKeyWasDown_ = previousWorldKeyDown;
+        newWorldKeyWasDown_ = newWorldKeyDown;
+        nextWorldKeyWasDown_ = nextWorldKeyDown;
         spawnPresetToggleKeyWasDown_ = spawnPresetToggleKeyDown;
 
         // Hit tests use the same dbg-text dimensions as rendering (including bgfx stats fallbacks).
@@ -2280,6 +2329,15 @@ void Application::processInput(const float deltaTimeSeconds)
                     spawnPreset_ = nextSpawnPreset(spawnPreset_);
                     mainMenuNotice_ = fmt::format("Spawn preset: {}", spawnPresetLabel(spawnPreset_));
                     break;
+                case 7:
+                    cycleSelectedSingleplayerWorld(-1);
+                    break;
+                case 8:
+                    static_cast<void>(createNewSingleplayerWorld());
+                    break;
+                case 9:
+                    cycleSelectedSingleplayerWorld(1);
+                    break;
                 default:
                     break;
                 }
@@ -2426,6 +2484,10 @@ void Application::processInput(const float deltaTimeSeconds)
                     pauseMenuNotice_.clear();
                     break;
                 case 2:
+                    if (multiplayerMode_ != MultiplayerRuntimeMode::Client)
+                    {
+                        static_cast<void>(saveActiveSingleplayerWorld(true));
+                    }
                     stopMultiplayerSessions();
                     mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
                     window_.setTextInputActive(false);
@@ -2436,6 +2498,8 @@ void Application::processInput(const float deltaTimeSeconds)
                     window_.setRelativeMouseMode(false);
                     pauseMenuNotice_.clear();
                     singleplayerLoadState_ = {};
+                    unloadActiveSingleplayerWorld();
+                    refreshSingleplayerWorldList();
                     break;
                 case 3:
                     inputState_.quitRequested = true;
@@ -3692,24 +3756,267 @@ void Application::stopMultiplayerSessions()
     clientChunkSyncCenterById_.clear();
 }
 
+std::filesystem::path Application::prefsRootPath() const
+{
+    return "assets/saves";
+}
+
+std::filesystem::path Application::singleplayerWorldsRootPath() const
+{
+    return prefsRootPath() / "worlds";
+}
+
+std::filesystem::path Application::singleplayerWorldDirectory(const std::string& folderName) const
+{
+    return singleplayerWorldsRootPath() / folderName;
+}
+
+std::filesystem::path Application::singleplayerWorldDataPath(const std::string& folderName) const
+{
+    return singleplayerWorldDirectory(folderName) / "world.bin";
+}
+
+std::filesystem::path Application::singleplayerPlayerDataPath(const std::string& folderName) const
+{
+    return singleplayerWorldDirectory(folderName) / "player.bin";
+}
+
+std::filesystem::path Application::singleplayerWorldMetadataPath(const std::string& folderName) const
+{
+    return singleplayerWorldDirectory(folderName) / "meta.json";
+}
+
+void Application::refreshSingleplayerWorldList()
+{
+    std::string previouslySelectedFolder = activeSingleplayerWorldFolderName_;
+    if (previouslySelectedFolder.empty()
+        && selectedSingleplayerWorldIndex_ < singleplayerWorlds_.size())
+    {
+        previouslySelectedFolder = singleplayerWorlds_[selectedSingleplayerWorldIndex_].folderName;
+    }
+
+    singleplayerWorlds_.clear();
+    std::error_code errorCode;
+    std::filesystem::create_directories(singleplayerWorldsRootPath(), errorCode);
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(singleplayerWorldsRootPath(), errorCode))
+    {
+        if (errorCode || !entry.is_directory())
+        {
+            continue;
+        }
+        SingleplayerWorldEntry worldEntry;
+        worldEntry.folderName = entry.path().filename().string();
+        if (const std::optional<SingleplayerWorldMetadata> metadata =
+                SingleplayerSaveSerializer::loadMetadata(singleplayerWorldMetadataPath(worldEntry.folderName));
+            metadata.has_value())
+        {
+            worldEntry.metadata = *metadata;
+        }
+        else
+        {
+            worldEntry.metadata.displayName = worldEntry.folderName;
+        }
+        worldEntry.hasWorldData = std::filesystem::exists(singleplayerWorldDataPath(worldEntry.folderName), errorCode);
+        worldEntry.hasPlayerData = std::filesystem::exists(singleplayerPlayerDataPath(worldEntry.folderName), errorCode);
+        singleplayerWorlds_.push_back(std::move(worldEntry));
+    }
+
+    std::sort(
+        singleplayerWorlds_.begin(),
+        singleplayerWorlds_.end(),
+        [](const SingleplayerWorldEntry& lhs, const SingleplayerWorldEntry& rhs)
+        {
+            if (lhs.metadata.lastPlayedUnixSeconds != rhs.metadata.lastPlayedUnixSeconds)
+            {
+                return lhs.metadata.lastPlayedUnixSeconds > rhs.metadata.lastPlayedUnixSeconds;
+            }
+            return lhs.folderName < rhs.folderName;
+        });
+
+    if (singleplayerWorlds_.empty())
+    {
+        selectedSingleplayerWorldIndex_ = 0;
+        return;
+    }
+
+    const auto selectedIt = std::find_if(
+        singleplayerWorlds_.begin(),
+        singleplayerWorlds_.end(),
+        [&previouslySelectedFolder](const SingleplayerWorldEntry& entry)
+        {
+            return entry.folderName == previouslySelectedFolder;
+        });
+    selectedSingleplayerWorldIndex_ = selectedIt != singleplayerWorlds_.end()
+        ? static_cast<std::size_t>(std::distance(singleplayerWorlds_.begin(), selectedIt))
+        : 0;
+}
+
+bool Application::createNewSingleplayerWorld()
+{
+    std::error_code errorCode;
+    std::filesystem::create_directories(singleplayerWorldsRootPath(), errorCode);
+
+    int nextWorldIndex = 1;
+    while (std::filesystem::exists(
+        singleplayerWorldDirectory(fmt::format("world_{:03d}", nextWorldIndex)),
+        errorCode))
+    {
+        ++nextWorldIndex;
+    }
+
+    const std::string folderName = fmt::format("world_{:03d}", nextWorldIndex);
+    const std::uint32_t seed = generateRandomWorldSeed();
+    const std::int64_t now = currentUnixTimeSeconds();
+    SingleplayerWorldMetadata metadata{
+        .displayName = fmt::format("World {}", nextWorldIndex),
+        .seed = seed,
+        .createdUnixSeconds = now,
+        .lastPlayedUnixSeconds = now,
+    };
+    if (!SingleplayerSaveSerializer::saveMetadata(metadata, singleplayerWorldMetadataPath(folderName)))
+    {
+        mainMenuNotice_ = "Could not create a new world.";
+        return false;
+    }
+
+    refreshSingleplayerWorldList();
+    const auto it = std::find_if(
+        singleplayerWorlds_.begin(),
+        singleplayerWorlds_.end(),
+        [&folderName](const SingleplayerWorldEntry& entry)
+        {
+            return entry.folderName == folderName;
+        });
+    if (it != singleplayerWorlds_.end())
+    {
+        selectedSingleplayerWorldIndex_ = static_cast<std::size_t>(std::distance(singleplayerWorlds_.begin(), it));
+        mainMenuNotice_ = fmt::format("Created {}.", it->metadata.displayName);
+        return true;
+    }
+    return false;
+}
+
+bool Application::ensureSelectedSingleplayerWorld()
+{
+    if (!singleplayerWorlds_.empty())
+    {
+        selectedSingleplayerWorldIndex_ = std::min(selectedSingleplayerWorldIndex_, singleplayerWorlds_.size() - 1);
+        return true;
+    }
+    return createNewSingleplayerWorld();
+}
+
+void Application::cycleSelectedSingleplayerWorld(const int direction)
+{
+    if (singleplayerWorlds_.empty())
+    {
+        mainMenuNotice_ = "No worlds yet. Press N to create one.";
+        return;
+    }
+    const int count = static_cast<int>(singleplayerWorlds_.size());
+    const int current = static_cast<int>(std::min(selectedSingleplayerWorldIndex_, singleplayerWorlds_.size() - 1));
+    selectedSingleplayerWorldIndex_ = static_cast<std::size_t>((current + direction + count) % count);
+    mainMenuNotice_ = fmt::format(
+        "Selected {}.",
+        singleplayerWorlds_[selectedSingleplayerWorldIndex_].metadata.displayName);
+}
+
+bool Application::saveActiveSingleplayerWorld(const bool showNotice)
+{
+    if (activeSingleplayerWorldFolderName_.empty())
+    {
+        return false;
+    }
+
+    const std::string folderName = activeSingleplayerWorldFolderName_;
+    if (!world_.save(singleplayerWorldDataPath(folderName)))
+    {
+        if (showNotice)
+        {
+            pauseMenuNotice_ = "Could not save world.";
+        }
+        return false;
+    }
+
+    SingleplayerPlayerState playerState;
+    playerState.playerFeetPosition = playerFeetPosition_;
+    playerState.spawnFeetPosition = spawnFeetPosition_;
+    playerState.cameraYawDegrees = camera_.yawDegrees();
+    playerState.cameraPitchDegrees = camera_.pitchDegrees();
+    playerState.health = playerVitals_.health();
+    playerState.air = playerVitals_.air();
+    playerState.creativeModeEnabled = creativeModeEnabled_;
+    playerState.selectedHotbarIndex = static_cast<std::uint8_t>(std::min<std::size_t>(selectedHotbarIndex_, 255));
+    playerState.dayNightElapsedSeconds = dayNightCycle_.elapsedSeconds();
+    playerState.weatherElapsedSeconds = weatherSystem_.elapsedSeconds();
+    playerState.hotbarSlots = hotbarSlots_;
+    playerState.bagSlots = bagSlots_;
+    playerState.chestSlotsByPosition = chestSlotsByPosition_;
+    playerState.droppedItems.reserve(droppedItems_.size());
+    for (const DroppedItem& droppedItem : droppedItems_)
+    {
+        playerState.droppedItems.push_back(SavedDroppedItem{
+            .blockType = droppedItem.blockType,
+            .equippedItem = droppedItem.equippedItem,
+            .worldPosition = droppedItem.worldPosition,
+            .velocity = droppedItem.velocity,
+            .ageSeconds = droppedItem.ageSeconds,
+            .pickupDelaySeconds = droppedItem.pickupDelaySeconds,
+            .spinRadians = droppedItem.spinRadians,
+        });
+    }
+    if (!SingleplayerSaveSerializer::savePlayerState(playerState, singleplayerPlayerDataPath(folderName)))
+    {
+        if (showNotice)
+        {
+            pauseMenuNotice_ = "Could not save player data.";
+        }
+        return false;
+    }
+
+    SingleplayerWorldMetadata metadata =
+        selectedSingleplayerWorldIndex_ < singleplayerWorlds_.size()
+            ? singleplayerWorlds_[selectedSingleplayerWorldIndex_].metadata
+            : SingleplayerWorldMetadata{};
+    if (metadata.displayName.empty())
+    {
+        metadata.displayName = activeSingleplayerWorldDisplayName_.empty()
+            ? folderName
+            : activeSingleplayerWorldDisplayName_;
+    }
+    metadata.seed = world_.generationSeed();
+    if (metadata.createdUnixSeconds == 0)
+    {
+        metadata.createdUnixSeconds = currentUnixTimeSeconds();
+    }
+    metadata.lastPlayedUnixSeconds = currentUnixTimeSeconds();
+    static_cast<void>(SingleplayerSaveSerializer::saveMetadata(
+        metadata,
+        singleplayerWorldMetadataPath(folderName)));
+    refreshSingleplayerWorldList();
+    autosaveAccumulatorSeconds_ = 0.0f;
+    if (showNotice)
+    {
+        pauseMenuNotice_ = fmt::format("Saved {}.", metadata.displayName);
+    }
+    return true;
+}
+
+void Application::unloadActiveSingleplayerWorld()
+{
+    activeSingleplayerWorldFolderName_.clear();
+    activeSingleplayerWorldDisplayName_.clear();
+    autosaveAccumulatorSeconds_ = 0.0f;
+}
+
 std::filesystem::path Application::multiplayerPrefsPath() const
 {
-    std::filesystem::path directory = savePath_.parent_path();
-    if (directory.empty())
-    {
-        directory = "assets/saves";
-    }
-    return directory / "multiplayer_prefs.txt";
+    return prefsRootPath() / "multiplayer_prefs.txt";
 }
 
 std::filesystem::path Application::joinPresetsPath() const
 {
-    std::filesystem::path directory = savePath_.parent_path();
-    if (directory.empty())
-    {
-        directory = "assets/saves";
-    }
-    return directory / "join_presets.txt";
+    return prefsRootPath() / "join_presets.txt";
 }
 
 void Application::applyJoinPreset(const JoinPresetEntry& preset)
@@ -3836,12 +4143,7 @@ void Application::saveMultiplayerPrefs() const
 
 std::filesystem::path Application::audioPrefsPath() const
 {
-    std::filesystem::path directory = savePath_.parent_path();
-    if (directory.empty())
-    {
-        directory = "assets/saves";
-    }
-    return directory / "audio_prefs.txt";
+    return prefsRootPath() / "audio_prefs.txt";
 }
 
 void Application::loadAudioPrefs()
@@ -4626,11 +4928,17 @@ void Application::beginSingleplayerLoad()
         return;
     }
 
+    if (!ensureSelectedSingleplayerWorld() || selectedSingleplayerWorldIndex_ >= singleplayerWorlds_.size())
+    {
+        return;
+    }
+
     pendingClientJoinAfterWorldLoad_ = false;
     singleplayerLoadState_.active = true;
     singleplayerLoadState_.worldPrepared = false;
+    singleplayerLoadState_.playerStateLoaded = false;
     singleplayerLoadState_.progress = 0.0f;
-    singleplayerLoadState_.label = "Generating world...";
+    singleplayerLoadState_.label = "Loading world...";
 
     stopMultiplayerSessions();
     mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
@@ -4640,9 +4948,6 @@ void Application::beginSingleplayerLoad()
     mouseCaptured_ = false;
     window_.setRelativeMouseMode(false);
     inputState_.clearMouseMotion();
-
-    std::error_code errorCode;
-    std::filesystem::remove(savePath_, errorCode);
 
     std::vector<std::uint64_t> removedMeshIds(residentChunkMeshIds_.begin(), residentChunkMeshIds_.end());
     if (!removedMeshIds.empty())
@@ -4674,10 +4979,84 @@ void Application::beginSingleplayerLoad()
     respawnNotice_.clear();
     dayNightCycle_.setElapsedSeconds(70.0f);
     weatherSystem_.setElapsedSeconds(0.0f);
-    const std::uint32_t worldSeed = generateRandomWorldSeed();
+
+    const SingleplayerWorldEntry& selectedWorld = singleplayerWorlds_[selectedSingleplayerWorldIndex_];
+    activeSingleplayerWorldFolderName_ = selectedWorld.folderName;
+    activeSingleplayerWorldDisplayName_ = selectedWorld.metadata.displayName;
+    savePath_ = singleplayerWorldDataPath(selectedWorld.folderName);
+    autosaveAccumulatorSeconds_ = 0.0f;
+
+    const std::uint32_t worldSeed =
+        selectedWorld.metadata.seed != 0 ? selectedWorld.metadata.seed : generateRandomWorldSeed();
     world_.setGenerationSeed(worldSeed);
     terrainGenerator_.setWorldSeed(worldSeed);
-    core::logInfo(fmt::format("Starting new singleplayer world with seed {}", worldSeed));
+
+    const std::filesystem::path worldPath = singleplayerWorldDataPath(selectedWorld.folderName);
+    if (selectedWorld.hasWorldData)
+    {
+        if (!world_.load(worldPath))
+        {
+            mainMenuNotice_ = "Could not load the selected world.";
+            singleplayerLoadState_ = {};
+            unloadActiveSingleplayerWorld();
+            return;
+        }
+        if (world_.generationSeed() == 0 && selectedWorld.metadata.seed != 0)
+        {
+            world_.setGenerationSeed(selectedWorld.metadata.seed);
+        }
+        terrainGenerator_.setWorldSeed(world_.generationSeed());
+        core::logInfo(fmt::format(
+            "Loading singleplayer world {} with seed {}",
+            activeSingleplayerWorldDisplayName_,
+            world_.generationSeed()));
+    }
+    else
+    {
+        core::logInfo(fmt::format(
+            "Starting new singleplayer world {} with seed {}",
+            activeSingleplayerWorldDisplayName_,
+            worldSeed));
+    }
+
+    if (const std::optional<SingleplayerPlayerState> playerState =
+            SingleplayerSaveSerializer::loadPlayerState(singleplayerPlayerDataPath(selectedWorld.folderName));
+        playerState.has_value())
+    {
+        playerFeetPosition_ = playerState->playerFeetPosition;
+        spawnFeetPosition_ = playerState->spawnFeetPosition;
+        camera_.setYawPitch(playerState->cameraYawDegrees, playerState->cameraPitchDegrees);
+        camera_.setPosition(
+            playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+        playerVitals_.setHealthAndAir(playerState->health, playerState->air);
+        creativeModeEnabled_ = playerState->creativeModeEnabled;
+        selectedHotbarIndex_ = std::min<std::size_t>(playerState->selectedHotbarIndex, hotbarSlots_.size() - 1);
+        dayNightCycle_.setElapsedSeconds(playerState->dayNightElapsedSeconds);
+        weatherSystem_.setElapsedSeconds(playerState->weatherElapsedSeconds);
+        hotbarSlots_ = playerState->hotbarSlots;
+        bagSlots_ = playerState->bagSlots;
+        chestSlotsByPosition_ = playerState->chestSlotsByPosition;
+        droppedItems_.clear();
+        droppedItems_.reserve(playerState->droppedItems.size());
+        for (const SavedDroppedItem& droppedItem : playerState->droppedItems)
+        {
+            droppedItems_.push_back(DroppedItem{
+                .blockType = droppedItem.blockType,
+                .equippedItem = droppedItem.equippedItem,
+                .worldPosition = droppedItem.worldPosition,
+                .velocity = droppedItem.velocity,
+                .ageSeconds = droppedItem.ageSeconds,
+                .pickupDelaySeconds = droppedItem.pickupDelaySeconds,
+                .spinRadians = droppedItem.spinRadians,
+            });
+        }
+        singleplayerLoadState_.playerStateLoaded = true;
+        mainMenuNotice_ = fmt::format("Continuing {}.", activeSingleplayerWorldDisplayName_);
+    }
+    else
+    {
+        mainMenuNotice_ = fmt::format("Entering {}.", activeSingleplayerWorldDisplayName_);
+    }
 }
 
 void Application::updateSingleplayerLoad()
@@ -4899,7 +5278,11 @@ void Application::updateSingleplayerLoad()
 
     const std::size_t bootstrapTarget = static_cast<std::size_t>(
         (kStreamingSettings.bootstrapChunkRadius * 2 + 1) * (kStreamingSettings.bootstrapChunkRadius * 2 + 1));
-    const world::ChunkCoord originChunk{0, 0};
+    const world::ChunkCoord originChunk = singleplayerLoadState_.playerStateLoaded
+        ? world::worldToChunkCoord(
+            static_cast<int>(std::floor(playerFeetPosition_.x)),
+            static_cast<int>(std::floor(playerFeetPosition_.z)))
+        : world::ChunkCoord{0, 0};
 
     if (!singleplayerLoadState_.worldPrepared)
     {
@@ -4921,22 +5304,26 @@ void Application::updateSingleplayerLoad()
         }
 
         const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
-        playerFeetPosition_ = resolveSpawnFeetPosition(
-            world_,
-            terrainGenerator_,
-            spawnPreset_,
-            spawnBiomeTarget_,
-            camera_.position(),
-            spawnHeight);
+        if (!singleplayerLoadState_.playerStateLoaded)
+        {
+            playerFeetPosition_ = resolveSpawnFeetPosition(
+                world_,
+                terrainGenerator_,
+                spawnPreset_,
+                spawnBiomeTarget_,
+                camera_.position(),
+                spawnHeight);
+            spawnFeetPosition_ = playerFeetPosition_;
+            camera_.setPosition(
+                playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+        }
         isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
-        spawnFeetPosition_ = playerFeetPosition_;
         accumulatedFallDistance_ = 0.0f;
         playerHazards_ = samplePlayerHazards(
             world_,
             playerFeetPosition_,
             kPlayerMovementSettings.standingColliderHeight,
             kPlayerMovementSettings.standingEyeHeight);
-        camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
         singleplayerLoadState_.worldPrepared = true;
     }
 
@@ -5026,6 +5413,11 @@ void Application::updateSingleplayerLoad()
                 return;
             }
             pendingHostStartAfterWorldLoad_ = false;
+        }
+
+        if (multiplayerMode_ != MultiplayerRuntimeMode::Client)
+        {
+            static_cast<void>(saveActiveSingleplayerWorld(false));
         }
 
         gameScreen_ = GameScreen::Playing;

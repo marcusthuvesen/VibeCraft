@@ -138,6 +138,7 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/app/Application.hpp
     include/vibecraft/app/Crafting.hpp
     include/vibecraft/app/Inventory.hpp
+    include/vibecraft/app/SingleplayerSave.hpp
     include/vibecraft/audio/MusicCatalog.hpp
     include/vibecraft/audio/MusicDirector.hpp
     include/vibecraft/audio/RuntimeAudioRoot.hpp
@@ -176,6 +177,7 @@ set(VIBECRAFT_SOURCES
     src/app/Application.cpp
     src/app/Crafting.cpp
     src/app/Inventory.cpp
+    src/app/SingleplayerSave.cpp
     src/app/main.cpp
     src/audio/MusicCatalog.cpp
     src/audio/MusicDirector.cpp
@@ -265,6 +267,7 @@ endif()
 add_executable(vibecraft_tests
     tests/world_smoke_tests.cpp
     src/app/Crafting.cpp
+    src/app/SingleplayerSave.cpp
     src/game/CollisionHelpers.cpp
     src/game/MobSpawnSystem.cpp
     src/game/PlayerVitals.cpp

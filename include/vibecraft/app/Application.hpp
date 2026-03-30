@@ -14,6 +14,7 @@
 
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/SingleplayerSave.hpp"
 #include "vibecraft/audio/MusicDirector.hpp"
 #include "vibecraft/audio/SharedAudioOutput.hpp"
 #include "vibecraft/audio/SoundEffects.hpp"
@@ -127,8 +128,17 @@ class Application
     {
         bool active = false;
         bool worldPrepared = false;
+        bool playerStateLoaded = false;
         float progress = 0.0f;
         std::string label;
+    };
+
+    struct SingleplayerWorldEntry
+    {
+        std::string folderName;
+        SingleplayerWorldMetadata metadata{};
+        bool hasWorldData = false;
+        bool hasPlayerData = false;
     };
 
     struct JoinPresetEntry
@@ -186,6 +196,18 @@ class Application
 
     void update(float deltaTimeSeconds);
     void processInput(float deltaTimeSeconds);
+    void refreshSingleplayerWorldList();
+    [[nodiscard]] std::filesystem::path prefsRootPath() const;
+    [[nodiscard]] std::filesystem::path singleplayerWorldsRootPath() const;
+    [[nodiscard]] std::filesystem::path singleplayerWorldDirectory(const std::string& folderName) const;
+    [[nodiscard]] std::filesystem::path singleplayerWorldDataPath(const std::string& folderName) const;
+    [[nodiscard]] std::filesystem::path singleplayerPlayerDataPath(const std::string& folderName) const;
+    [[nodiscard]] std::filesystem::path singleplayerWorldMetadataPath(const std::string& folderName) const;
+    [[nodiscard]] bool createNewSingleplayerWorld();
+    [[nodiscard]] bool ensureSelectedSingleplayerWorld();
+    void cycleSelectedSingleplayerWorld(int direction);
+    bool saveActiveSingleplayerWorld(bool showNotice);
+    void unloadActiveSingleplayerWorld();
     void beginSingleplayerLoad();
     void updateSingleplayerLoad();
     void syncWorldData();
@@ -264,6 +286,9 @@ class Application
     float musicVolume_ = 0.85f;
     float sfxVolume_ = 1.0f;
     bool creativeToggleKeyWasDown_ = false;
+    bool previousWorldKeyWasDown_ = false;
+    bool newWorldKeyWasDown_ = false;
+    bool nextWorldKeyWasDown_ = false;
     bool spawnPresetToggleKeyWasDown_ = false;
     float heldItemSwing_ = 0.0f;
     float footstepDistanceAccumulator_ = 0.0f;
@@ -273,6 +298,11 @@ class Application
     std::unordered_map<std::int64_t, CraftingGridSlots> chestSlotsByPosition_;
     ActiveMiningState activeMiningState_{};
     SingleplayerLoadState singleplayerLoadState_{};
+    std::vector<SingleplayerWorldEntry> singleplayerWorlds_;
+    std::size_t selectedSingleplayerWorldIndex_ = 0;
+    std::string activeSingleplayerWorldFolderName_;
+    std::string activeSingleplayerWorldDisplayName_;
+    float autosaveAccumulatorSeconds_ = 0.0f;
     bool pendingHostStartAfterWorldLoad_ = false;
     bool pendingClientJoinAfterWorldLoad_ = false;
     /// Frames spent in client join load (for throttled diagnostics).

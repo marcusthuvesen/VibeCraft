@@ -54,6 +54,21 @@ int Renderer::hitTestMainMenu(
 
     if (clampedRow == menu.iconHintsRow)
     {
+        const int worldPrevLeft = menu.centerCol + menu.outerWidth / 2 - 5;
+        if (clampedCol >= worldPrevLeft && clampedCol <= worldPrevLeft + 2)
+        {
+            return 7;
+        }
+        const int worldNewLeft = worldPrevLeft + 4;
+        if (clampedCol >= worldNewLeft && clampedCol <= worldNewLeft + 2)
+        {
+            return 8;
+        }
+        const int worldNextLeft = worldNewLeft + 4;
+        if (clampedCol >= worldNextLeft && clampedCol <= worldNextLeft + 2)
+        {
+            return 9;
+        }
         const int aLeft = menu.centerCol + menu.outerWidth - 3;
         if (clampedCol >= aLeft && clampedCol <= aLeft + 2)
         {
