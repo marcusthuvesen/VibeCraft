@@ -17,9 +17,17 @@
 #include <limits>
 #include <optional>
 #include <random>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
+#include "vibecraft/app/ApplicationEquipment.hpp"
+#include "vibecraft/app/ApplicationAmbientLife.hpp"
+#include "vibecraft/app/ApplicationBotanyRuntime.hpp"
+#include "vibecraft/app/ApplicationOxygenRuntime.hpp"
+#include "vibecraft/app/ApplicationTerraformingRuntime.hpp"
+#include "vibecraft/app/OxygenItems.hpp"
+#include "vibecraft/app/ApplicationSurvival.hpp"
 #include "vibecraft/audio/RuntimeAudioRoot.hpp"
 #include "vibecraft/core/Logger.hpp"
 #include "vibecraft/game/CollisionHelpers.hpp"
@@ -112,6 +120,79 @@ constexpr PlayerMovementSettings kPlayerMovementSettings{};
 constexpr float kFloatEpsilon = 0.0001f;
 constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
 
+struct MenuUiMetrics
+{
+    float mouseX = 0.0f;
+    float mouseY = 0.0f;
+    std::uint32_t windowWidth = 1;
+    std::uint32_t windowHeight = 1;
+    std::uint16_t textWidth = 100;
+    std::uint16_t textHeight = 30;
+};
+
+[[nodiscard]] MenuUiMetrics computeMenuUiMetrics(
+    const platform::Window& window,
+    const platform::InputState& inputState,
+    const bgfx::Stats* const stats)
+{
+    const std::uint32_t pixelWidth = std::max(window.width(), 1U);
+    const std::uint32_t pixelHeight = std::max(window.height(), 1U);
+    const std::uint32_t logicalWidth = std::max(window.logicalWidth(), 1U);
+    const std::uint32_t logicalHeight = std::max(window.logicalHeight(), 1U);
+    const float xScale = static_cast<float>(logicalWidth) / static_cast<float>(pixelWidth);
+    const float yScale = static_cast<float>(logicalHeight) / static_cast<float>(pixelHeight);
+    const std::uint16_t rawTextWidth =
+        stats != nullptr && stats->textWidth > 0 ? stats->textWidth : static_cast<std::uint16_t>(100);
+    const std::uint16_t rawTextHeight =
+        stats != nullptr && stats->textHeight > 0 ? stats->textHeight : static_cast<std::uint16_t>(30);
+
+    const int scaledTextWidth = std::clamp(
+        static_cast<int>(std::lround(static_cast<float>(rawTextWidth) * xScale)),
+        40,
+        500);
+    const int scaledTextHeight = std::clamp(
+        static_cast<int>(std::lround(static_cast<float>(rawTextHeight) * yScale)),
+        20,
+        300);
+
+    MenuUiMetrics metrics{};
+    metrics.mouseX = inputState.mouseWindowX * xScale;
+    metrics.mouseY = inputState.mouseWindowY * yScale;
+    metrics.windowWidth = logicalWidth;
+    metrics.windowHeight = logicalHeight;
+    metrics.textWidth = static_cast<std::uint16_t>(scaledTextWidth);
+    metrics.textHeight = static_cast<std::uint16_t>(scaledTextHeight);
+    return metrics;
+}
+
+[[nodiscard]] game::WeatherType nextWeatherType(const game::WeatherType type)
+{
+    switch (type)
+    {
+    case game::WeatherType::Clear:
+        return game::WeatherType::Cloudy;
+    case game::WeatherType::Cloudy:
+        return game::WeatherType::Rain;
+    case game::WeatherType::Rain:
+    default:
+        return game::WeatherType::Clear;
+    }
+}
+
+[[nodiscard]] float weatherElapsedSecondsForType(const game::WeatherType type)
+{
+    float elapsed = 0.0f;
+    for (const auto& preset : game::weather_detail::kWeatherPattern)
+    {
+        if (preset.type == type)
+        {
+            return elapsed;
+        }
+        elapsed += preset.durationSeconds;
+    }
+    return 0.0f;
+}
+
 [[nodiscard]] std::uint32_t generateRandomWorldSeed()
 {
     std::random_device randomDevice;
@@ -123,6 +204,105 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
         seed = 0x6d2b79f5U;
     }
     return seed;
+}
+
+struct BiomeVisualProfile
+{
+    glm::vec3 skyTarget{0.62f, 0.75f, 0.96f};
+    glm::vec3 horizonTarget{0.76f, 0.88f, 1.0f};
+    glm::vec3 cloudTarget{0.96f, 0.97f, 1.0f};
+    glm::vec3 sunTintTarget{1.0f, 0.97f, 0.92f};
+    glm::vec3 moonTintTarget{0.62f, 0.72f, 1.0f};
+    float skyBlend = 0.0f;
+    float horizonBlend = 0.0f;
+    float cloudBlend = 0.0f;
+    float sunBlend = 0.0f;
+    float moonBlend = 0.0f;
+    float skyBrightness = 1.0f;
+    float horizonBrightness = 1.0f;
+    float cloudBrightness = 1.0f;
+};
+
+[[nodiscard]] BiomeVisualProfile biomeVisualProfile(const world::SurfaceBiome biome)
+{
+    using B = world::SurfaceBiome;
+    switch (biome)
+    {
+    case B::Sandy:
+        return {
+            .skyTarget = {0.90f, 0.59f, 0.44f},
+            .horizonTarget = {0.98f, 0.63f, 0.43f},
+            .cloudTarget = {0.96f, 0.71f, 0.55f},
+            .sunTintTarget = {1.0f, 0.82f, 0.56f},
+            .moonTintTarget = {0.70f, 0.60f, 0.82f},
+            .skyBlend = 0.42f,
+            .horizonBlend = 0.58f,
+            .cloudBlend = 0.30f,
+            .sunBlend = 0.26f,
+            .moonBlend = 0.18f,
+            .skyBrightness = 0.93f,
+            .horizonBrightness = 0.95f,
+            .cloudBrightness = 0.97f,
+        };
+    case B::Snowy:
+        return {
+            .skyTarget = {0.50f, 0.66f, 0.97f},
+            .horizonTarget = {0.66f, 0.77f, 0.99f},
+            .cloudTarget = {0.86f, 0.90f, 1.0f},
+            .sunTintTarget = {0.86f, 0.94f, 1.0f},
+            .moonTintTarget = {0.74f, 0.78f, 1.0f},
+            .skyBlend = 0.34f,
+            .horizonBlend = 0.38f,
+            .cloudBlend = 0.28f,
+            .sunBlend = 0.20f,
+            .moonBlend = 0.28f,
+            .skyBrightness = 1.04f,
+            .horizonBrightness = 1.05f,
+            .cloudBrightness = 1.03f,
+        };
+    case B::Jungle:
+        return {
+            .skyTarget = {0.25f, 0.86f, 0.88f},
+            .horizonTarget = {0.49f, 0.99f, 0.86f},
+            .cloudTarget = {0.79f, 0.96f, 0.90f},
+            .sunTintTarget = {0.88f, 1.0f, 0.92f},
+            .moonTintTarget = {0.64f, 0.88f, 1.0f},
+            .skyBlend = 0.56f,
+            .horizonBlend = 0.62f,
+            .cloudBlend = 0.38f,
+            .sunBlend = 0.24f,
+            .moonBlend = 0.22f,
+            .skyBrightness = 1.09f,
+            .horizonBrightness = 1.13f,
+            .cloudBrightness = 1.06f,
+        };
+    case B::TemperateGrassland:
+    default:
+        return {
+            .skyTarget = {0.40f, 0.82f, 0.95f},
+            .horizonTarget = {0.60f, 0.93f, 0.90f},
+            .cloudTarget = {0.89f, 0.98f, 0.97f},
+            .sunTintTarget = {0.95f, 1.0f, 0.92f},
+            .moonTintTarget = {0.70f, 0.86f, 1.0f},
+            .skyBlend = 0.28f,
+            .horizonBlend = 0.34f,
+            .cloudBlend = 0.20f,
+            .sunBlend = 0.14f,
+            .moonBlend = 0.16f,
+            .skyBrightness = 1.05f,
+            .horizonBrightness = 1.06f,
+            .cloudBrightness = 1.03f,
+        };
+    }
+}
+
+[[nodiscard]] glm::vec3 applyBiomeColorGrade(
+    const glm::vec3& baseColor,
+    const glm::vec3& targetColor,
+    const float blend,
+    const float brightness)
+{
+    return glm::clamp(glm::mix(baseColor, targetColor, std::clamp(blend, 0.0f, 1.0f)) * std::max(0.0f, brightness), glm::vec3(0.0f), glm::vec3(1.0f));
 }
 
 [[nodiscard]] std::int64_t currentUnixTimeSeconds()
@@ -377,36 +557,6 @@ constexpr float kNetworkTickSeconds = 1.0f / 20.0f;
     return std::max(kMinimumBreakDurationSeconds, rawDurationSeconds);
 }
 
-[[nodiscard]] const char* timeOfDayLabel(const game::TimeOfDayPeriod period)
-{
-    switch (period)
-    {
-    case game::TimeOfDayPeriod::Dawn:
-        return "dawn";
-    case game::TimeOfDayPeriod::Day:
-        return "day";
-    case game::TimeOfDayPeriod::Dusk:
-        return "dusk";
-    case game::TimeOfDayPeriod::Night:
-    default:
-        return "night";
-    }
-}
-
-[[nodiscard]] const char* weatherLabel(const game::WeatherType weatherType)
-{
-    switch (weatherType)
-    {
-    case game::WeatherType::Cloudy:
-        return "cloudy";
-    case game::WeatherType::Rain:
-        return "rain";
-    case game::WeatherType::Clear:
-    default:
-        return "clear";
-    }
-}
-
 [[nodiscard]] std::uint64_t chunkMeshId(const world::ChunkCoord& coord)
 {
     return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(coord.x)) << 32U)
@@ -624,6 +774,148 @@ void applyMeshSyncGpuData(
     return game::aabbAtFeet(feetPosition, kPlayerMovementSettings.colliderHalfWidth, colliderHeight);
 }
 
+[[nodiscard]] bool aabbOverlapsBlockCell(const game::Aabb& aabb, const glm::ivec3& blockPosition)
+{
+    const glm::vec3 blockMin(blockPosition);
+    const glm::vec3 blockMax = blockMin + glm::vec3(1.0f);
+    return aabb.min.x < blockMax.x && aabb.max.x > blockMin.x
+        && aabb.min.y < blockMax.y && aabb.max.y > blockMin.y
+        && aabb.min.z < blockMax.z && aabb.max.z > blockMin.z;
+}
+
+[[nodiscard]] bool aabbTouchesFluid(
+    const world::World& worldState,
+    const game::Aabb& aabb);
+
+[[nodiscard]] bool feetRestOnDryLand(
+    const world::World& worldState,
+    const glm::vec3& feetPosition)
+{
+    const int belowX = static_cast<int>(std::floor(feetPosition.x));
+    const int belowY = static_cast<int>(std::floor(feetPosition.y - kFloatEpsilon));
+    const int belowZ = static_cast<int>(std::floor(feetPosition.z));
+    if (belowY < world::kWorldMinY || belowY > world::kWorldMaxY)
+    {
+        return false;
+    }
+    const world::BlockType belowBlock = worldState.blockAt(belowX, belowY, belowZ);
+    return world::isSolid(belowBlock) && !world::isFluid(belowBlock);
+}
+
+[[nodiscard]] bool isSpawnFeetPositionSafe(
+    const world::World& worldState,
+    const glm::vec3& feetPosition,
+    const float colliderHeight)
+{
+    const game::Aabb candidateAabb = playerAabbAt(feetPosition, colliderHeight);
+    if (game::collidesWithSolidBlock(worldState, candidateAabb))
+    {
+        return false;
+    }
+    if (aabbTouchesFluid(worldState, candidateAabb))
+    {
+        return false;
+    }
+    return feetRestOnDryLand(worldState, feetPosition);
+}
+
+[[nodiscard]] std::uint32_t inventoryBlockCount(
+    const HotbarSlots& hotbarSlots,
+    const BagSlots& bagSlots,
+    const world::BlockType blockType)
+{
+    const auto accumulateCount = [blockType](const auto& slots)
+    {
+        std::uint32_t total = 0;
+        for (const InventorySlot& slot : slots)
+        {
+            if (slot.blockType == blockType && slot.equippedItem == EquippedItem::None && slot.count > 0)
+            {
+                total += slot.count;
+            }
+        }
+        return total;
+    };
+
+    return accumulateCount(hotbarSlots) + accumulateCount(bagSlots);
+}
+
+constexpr std::uint32_t kStarterRelayMinimumCount = 4;
+
+[[nodiscard]] bool ensureStarterRelayAvailable(
+    HotbarSlots& hotbarSlots,
+    BagSlots& bagSlots,
+    const std::size_t selectedHotbarIndex)
+{
+    std::uint32_t currentCount =
+        inventoryBlockCount(hotbarSlots, bagSlots, world::BlockType::OxygenGenerator);
+    if (currentCount >= kStarterRelayMinimumCount)
+    {
+        return false;
+    }
+
+    bool addedAny = false;
+    std::size_t preservedSelectedHotbarIndex = selectedHotbarIndex;
+    while (currentCount < kStarterRelayMinimumCount)
+    {
+        if (!addBlockToInventory(hotbarSlots, bagSlots, world::BlockType::OxygenGenerator, preservedSelectedHotbarIndex))
+        {
+            break;
+        }
+        ++currentCount;
+        addedAny = true;
+    }
+    return addedAny;
+}
+
+[[nodiscard]] bool aabbTouchesFluid(
+    const world::World& worldState,
+    const game::Aabb& aabb)
+{
+    const int minX = static_cast<int>(std::floor(aabb.min.x));
+    const int minY = static_cast<int>(std::floor(aabb.min.y));
+    const int minZ = static_cast<int>(std::floor(aabb.min.z));
+    const int maxX = static_cast<int>(std::floor(aabb.max.x - game::kAabbEpsilon));
+    const int maxY = static_cast<int>(std::floor(aabb.max.y - game::kAabbEpsilon));
+    const int maxZ = static_cast<int>(std::floor(aabb.max.z - game::kAabbEpsilon));
+
+    for (int z = minZ; z <= maxZ; ++z)
+    {
+        for (int y = minY; y <= maxY; ++y)
+        {
+            for (int x = minX; x <= maxX; ++x)
+            {
+                if (world::isFluid(worldState.blockAt(x, y, z)))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+[[nodiscard]] bool canPlaceRelayAtTarget(
+    const world::World& worldState,
+    const glm::ivec3& buildTarget,
+    const glm::vec3& playerFeetPosition,
+    const float colliderHeight)
+{
+    if (buildTarget.y < world::kWorldMinY || buildTarget.y > world::kWorldMaxY)
+    {
+        return false;
+    }
+
+    const world::BlockType existingType = worldState.blockAt(buildTarget.x, buildTarget.y, buildTarget.z);
+    if (existingType != world::BlockType::Air && !world::blockMetadata(existingType).breakable)
+    {
+        return false;
+    }
+
+    return !aabbOverlapsBlockCell(playerAabbAt(playerFeetPosition, colliderHeight), buildTarget);
+}
+
 [[nodiscard]] glm::vec3 findInitialSpawnFeetPosition(
     const world::World& worldState,
     const world::TerrainGenerator& terrainGenerator,
@@ -632,18 +924,23 @@ void applyMeshSyncGpuData(
 {
     const int spawnWorldX = static_cast<int>(std::floor(preferredCameraPosition.x));
     const int spawnWorldZ = static_cast<int>(std::floor(preferredCameraPosition.z));
-    glm::vec3 spawnFeetPosition(
+glm::vec3 spawnFeetPosition(
         preferredCameraPosition.x,
         static_cast<float>(terrainGenerator.surfaceHeightAt(spawnWorldX, spawnWorldZ) + 1),
         preferredCameraPosition.z);
 
     // The expanded modern world height moved the terrain surface far above the legacy dev-camera
     // spawn. Start on top of the actual surface, then keep stepping upward until the player
-    // capsule has full headroom (e.g. if a tree generated at the spawn column).
-    constexpr int kSpawnClearanceSearchLimit = 64;
+    // capsule has full headroom (e.g. if a tree generated at the spawn column) and is not inside
+    // any fluid column.
+    constexpr int kSpawnClearanceSearchLimit = world::kWorldHeight;
     for (int attempt = 0; attempt <= kSpawnClearanceSearchLimit; ++attempt)
     {
-        if (!game::collidesWithSolidBlock(worldState, playerAabbAt(spawnFeetPosition, colliderHeight)))
+        if (spawnFeetPosition.y >= static_cast<float>(world::kWorldMaxY) - colliderHeight)
+        {
+            break;
+        }
+        if (isSpawnFeetPositionSafe(worldState, spawnFeetPosition, colliderHeight))
         {
             return spawnFeetPosition;
         }
@@ -651,6 +948,44 @@ void applyMeshSyncGpuData(
     }
 
     return spawnFeetPosition;
+}
+
+[[nodiscard]] std::optional<glm::vec3> findNearbyDrySpawnFeetPosition(
+    const world::World& worldState,
+    const world::TerrainGenerator& terrainGenerator,
+    const glm::vec3& probePosition,
+    const float colliderHeight)
+{
+    constexpr int kSearchStep = 8;
+    constexpr int kSearchRadius = 256;
+    for (int radius = 0; radius <= kSearchRadius; radius += kSearchStep)
+    {
+        for (int dz = -radius; dz <= radius; dz += kSearchStep)
+        {
+            for (int dx = -radius; dx <= radius; dx += kSearchStep)
+            {
+                if (radius > 0 && std::abs(dx) != radius && std::abs(dz) != radius)
+                {
+                    continue;
+                }
+                const glm::vec3 candidateProbe{
+                    probePosition.x + static_cast<float>(dx),
+                    probePosition.y,
+                    probePosition.z + static_cast<float>(dz),
+                };
+                glm::vec3 candidateFeet = findInitialSpawnFeetPosition(
+                    worldState,
+                    terrainGenerator,
+                    candidateProbe,
+                    colliderHeight);
+                if (isSpawnFeetPositionSafe(worldState, candidateFeet, colliderHeight))
+                {
+                    return candidateFeet;
+                }
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] const char* spawnPresetLabel(const SpawnPreset preset)
@@ -707,6 +1042,15 @@ void applyMeshSyncGpuData(
     }
 }
 
+[[nodiscard]] const char* cardinalFacingLabel(const glm::vec3& forward)
+{
+    if (std::abs(forward.x) >= std::abs(forward.z))
+    {
+        return forward.x >= 0.0f ? "+X (East)" : "-X (West)";
+    }
+    return forward.z >= 0.0f ? "+Z (South)" : "-Z (North)";
+}
+
 [[nodiscard]] bool matchesSpawnBiomeTarget(
     const world::SurfaceBiome biome,
     const SpawnBiomeTarget target)
@@ -726,6 +1070,27 @@ void applyMeshSyncGpuData(
         return biome == SB::Jungle;
     }
     return true;
+}
+
+[[nodiscard]] glm::vec3 preferredBiomePreviewProbePosition(
+    const SpawnBiomeTarget target,
+    const glm::vec3& fallbackCameraPosition)
+{
+    constexpr float kPreviewOffset = 4096.0f;
+    switch (target)
+    {
+    case SpawnBiomeTarget::Temperate:
+        return glm::vec3(kPreviewOffset, fallbackCameraPosition.y, 0.0f);
+    case SpawnBiomeTarget::Sandy:
+        return glm::vec3(-kPreviewOffset, fallbackCameraPosition.y, 0.0f);
+    case SpawnBiomeTarget::Snowy:
+        return glm::vec3(0.0f, fallbackCameraPosition.y, kPreviewOffset);
+    case SpawnBiomeTarget::Jungle:
+        return glm::vec3(0.0f, fallbackCameraPosition.y, -kPreviewOffset);
+    case SpawnBiomeTarget::Any:
+    default:
+        return fallbackCameraPosition;
+    }
 }
 
 [[nodiscard]] SpawnPreset nextSpawnPreset(const SpawnPreset preset)
@@ -768,17 +1133,46 @@ void applyMeshSyncGpuData(
 }
 
 [[nodiscard]] glm::vec3 resolveSpawnFeetPosition(
-    const world::World& worldState,
+    world::World& worldState,
     const world::TerrainGenerator& terrainGenerator,
     const SpawnPreset spawnPreset,
     const SpawnBiomeTarget spawnBiomeTarget,
     const glm::vec3& fallbackCameraPosition,
     const float colliderHeight)
 {
+    constexpr int kSpawnProbeChunkRadius = 1;
+    constexpr std::size_t kSpawnProbeChunkBudget =
+        static_cast<std::size_t>((kSpawnProbeChunkRadius * 2 + 1) * (kSpawnProbeChunkRadius * 2 + 1));
+    const auto ensureProbeGenerated = [&](const int worldX, const int worldZ)
+    {
+        worldState.generateMissingChunksAround(
+            terrainGenerator,
+            world::worldToChunkCoord(worldX, worldZ),
+            kSpawnProbeChunkRadius,
+            kSpawnProbeChunkBudget);
+    };
+
     const glm::vec3 spawnProbePosition = preferredSpawnProbePosition(spawnPreset, fallbackCameraPosition);
+    ensureProbeGenerated(
+        static_cast<int>(std::floor(spawnProbePosition.x)),
+        static_cast<int>(std::floor(spawnProbePosition.z)));
     if (spawnBiomeTarget == SpawnBiomeTarget::Any)
     {
-        return findInitialSpawnFeetPosition(worldState, terrainGenerator, spawnProbePosition, colliderHeight);
+        glm::vec3 spawnFeet = findInitialSpawnFeetPosition(worldState, terrainGenerator, spawnProbePosition, colliderHeight);
+        if (isSpawnFeetPositionSafe(worldState, spawnFeet, colliderHeight))
+        {
+            return spawnFeet;
+        }
+        if (const std::optional<glm::vec3> dryFeet = findNearbyDrySpawnFeetPosition(
+                worldState,
+                terrainGenerator,
+                spawnProbePosition,
+                colliderHeight);
+            dryFeet.has_value())
+        {
+            return *dryFeet;
+        }
+        return spawnFeet;
     }
 
     // Search around the preferred spawn area for the requested biome.
@@ -800,17 +1194,47 @@ void applyMeshSyncGpuData(
                 {
                     continue;
                 }
+                ensureProbeGenerated(sampleX, sampleZ);
                 const glm::vec3 biomeProbe{
                     static_cast<float>(sampleX),
                     spawnProbePosition.y,
                     static_cast<float>(sampleZ),
                 };
-                return findInitialSpawnFeetPosition(worldState, terrainGenerator, biomeProbe, colliderHeight);
+                glm::vec3 candidateFeet = findInitialSpawnFeetPosition(
+                    worldState,
+                    terrainGenerator,
+                    biomeProbe,
+                    colliderHeight);
+                if (isSpawnFeetPositionSafe(worldState, candidateFeet, colliderHeight))
+                {
+                    return candidateFeet;
+                }
             }
         }
     }
 
-    return findInitialSpawnFeetPosition(worldState, terrainGenerator, spawnProbePosition, colliderHeight);
+    glm::vec3 fallbackFeet = findInitialSpawnFeetPosition(worldState, terrainGenerator, spawnProbePosition, colliderHeight);
+    if (isSpawnFeetPositionSafe(worldState, fallbackFeet, colliderHeight))
+    {
+        return fallbackFeet;
+    }
+    if (const std::optional<glm::vec3> dryFeet = findNearbyDrySpawnFeetPosition(
+            worldState,
+            terrainGenerator,
+            spawnProbePosition,
+            colliderHeight);
+        dryFeet.has_value())
+    {
+        return *dryFeet;
+    }
+    // Last resort: clamp to terrain surface instead of returning a high unsafe altitude that causes a long fall.
+    const int fallbackX = static_cast<int>(std::floor(spawnProbePosition.x));
+    const int fallbackZ = static_cast<int>(std::floor(spawnProbePosition.z));
+    const int surfaceY = terrainGenerator.surfaceHeightAt(fallbackX, fallbackZ);
+    return glm::vec3(
+        static_cast<float>(fallbackX) + 0.5f,
+        static_cast<float>(surfaceY + 1),
+        static_cast<float>(fallbackZ) + 0.5f);
 }
 
 struct AxisMoveResult
@@ -995,23 +1419,6 @@ struct AxisMoveResult
     };
 }
 
-[[nodiscard]] const char* hazardLabel(const game::EnvironmentalHazards& hazards)
-{
-    if (hazards.bodyInLava)
-    {
-        return "lava";
-    }
-    if (hazards.headSubmergedInWater)
-    {
-        return "underwater";
-    }
-    if (hazards.bodyInWater)
-    {
-        return "water";
-    }
-    return "clear";
-}
-
 [[nodiscard]] std::string resolveJoinAddressFromEnvironment()
 {
     if (const char* const address = std::getenv("VIBECRAFT_JOIN_ADDRESS"); address != nullptr
@@ -1028,6 +1435,12 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
     hotbarSlots[0].equippedItem = EquippedItem::DiamondSword;
     hotbarSlots[0].count = 1;
     hotbarSlots[0].blockType = world::BlockType::Air;
+    hotbarSlots[7].equippedItem = EquippedItem::OxygenCanister;
+    hotbarSlots[7].count = 2;
+    hotbarSlots[7].blockType = world::BlockType::Air;
+    hotbarSlots[8].equippedItem = EquippedItem::None;
+    hotbarSlots[8].count = 1;
+    hotbarSlots[8].blockType = world::BlockType::OxygenGenerator;
     selectedHotbarIndex = 0;
 }
 
@@ -1138,17 +1551,17 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
     using MK = game::MobKind;
     switch (mobKind)
     {
-    case MK::HostileStalker:
+    case MK::VoidStrider:
         return EquippedItem::RottenFlesh;
     case MK::Player:
         return EquippedItem::None;
-    case MK::Cow:
+    case MK::Sporegrazer:
         return EquippedItem::Leather;
-    case MK::Pig:
-        return EquippedItem::RawPorkchop;
-    case MK::Sheep:
+    case MK::Burrower:
+        return EquippedItem::Leather;
+    case MK::Shardback:
         return EquippedItem::Mutton;
-    case MK::Chicken:
+    case MK::Skitterwing:
         return EquippedItem::Feather;
     }
     return EquippedItem::RottenFlesh;
@@ -1157,51 +1570,6 @@ void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHo
 [[nodiscard]] render::HudItemKind hudItemKindForEquippedItem(const EquippedItem equippedItem)
 {
     return static_cast<render::HudItemKind>(equippedItem);
-}
-
-[[nodiscard]] world::BlockType networkFallbackBlockTypeForEquippedItem(const EquippedItem equippedItem)
-{
-    using BK = world::BlockType;
-    switch (equippedItem)
-    {
-    case EquippedItem::Stick:
-        return BK::TreeTrunk;
-    case EquippedItem::RottenFlesh:
-        return BK::CoalOre;
-    case EquippedItem::Leather:
-        return BK::TreeTrunk;
-    case EquippedItem::RawPorkchop:
-        return BK::Dirt;
-    case EquippedItem::Mutton:
-        return BK::TreeCrown;
-    case EquippedItem::Feather:
-        return BK::Sand;
-    case EquippedItem::Coal:
-        return BK::CoalOre;
-    case EquippedItem::WoodSword:
-    case EquippedItem::WoodPickaxe:
-    case EquippedItem::WoodAxe:
-        return BK::OakPlanks;
-    case EquippedItem::StoneSword:
-    case EquippedItem::StonePickaxe:
-    case EquippedItem::StoneAxe:
-        return BK::Cobblestone;
-    case EquippedItem::IronSword:
-    case EquippedItem::IronPickaxe:
-    case EquippedItem::IronAxe:
-        return BK::IronOre;
-    case EquippedItem::GoldSword:
-    case EquippedItem::GoldPickaxe:
-    case EquippedItem::GoldAxe:
-        return BK::GoldOre;
-    case EquippedItem::DiamondSword:
-    case EquippedItem::DiamondPickaxe:
-    case EquippedItem::DiamondAxe:
-        return BK::DiamondOre;
-    case EquippedItem::None:
-    default:
-        return BK::Air;
-    }
 }
 
 template <std::size_t SlotCount>
@@ -1458,8 +1826,8 @@ bool Application::initialize()
     mouseCaptured_ = false;
     window_.setRelativeMouseMode(false);
     mainMenuNotice_ = singleplayerWorlds_.empty()
-        ? "No worlds yet. Press N or Singleplayer to create one."
-        : "Singleplayer resumes the selected world. Multiplayer: Host or Join.";
+        ? "No worlds yet. Click Singleplayer to choose New World."
+        : "Click Singleplayer to choose a saved world or create a new one.";
     applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
     return true;
 }
@@ -1500,16 +1868,48 @@ void Application::update(const float deltaTimeSeconds)
     weatherSystem_.advanceSeconds(deltaTimeSeconds);
     const game::DayNightSample dayNightSample = dayNightCycle_.sample();
     const game::WeatherSample weatherSample = weatherSystem_.sample();
+    const world::SurfaceBiome playerSurfaceBiome =
+        (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
+        ? terrainGenerator_.surfaceBiomeAt(
+            static_cast<int>(std::floor(playerFeetPosition_.x)),
+            static_cast<int>(std::floor(playerFeetPosition_.z)))
+        : world::SurfaceBiome::TemperateGrassland;
+    const BiomeVisualProfile biomeProfile = biomeVisualProfile(playerSurfaceBiome);
     const glm::vec3 clearSkyTint = dayNightSample.skyTint * weatherSample.skyTintMultiplier;
     const glm::vec3 clearHorizonTint = dayNightSample.horizonTint * weatherSample.horizonTintMultiplier;
-    const glm::vec3 skyTint =
+    const glm::vec3 weatherSkyTint =
         glm::mix(clearSkyTint, weatherSample.cloudTint, weatherSample.cloudCoverage * 0.28f);
-    const glm::vec3 horizonTint =
+    const glm::vec3 weatherHorizonTint =
         glm::mix(clearHorizonTint, weatherSample.cloudTint, weatherSample.cloudCoverage * 0.18f);
+    const glm::vec3 skyTint = applyBiomeColorGrade(
+        weatherSkyTint,
+        biomeProfile.skyTarget,
+        biomeProfile.skyBlend,
+        biomeProfile.skyBrightness);
+    const glm::vec3 horizonTint = applyBiomeColorGrade(
+        weatherHorizonTint,
+        biomeProfile.horizonTarget,
+        biomeProfile.horizonBlend,
+        biomeProfile.horizonBrightness);
+    const glm::vec3 cloudTint = applyBiomeColorGrade(
+        weatherSample.cloudTint,
+        biomeProfile.cloudTarget,
+        biomeProfile.cloudBlend,
+        biomeProfile.cloudBrightness);
     const float sunLightScale = 1.0f - weatherSample.sunOcclusion * 0.55f;
     const float moonLightScale = 1.0f - weatherSample.cloudCoverage * 0.20f;
     const float visibleSunScale = 1.0f - weatherSample.sunOcclusion * 0.35f;
     const float visibleMoonScale = 1.0f - weatherSample.cloudCoverage * 0.12f;
+    const glm::vec3 sunLightTint = applyBiomeColorGrade(
+        dayNightSample.sunLightTint,
+        biomeProfile.sunTintTarget,
+        biomeProfile.sunBlend,
+        1.0f);
+    const glm::vec3 moonLightTint = applyBiomeColorGrade(
+        dayNightSample.moonLightTint,
+        biomeProfile.moonTintTarget,
+        biomeProfile.moonBlend,
+        1.0f);
 
     const float frameTimeMs = deltaTimeSeconds * 1000.0f;
     if (!frameTimeInitialized_)
@@ -1522,6 +1922,11 @@ void Application::update(const float deltaTimeSeconds)
         constexpr float kFrameTimeSmoothingAlpha = 0.1f;
         smoothedFrameTimeMs_ =
             smoothedFrameTimeMs_ + (frameTimeMs - smoothedFrameTimeMs_) * kFrameTimeSmoothingAlpha;
+    }
+
+    if (gameScreen_ == GameScreen::Playing)
+    {
+        sessionPlayTimeSeconds_ += deltaTimeSeconds;
     }
 
     if (singleplayerLoadState_.active)
@@ -1544,6 +1949,21 @@ void Application::update(const float deltaTimeSeconds)
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
         syncWorldData();
+        if (gameScreen_ == GameScreen::Playing && multiplayerMode_ != MultiplayerRuntimeMode::Client)
+        {
+            static_cast<void>(tickLocalTerraforming(
+                deltaTimeSeconds,
+                world_,
+                terrainGenerator_,
+                playerFeetPosition_,
+                terraformingRuntimeState_));
+            static_cast<void>(tickLocalBotany(
+                deltaTimeSeconds,
+                world_,
+                terrainGenerator_,
+                playerFeetPosition_,
+                botanyRuntimeState_));
+        }
         const float currentEyeHeight = std::max(0.0f, camera_.position().y - playerFeetPosition_.y);
         updateDroppedItems(deltaTimeSeconds, currentEyeHeight);
         if (!activeSingleplayerWorldFolderName_.empty() && multiplayerMode_ != MultiplayerRuntimeMode::Client)
@@ -1556,10 +1976,27 @@ void Application::update(const float deltaTimeSeconds)
         }
     }
 
-    // Multiplayer clients do not receive mob state from the host yet; skip local simulation.
+    // Multiplayer clients use host-replicated mob poses for rendering; skip local mob simulation.
     if (gameScreen_ == GameScreen::Playing && multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
         const float healthBeforeMobTick = playerVitals_.health();
+        const float armorProtection = equippedArmorProtectionFraction(equipmentSlots_);
+        std::vector<glm::vec3> mobTickRemoteFeet;
+        std::vector<float> mobTickRemoteHealth;
+        std::span<const glm::vec3> mobTickRemoteFeetSpan{};
+        std::span<float> mobTickRemoteHealthSpan{};
+        if (!remotePlayers_.empty())
+        {
+            mobTickRemoteFeet.reserve(remotePlayers_.size());
+            mobTickRemoteHealth.reserve(remotePlayers_.size());
+            for (const RemotePlayerState& remote : remotePlayers_)
+            {
+                mobTickRemoteFeet.push_back(remote.position);
+                mobTickRemoteHealth.push_back(remote.health);
+            }
+            mobTickRemoteFeetSpan = mobTickRemoteFeet;
+            mobTickRemoteHealthSpan = mobTickRemoteHealth;
+        }
         mobSpawnSystem_.tick(
             world_,
             terrainGenerator_,
@@ -1568,7 +2005,19 @@ void Application::update(const float deltaTimeSeconds)
             deltaTimeSeconds,
             dayNightSample.period,
             mobSpawningEnabled_,
-            playerVitals_);
+            playerVitals_,
+            1.0f - armorProtection,
+            mobTickRemoteFeetSpan,
+            mobTickRemoteHealthSpan,
+            playerVitals_.maxHealth(),
+            1.0f);
+        if (!remotePlayers_.empty())
+        {
+            for (std::size_t i = 0; i < remotePlayers_.size(); ++i)
+            {
+                remotePlayers_[i].health = mobTickRemoteHealth[i];
+            }
+        }
         if (!creativeModeEnabled_ && playerVitals_.health() + 0.001f < healthBeforeMobTick)
         {
             soundEffects_.playPlayerHurt();
@@ -1587,22 +2036,79 @@ void Application::update(const float deltaTimeSeconds)
     frameDebugData.totalFaces = world_.totalVisibleFaces();
     frameDebugData.residentChunkCount = static_cast<std::uint32_t>(residentChunkMeshIds_.size());
     frameDebugData.cameraPosition = camera_.position();
+    const MenuUiMetrics menuUiMetrics = computeMenuUiMetrics(window_, inputState_, bgfx::getStats());
+    frameDebugData.uiMenuWindowWidth = menuUiMetrics.windowWidth;
+    frameDebugData.uiMenuWindowHeight = menuUiMetrics.windowHeight;
+    frameDebugData.uiMenuTextWidth = menuUiMetrics.textWidth;
+    frameDebugData.uiMenuTextHeight = menuUiMetrics.textHeight;
+    const glm::ivec3 playerBlockPosition(
+        static_cast<int>(std::floor(playerFeetPosition_.x)),
+        static_cast<int>(std::floor(playerFeetPosition_.y)),
+        static_cast<int>(std::floor(playerFeetPosition_.z)));
+    const world::ChunkCoord playerChunkCoord =
+        world::worldToChunkCoord(playerBlockPosition.x, playerBlockPosition.z);
+    const glm::ivec3 playerChunkLocal(
+        world::worldToLocalCoord(playerBlockPosition.x),
+        playerBlockPosition.y,
+        world::worldToLocalCoord(playerBlockPosition.z));
+    const glm::vec3 cameraForward = camera_.forward();
+    frameDebugData.debugCoordinatesLine = fmt::format(
+        "XYZ: {:.2f} / {:.2f} / {:.2f}",
+        playerFeetPosition_.x,
+        playerFeetPosition_.y,
+        playerFeetPosition_.z);
+    frameDebugData.debugBlockLine = fmt::format(
+        "Block: {} {} {}  Target: {}",
+        playerBlockPosition.x,
+        playerBlockPosition.y,
+        playerBlockPosition.z,
+        raycastHit.has_value()
+            ? fmt::format("{}, {}, {}", raycastHit->solidBlock.x, raycastHit->solidBlock.y, raycastHit->solidBlock.z)
+            : "none");
+    frameDebugData.debugChunkLine = fmt::format(
+        "Chunk: {} {}  In-chunk: {} {} {}",
+        playerChunkCoord.x,
+        playerChunkCoord.z,
+        playerChunkLocal.x,
+        playerChunkLocal.y,
+        playerChunkLocal.z);
+    frameDebugData.debugFacingLine = fmt::format(
+        "Facing: {}  Look: {:.2f} / {:.2f} / {:.2f}",
+        cardinalFacingLabel(cameraForward),
+        cameraForward.x,
+        cameraForward.y,
+        cameraForward.z);
+    frameDebugData.debugBiomeLine = fmt::format(
+        "Biome: {}  Surface Y: {}",
+        world::surfaceBiomeLabel(playerSurfaceBiome),
+        terrainGenerator_.surfaceHeightAt(playerBlockPosition.x, playerBlockPosition.z));
     frameDebugData.uiCursorX = inputState_.mouseWindowX;
     frameDebugData.uiCursorY = inputState_.mouseWindowY;
     frameDebugData.showWorldOriginGuides = showWorldOriginGuides_;
     frameDebugData.health = playerVitals_.health();
     frameDebugData.maxHealth = playerVitals_.maxHealth();
+    frameDebugData.oxygen = oxygenSystem_.state().oxygen;
+    frameDebugData.maxOxygen = oxygenSystem_.state().capacity;
+    frameDebugData.oxygenTankItemKind =
+        hudItemKindForEquippedItem(equippedItemForOxygenTankTier(oxygenSystem_.state().tankTier));
+    frameDebugData.oxygenInsideSafeZone = playerOxygenEnvironment_.insideSafeZone;
+    frameDebugData.oxygenLowWarning =
+        oxygenSystem_.state().capacity > 0.0f
+        && oxygenSystem_.state().oxygen <= oxygenSystem_.state().capacity * 0.2f;
+    frameDebugData.oxygenStatusLine =
+        buildOxygenStatusLine(terrainGenerator_, playerFeetPosition_, oxygenSystem_.state(), playerOxygenEnvironment_);
+    frameDebugData.oxygenZoneLabel = oxygenZoneLabel(playerOxygenEnvironment_);
     const float safeFrameTimeMs = std::max(smoothedFrameTimeMs_, 0.001f);
     const float smoothedFps = 1000.0f / safeFrameTimeMs;
     const int cycleSeconds = static_cast<int>(std::floor(dayNightSample.elapsedSeconds));
     const int cycleMinutesComponent = cycleSeconds / 60;
     const int cycleSecondsComponent = cycleSeconds % 60;
     frameDebugData.statusLine = fmt::format(
-        "HP: {:.0f}/{:.0f}  Air: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Net: {}  Peers: {}  Frame: {:.2f} ms ({:.1f} fps){}",
+        "HP: {:.0f}/{:.0f}  O2: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Net: {}  Peers: {}  Frame: {:.2f} ms ({:.1f} fps){}",
         playerVitals_.health(),
         playerVitals_.maxHealth(),
-        playerVitals_.air(),
-        playerVitals_.maxAir(),
+        oxygenSystem_.state().oxygen,
+        oxygenSystem_.state().capacity,
         hazardLabel(playerHazards_),
         mouseCaptured_ ? "captured" : "released",
         isGrounded_ ? "yes" : "no",
@@ -1621,10 +2127,78 @@ void Application::update(const float deltaTimeSeconds)
         frameDebugData.hotbarSlots[slotIndex] = makeHudSlot(hotbarSlots_[slotIndex]);
     }
     frameDebugData.hotbarSelectedIndex = selectedHotbarIndex_;
+    frameDebugData.selectedHotbarLabel = inventorySlotLabel(hotbarSlots_[selectedHotbarIndex_]);
+    frameDebugData.selectedHotbarActionHint =
+        portableOxygenItemUseHint(hotbarSlots_[selectedHotbarIndex_], oxygenSystem_.state());
+    if (frameDebugData.selectedHotbarActionHint.empty())
+    {
+        const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+        if (selectedSlot.count > 0
+            && selectedSlot.equippedItem == EquippedItem::None
+            && selectedSlot.blockType == world::BlockType::OxygenGenerator)
+        {
+            frameDebugData.selectedHotbarActionHint = "Right-click: place Atmos Relay (7-block oxygen zone)";
+        }
+        else if (selectedSlot.count > 0
+            && selectedSlot.equippedItem == EquippedItem::None
+            && selectedSlot.blockType == world::BlockType::PlanterTray)
+        {
+            frameDebugData.selectedHotbarActionHint = "Right-click: place a planter for greenhouse growth";
+        }
+        else if (selectedSlot.count > 0
+            && selectedSlot.equippedItem == EquippedItem::None
+            && selectedSlot.blockType == world::BlockType::GreenhouseGlass)
+        {
+            frameDebugData.selectedHotbarActionHint = "Right-click: build around planters to boost growth";
+        }
+        else if (selectedSlot.count > 0
+            && selectedSlot.equippedItem == EquippedItem::None
+            && selectedSlot.blockType == world::BlockType::PowerConduit)
+        {
+            frameDebugData.selectedHotbarActionHint = "Right-click: power nearby greenhouse growth";
+        }
+        else if (selectedSlot.count > 0
+            && selectedSlot.equippedItem == EquippedItem::None
+            && selectedSlot.blockType == world::BlockType::FiberSapling)
+        {
+            frameDebugData.selectedHotbarActionHint = "Right-click: plant in a tray inside oxygen";
+        }
+        else if (selectedSlot.count > 0 && selectedSlot.equippedItem != EquippedItem::None)
+        {
+            switch (selectedSlot.equippedItem)
+            {
+            case EquippedItem::ScoutHelmet:
+                frameDebugData.selectedHotbarActionHint = "Open inventory: equip in Helmet slot";
+                break;
+            case EquippedItem::ScoutChestRig:
+                frameDebugData.selectedHotbarActionHint = "Open inventory: equip in Chest slot";
+                break;
+            case EquippedItem::ScoutGreaves:
+                frameDebugData.selectedHotbarActionHint = "Open inventory: equip in Legs slot";
+                break;
+            case EquippedItem::ScoutBoots:
+                frameDebugData.selectedHotbarActionHint = "Open inventory: equip in Boots slot";
+                break;
+            default:
+                frameDebugData.selectedHotbarActionHint = oxygenBiomeGuidance(terrainGenerator_, playerFeetPosition_);
+                break;
+            }
+        }
+        else
+        {
+            frameDebugData.selectedHotbarActionHint = oxygenBiomeGuidance(terrainGenerator_, playerFeetPosition_);
+        }
+    }
+    frameDebugData.survivalTipLine = survivalTipLine(sessionPlayTimeSeconds_);
+    compactBagSlots(bagSlots_);
     frameDebugData.heldItemSwing = heldItemSwing_;
     for (std::size_t i = 0; i < frameDebugData.bagSlots.size(); ++i)
     {
         frameDebugData.bagSlots[i] = makeHudSlot(bagSlots_[i]);
+    }
+    for (std::size_t i = 0; i < frameDebugData.equipmentSlots.size(); ++i)
+    {
+        frameDebugData.equipmentSlots[i] = makeHudSlot(equipmentSlots_[i]);
     }
     if (craftingMenuState_.active)
     {
@@ -1680,8 +2254,87 @@ void Application::update(const float deltaTimeSeconds)
 
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
-        frameDebugData.worldMobs.reserve(mobSpawnSystem_.mobs().size() + remotePlayers_.size());
-        for (const game::MobInstance& mob : mobSpawnSystem_.mobs())
+        constexpr int kRelayVisualSearchBlocks = 48;
+        constexpr float kRelayVisualRescanIntervalSeconds = 0.35f;
+        constexpr float kRelayVisualRescanDistanceSq = 4.0f * 4.0f;
+        cachedVisibleOxygenGeneratorsCooldownSeconds_ = std::max(
+            0.0f,
+            cachedVisibleOxygenGeneratorsCooldownSeconds_ - deltaTimeSeconds);
+        const glm::vec3 visualScanDelta = playerFeetPosition_ - cachedVisibleOxygenGeneratorsReference_;
+        const bool movedEnoughForVisualRescan =
+            glm::dot(visualScanDelta, visualScanDelta) >= kRelayVisualRescanDistanceSq;
+        if (!cachedVisibleOxygenGeneratorsValid_ || cachedVisibleOxygenGeneratorsCooldownSeconds_ <= 0.0f
+            || movedEnoughForVisualRescan)
+        {
+            cachedVisibleOxygenGenerators_ =
+                collectVisibleOxygenGenerators(world_, playerFeetPosition_, kRelayVisualSearchBlocks, 48);
+            cachedVisibleOxygenGeneratorsReference_ = playerFeetPosition_;
+            cachedVisibleOxygenGeneratorsCooldownSeconds_ = kRelayVisualRescanIntervalSeconds;
+            cachedVisibleOxygenGeneratorsValid_ = true;
+        }
+
+        constexpr float kRelayVisualMinSpacing = 2.25f;
+        constexpr float kRelayVisualMinSpacingSq = kRelayVisualMinSpacing * kRelayVisualMinSpacing;
+        constexpr std::size_t kMaxRelayVisualZones = 24;
+        std::size_t relayVisualCount = 0;
+        const std::vector<OxygenSafeZone> visibleSafeZones =
+            buildOxygenSafeZones(cachedVisibleOxygenGenerators_);
+        for (const OxygenSafeZone& zone : visibleSafeZones)
+        {
+            bool tooCloseToExistingZone = false;
+            for (const render::FrameDebugData::WorldSafeZoneHud& existingZone : frameDebugData.worldSafeZones)
+            {
+                const glm::vec3 delta = existingZone.worldCenter - zone.center;
+                if (glm::dot(delta, delta) < kRelayVisualMinSpacingSq)
+                {
+                    tooCloseToExistingZone = true;
+                    break;
+                }
+            }
+            if (tooCloseToExistingZone)
+            {
+                continue;
+            }
+
+            frameDebugData.worldSafeZones.push_back(render::FrameDebugData::WorldSafeZoneHud{
+                .worldCenter = zone.center,
+                .radius = zone.radius,
+                .preview = false,
+            });
+            ++relayVisualCount;
+            if (relayVisualCount >= kMaxRelayVisualZones)
+            {
+                break;
+            }
+        }
+        if (raycastHit.has_value())
+        {
+            const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+            if (selectedSlot.count > 0
+                && selectedSlot.blockType == world::BlockType::OxygenGenerator
+                && selectedSlot.equippedItem == EquippedItem::None)
+            {
+                const bool relayPlacementValid = canPlaceRelayAtTarget(
+                    world_,
+                    raycastHit->buildTarget,
+                    playerFeetPosition_,
+                    kPlayerMovementSettings.standingColliderHeight);
+                frameDebugData.relayPlacementPreviewActive = true;
+                frameDebugData.relayPlacementPreviewValid = relayPlacementValid;
+                frameDebugData.relayPlacementPreviewLabel = relayPlacementValid ? "relay ready" : "relay blocked";
+                frameDebugData.worldSafeZones.push_back(render::FrameDebugData::WorldSafeZoneHud{
+                    .worldCenter = glm::vec3(raycastHit->buildTarget) + glm::vec3(0.5f),
+                    .radius = 7.0f,
+                    .preview = true,
+                    .valid = relayPlacementValid,
+                });
+            }
+        }
+        const std::vector<game::MobInstance>& mobsForHud = multiplayerMode_ == MultiplayerRuntimeMode::Client
+            ? clientReplicatedMobs_
+            : mobSpawnSystem_.mobs();
+        frameDebugData.worldMobs.reserve(mobsForHud.size() + remotePlayers_.size());
+        for (const game::MobInstance& mob : mobsForHud)
         {
             frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
                 .feetPosition = {mob.feetX, mob.feetY, mob.feetZ},
@@ -1690,6 +2343,8 @@ void Application::update(const float deltaTimeSeconds)
                 .halfWidth = mob.halfWidth,
                 .height = mob.height,
                 .mobKind = mob.kind,
+                .mobHealthCurrent = mob.health,
+                .mobHealthMax = game::mobKindDefaultMaxHealth(mob.kind),
             });
         }
         constexpr float kDegreesToRadians = 0.01745329251994329577f;
@@ -1707,6 +2362,13 @@ void Application::update(const float deltaTimeSeconds)
                 .heldItemUsesSwordPose = isSwordItem(remotePlayer.selectedEquippedItem),
             });
         }
+        frameDebugData.worldBirds = buildAmbientBirdHud(
+            terrainGenerator_,
+            camera_.position(),
+            playerSurfaceBiome,
+            weatherSample.elapsedSeconds,
+            weatherSample.rainIntensity,
+            dayNightSample.sunVisibility);
     }
 
     if (raycastHit.has_value())
@@ -1741,30 +2403,35 @@ void Application::update(const float deltaTimeSeconds)
         {
             frameDebugData.mainMenuSelectedWorldLabel = "No world selected";
         }
-        const bgfx::Stats* const stats = bgfx::getStats();
-        const std::uint16_t textWidth =
-            stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
-        const std::uint16_t textHeight =
-            stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
+        frameDebugData.mainMenuSingleplayerPanelActive = mainMenuSingleplayerPickerOpen_;
         if (mainMenuSoundSettingsOpen_)
         {
             frameDebugData.mainMenuSoundSettingsActive = true;
             frameDebugData.mainMenuSoundMusicVolume = musicVolume_;
             frameDebugData.mainMenuSoundSfxVolume = sfxVolume_;
             frameDebugData.mainMenuSoundSettingsHoveredControl = render::Renderer::hitTestPauseSoundMenu(
-                inputState_.mouseWindowX,
-                inputState_.mouseWindowY,
-                window_.width(),
-                window_.height(),
-                textWidth,
-                textHeight);
+                menuUiMetrics.mouseX,
+                menuUiMetrics.mouseY,
+                menuUiMetrics.windowWidth,
+                menuUiMetrics.windowHeight,
+                menuUiMetrics.textWidth,
+                menuUiMetrics.textHeight);
         }
-        else if (singleplayerLoadState_.active)
+        else if (singleplayerLoadState_.active || mainMenuBootLoading_)
         {
             frameDebugData.mainMenuHoveredButton = -1;
             frameDebugData.mainMenuLoadingActive = true;
-            frameDebugData.mainMenuLoadingProgress = singleplayerLoadState_.progress;
-            frameDebugData.mainMenuLoadingLabel = singleplayerLoadState_.label;
+            if (singleplayerLoadState_.active)
+            {
+                frameDebugData.mainMenuLoadingProgress = singleplayerLoadState_.progress;
+                frameDebugData.mainMenuLoadingLabel = singleplayerLoadState_.label;
+            }
+            else
+            {
+                frameDebugData.mainMenuLoadingProgress = std::min(1.0f, 0.25f + mainMenuTimeSeconds_ * 0.6f);
+                frameDebugData.mainMenuLoadingTitle = "LOADING MENU";
+                frameDebugData.mainMenuLoadingLabel = "Preparing main menu...";
+            }
         }
         else if (mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None)
         {
@@ -1782,13 +2449,13 @@ void Application::update(const float deltaTimeSeconds)
             }
             const int joinSlotsForMpLayout = static_cast<int>(std::min(joinPresets_.size(), std::size_t(3)));
             const int mainMenuContentTopBias = vibecraft::render::detail::mainMenuLogoReservedDbgRows(
-                window_.width(),
-                window_.height(),
-                textHeight,
+                menuUiMetrics.windowWidth,
+                menuUiMetrics.windowHeight,
+                menuUiMetrics.textHeight,
                 renderer_.menuLogoWidthPx(),
                 renderer_.menuLogoHeightPx());
             const int multiplayerRowShift = render::Renderer::multiplayerMenuRowShift(
-                textHeight,
+                menuUiMetrics.textHeight,
                 mainMenuMultiplayerPanel_,
                 mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Join ? joinSlotsForMpLayout : 0,
                 mainMenuContentTopBias);
@@ -1796,34 +2463,34 @@ void Application::update(const float deltaTimeSeconds)
             {
             case MainMenuMultiplayerPanel::Hub:
                 frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerHub(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight,
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight,
                     multiplayerRowShift,
                     mainMenuContentTopBias);
                 break;
             case MainMenuMultiplayerPanel::Host:
                 frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerHost(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight,
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight,
                     multiplayerRowShift,
                     mainMenuContentTopBias);
                 break;
             case MainMenuMultiplayerPanel::Join:
                 frameDebugData.mainMenuMultiplayerHoveredControl = render::Renderer::hitTestMainMenuMultiplayerJoin(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight,
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight,
                     joinSlotsForMpLayout,
                     multiplayerRowShift,
                     mainMenuContentTopBias);
@@ -1836,15 +2503,28 @@ void Application::update(const float deltaTimeSeconds)
         }
         else
         {
-            frameDebugData.mainMenuHoveredButton = render::Renderer::hitTestMainMenu(
-                inputState_.mouseWindowX,
-                inputState_.mouseWindowY,
-                window_.width(),
-                window_.height(),
-                textWidth,
-                textHeight,
-                renderer_.menuLogoWidthPx(),
-                renderer_.menuLogoHeightPx());
+            if (mainMenuSingleplayerPickerOpen_)
+            {
+                frameDebugData.mainMenuSingleplayerHoveredControl = render::Renderer::hitTestMainMenuSingleplayerPanel(
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight);
+            }
+            else
+            {
+                frameDebugData.mainMenuHoveredButton = render::Renderer::hitTestMainMenu(
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight,
+                    renderer_.menuLogoWidthPx(),
+                    renderer_.menuLogoHeightPx());
+            }
         }
         if (singleplayerLoadState_.active)
         {
@@ -1870,23 +2550,19 @@ void Application::update(const float deltaTimeSeconds)
     {
         frameDebugData.pauseMenuActive = true;
         frameDebugData.pauseMenuNotice = pauseMenuNotice_;
-        const bgfx::Stats* const pauseStats = bgfx::getStats();
-        const std::uint16_t pauseTextWidth =
-            pauseStats != nullptr && pauseStats->textWidth > 0 ? pauseStats->textWidth : 100;
-        const std::uint16_t pauseTextHeight =
-            pauseStats != nullptr && pauseStats->textHeight > 0 ? pauseStats->textHeight : 30;
         if (pauseGameSettingsOpen_)
         {
             frameDebugData.pauseGameSettingsActive = true;
             frameDebugData.mobSpawningEnabled = mobSpawningEnabled_;
             frameDebugData.pauseSpawnBiomeLabel = spawnBiomeTargetLabel(spawnBiomeTarget_);
+            frameDebugData.pauseWeatherLabel = weatherLabel(weatherSample.type);
             frameDebugData.pauseGameSettingsHoveredControl = render::Renderer::hitTestPauseGameSettingsMenu(
-                inputState_.mouseWindowX,
-                inputState_.mouseWindowY,
-                window_.width(),
-                window_.height(),
-                pauseTextWidth,
-                pauseTextHeight);
+                menuUiMetrics.mouseX,
+                menuUiMetrics.mouseY,
+                menuUiMetrics.windowWidth,
+                menuUiMetrics.windowHeight,
+                menuUiMetrics.textWidth,
+                menuUiMetrics.textHeight);
         }
         else if (pauseSoundSettingsOpen_)
         {
@@ -1894,31 +2570,31 @@ void Application::update(const float deltaTimeSeconds)
             frameDebugData.pauseSoundMusicVolume = musicVolume_;
             frameDebugData.pauseSoundSfxVolume = sfxVolume_;
             int hoveredControl = render::Renderer::hitTestPauseSoundMenu(
-                inputState_.mouseWindowX,
-                inputState_.mouseWindowY,
-                window_.width(),
-                window_.height(),
-                pauseTextWidth,
-                pauseTextHeight);
+                menuUiMetrics.mouseX,
+                menuUiMetrics.mouseY,
+                menuUiMetrics.windowWidth,
+                menuUiMetrics.windowHeight,
+                menuUiMetrics.textWidth,
+                menuUiMetrics.textHeight);
             if (render::Renderer::pauseSoundSliderValueFromMouse(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    pauseTextWidth,
-                    pauseTextHeight,
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight,
                     true)
                 .has_value())
             {
                 hoveredControl = 1;
             }
             else if (render::Renderer::pauseSoundSliderValueFromMouse(
-                         inputState_.mouseWindowX,
-                         inputState_.mouseWindowY,
-                         window_.width(),
-                         window_.height(),
-                         pauseTextWidth,
-                         pauseTextHeight,
+                         menuUiMetrics.mouseX,
+                         menuUiMetrics.mouseY,
+                         menuUiMetrics.windowWidth,
+                         menuUiMetrics.windowHeight,
+                         menuUiMetrics.textWidth,
+                         menuUiMetrics.textHeight,
                          false)
                          .has_value())
             {
@@ -1929,12 +2605,12 @@ void Application::update(const float deltaTimeSeconds)
         else
         {
             frameDebugData.pauseMenuHoveredButton = render::Renderer::hitTestPauseMenu(
-                inputState_.mouseWindowX,
-                inputState_.mouseWindowY,
-                window_.width(),
-                window_.height(),
-                pauseTextWidth,
-                pauseTextHeight);
+                menuUiMetrics.mouseX,
+                menuUiMetrics.mouseY,
+                menuUiMetrics.windowWidth,
+                menuUiMetrics.windowHeight,
+                menuUiMetrics.textWidth,
+                menuUiMetrics.textHeight);
         }
     }
 
@@ -1964,9 +2640,9 @@ void Application::update(const float deltaTimeSeconds)
             .horizonTint = horizonTint,
             .sunDirection = dayNightSample.sunDirection,
             .moonDirection = dayNightSample.moonDirection,
-            .sunLightTint = dayNightSample.sunLightTint * sunLightScale,
-            .moonLightTint = dayNightSample.moonLightTint * moonLightScale,
-            .cloudTint = weatherSample.cloudTint,
+            .sunLightTint = sunLightTint * sunLightScale,
+            .moonLightTint = moonLightTint * moonLightScale,
+            .cloudTint = cloudTint,
             .weatherWindDirectionXZ = weatherSample.windDirectionXZ,
             .sunVisibility = dayNightSample.sunVisibility * visibleSunScale,
             .moonVisibility = dayNightSample.moonVisibility * visibleMoonScale,
@@ -2063,6 +2739,11 @@ void Application::processInput(const float deltaTimeSeconds)
             mainMenuNotice_ = "Sound settings saved.";
             saveAudioPrefs();
         }
+        else if (gameScreen_ == GameScreen::MainMenu && mainMenuSingleplayerPickerOpen_)
+        {
+            mainMenuSingleplayerPickerOpen_ = false;
+            mainMenuNotice_.clear();
+        }
     }
 
     if (inputState_.releaseMouseRequested)
@@ -2097,10 +2778,20 @@ void Application::processInput(const float deltaTimeSeconds)
             return;
         }
         const bgfx::Stats* const stats = bgfx::getStats();
-        const std::uint16_t textWidth =
-            stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
-        const std::uint16_t textHeight =
-            stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
+        const MenuUiMetrics menuUiMetrics = computeMenuUiMetrics(window_, inputState_, stats);
+        if (mainMenuBootLoading_)
+        {
+            const bool menuTextReady = stats != nullptr && stats->textWidth > 0 && stats->textHeight > 0;
+            const bool menuLogoReady = renderer_.menuLogoWidthPx() > 0 && renderer_.menuLogoHeightPx() > 0;
+            if (!menuTextReady || !menuLogoReady)
+            {
+                return;
+            }
+            refreshSingleplayerWorldList();
+            mainMenuBootLoading_ = false;
+            mainMenuNotice_.clear();
+            return;
+        }
         const bool creativeToggleKeyDown = inputState_.isKeyDown(SDL_SCANCODE_C);
         const bool previousWorldKeyDown = inputState_.isKeyDown(SDL_SCANCODE_LEFTBRACKET);
         const bool newWorldKeyDown = inputState_.isKeyDown(SDL_SCANCODE_N);
@@ -2114,14 +2805,20 @@ void Application::processInput(const float deltaTimeSeconds)
         if (previousWorldKeyDown && !previousWorldKeyWasDown_)
         {
             cycleSelectedSingleplayerWorld(-1);
+            mainMenuSingleplayerPickerOpen_ = true;
         }
         if (newWorldKeyDown && !newWorldKeyWasDown_)
         {
-            static_cast<void>(createNewSingleplayerWorld());
+            if (createNewSingleplayerWorld() && mainMenuSingleplayerPickerOpen_)
+            {
+                pendingHostStartAfterWorldLoad_ = false;
+                beginSingleplayerLoad();
+            }
         }
         if (nextWorldKeyDown && !nextWorldKeyWasDown_)
         {
             cycleSelectedSingleplayerWorld(1);
+            mainMenuSingleplayerPickerOpen_ = true;
         }
         if (spawnPresetToggleKeyDown && !spawnPresetToggleKeyWasDown_)
         {
@@ -2140,12 +2837,12 @@ void Application::processInput(const float deltaTimeSeconds)
             if (mainMenuSoundSettingsOpen_)
             {
                 const int hit = render::Renderer::hitTestPauseSoundMenu(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight);
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight);
                 switch (hit)
                 {
                 case 0:
@@ -2177,25 +2874,25 @@ void Application::processInput(const float deltaTimeSeconds)
             {
                 const int joinSlotsForMpLayout = static_cast<int>(std::min(joinPresets_.size(), std::size_t(3)));
                 const int mainMenuContentTopBias = vibecraft::render::detail::mainMenuLogoReservedDbgRows(
-                    window_.width(),
-                    window_.height(),
-                    textHeight,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textHeight,
                     renderer_.menuLogoWidthPx(),
                     renderer_.menuLogoHeightPx());
                 const int multiplayerRowShift = render::Renderer::multiplayerMenuRowShift(
-                    textHeight,
+                    menuUiMetrics.textHeight,
                     mainMenuMultiplayerPanel_,
                     mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Join ? joinSlotsForMpLayout : 0,
                     mainMenuContentTopBias);
                 if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Hub)
                 {
                     const int hit = render::Renderer::hitTestMainMenuMultiplayerHub(
-                        inputState_.mouseWindowX,
-                        inputState_.mouseWindowY,
-                        window_.width(),
-                        window_.height(),
-                        textWidth,
-                        textHeight,
+                        menuUiMetrics.mouseX,
+                        menuUiMetrics.mouseY,
+                        menuUiMetrics.windowWidth,
+                        menuUiMetrics.windowHeight,
+                        menuUiMetrics.textWidth,
+                        menuUiMetrics.textHeight,
                         multiplayerRowShift,
                         mainMenuContentTopBias);
                     switch (hit)
@@ -2223,12 +2920,12 @@ void Application::processInput(const float deltaTimeSeconds)
                 else if (mainMenuMultiplayerPanel_ == MainMenuMultiplayerPanel::Host)
                 {
                     const int hit = render::Renderer::hitTestMainMenuMultiplayerHost(
-                        inputState_.mouseWindowX,
-                        inputState_.mouseWindowY,
-                        window_.width(),
-                        window_.height(),
-                        textWidth,
-                        textHeight,
+                        menuUiMetrics.mouseX,
+                        menuUiMetrics.mouseY,
+                        menuUiMetrics.windowWidth,
+                        menuUiMetrics.windowHeight,
+                        menuUiMetrics.textWidth,
+                        menuUiMetrics.textHeight,
                         multiplayerRowShift,
                         mainMenuContentTopBias);
                     switch (hit)
@@ -2248,12 +2945,12 @@ void Application::processInput(const float deltaTimeSeconds)
                 {
                     const int presetSlots = joinSlotsForMpLayout;
                     const int hit = render::Renderer::hitTestMainMenuMultiplayerJoin(
-                        inputState_.mouseWindowX,
-                        inputState_.mouseWindowY,
-                        window_.width(),
-                        window_.height(),
-                        textWidth,
-                        textHeight,
+                        menuUiMetrics.mouseX,
+                        menuUiMetrics.mouseY,
+                        menuUiMetrics.windowWidth,
+                        menuUiMetrics.windowHeight,
+                        menuUiMetrics.textWidth,
+                        menuUiMetrics.textHeight,
                         presetSlots,
                         multiplayerRowShift,
                         mainMenuContentTopBias);
@@ -2289,17 +2986,15 @@ void Application::processInput(const float deltaTimeSeconds)
                     }
                 }
             }
-            else
+            else if (mainMenuSingleplayerPickerOpen_)
             {
-                const int hit = render::Renderer::hitTestMainMenu(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight,
-                    renderer_.menuLogoWidthPx(),
-                    renderer_.menuLogoHeightPx());
+                const int hit = render::Renderer::hitTestMainMenuSingleplayerPanel(
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight);
                 switch (hit)
                 {
                 case 0:
@@ -2307,6 +3002,40 @@ void Application::processInput(const float deltaTimeSeconds)
                     beginSingleplayerLoad();
                     break;
                 case 1:
+                    if (createNewSingleplayerWorld())
+                    {
+                        pendingHostStartAfterWorldLoad_ = false;
+                        beginSingleplayerLoad();
+                    }
+                    break;
+                case 2:
+                    mainMenuSingleplayerPickerOpen_ = false;
+                    mainMenuNotice_.clear();
+                    break;
+                default:
+                    break;
+                }
+            }
+            else
+            {
+                const int hit = render::Renderer::hitTestMainMenu(
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight,
+                    renderer_.menuLogoWidthPx(),
+                    renderer_.menuLogoHeightPx());
+                switch (hit)
+                {
+                case 0:
+                    refreshSingleplayerWorldList();
+                    mainMenuSingleplayerPickerOpen_ = true;
+                    mainMenuNotice_.clear();
+                    break;
+                case 1:
+                    mainMenuSingleplayerPickerOpen_ = false;
                     mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::Hub;
                     mainMenuNotice_.clear();
                     break;
@@ -2331,12 +3060,18 @@ void Application::processInput(const float deltaTimeSeconds)
                     break;
                 case 7:
                     cycleSelectedSingleplayerWorld(-1);
+                    mainMenuSingleplayerPickerOpen_ = true;
                     break;
                 case 8:
-                    static_cast<void>(createNewSingleplayerWorld());
+                    if (createNewSingleplayerWorld() && mainMenuSingleplayerPickerOpen_)
+                    {
+                        pendingHostStartAfterWorldLoad_ = false;
+                        beginSingleplayerLoad();
+                    }
                     break;
                 case 9:
                     cycleSelectedSingleplayerWorld(1);
+                    mainMenuSingleplayerPickerOpen_ = true;
                     break;
                 default:
                     break;
@@ -2349,22 +3084,19 @@ void Application::processInput(const float deltaTimeSeconds)
     if (gameScreen_ == GameScreen::Paused)
     {
         const bgfx::Stats* const stats = bgfx::getStats();
-        const std::uint16_t textWidth =
-            stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
-        const std::uint16_t textHeight =
-            stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
+        const MenuUiMetrics menuUiMetrics = computeMenuUiMetrics(window_, inputState_, stats);
 
         if (inputState_.leftMouseClicked)
         {
             if (pauseGameSettingsOpen_)
             {
                 const int hit = render::Renderer::hitTestPauseGameSettingsMenu(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight);
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight);
                 switch (hit)
                 {
                 case 0:
@@ -2382,12 +3114,23 @@ void Application::processInput(const float deltaTimeSeconds)
                 case 2:
                 {
                     spawnBiomeTarget_ = nextSpawnBiomeTarget(spawnBiomeTarget_);
+                    const glm::vec3 biomePreviewProbePosition =
+                        preferredBiomePreviewProbePosition(spawnBiomeTarget_, camera_.position());
+                    const world::ChunkCoord biomePreviewChunk = world::worldToChunkCoord(
+                        static_cast<int>(std::floor(biomePreviewProbePosition.x)),
+                        static_cast<int>(std::floor(biomePreviewProbePosition.z)));
+                    world_.generateMissingChunksAround(
+                        terrainGenerator_,
+                        biomePreviewChunk,
+                        kStreamingSettings.bootstrapChunkRadius,
+                        static_cast<std::size_t>((kStreamingSettings.bootstrapChunkRadius * 2 + 1)
+                                                 * (kStreamingSettings.bootstrapChunkRadius * 2 + 1)));
                     spawnFeetPosition_ = resolveSpawnFeetPosition(
                         world_,
                         terrainGenerator_,
-                        spawnPreset_,
+                        SpawnPreset::Origin,
                         spawnBiomeTarget_,
-                        camera_.position(),
+                        biomePreviewProbePosition,
                         kPlayerMovementSettings.standingColliderHeight);
                     playerFeetPosition_ = spawnFeetPosition_;
                     verticalVelocity_ = 0.0f;
@@ -2404,7 +3147,15 @@ void Application::processInput(const float deltaTimeSeconds)
                         playerFeetPosition_,
                         kPlayerMovementSettings.standingColliderHeight,
                         kPlayerMovementSettings.standingEyeHeight);
-                    pauseMenuNotice_ = fmt::format("Spawn biome: {}", spawnBiomeTargetLabel(spawnBiomeTarget_));
+                    pauseMenuNotice_ = fmt::format("Biome preset: {}", spawnBiomeTargetLabel(spawnBiomeTarget_));
+                    break;
+                }
+                case 3:
+                {
+                    const game::WeatherType currentWeatherType = weatherSystem_.sample().type;
+                    const game::WeatherType nextType = nextWeatherType(currentWeatherType);
+                    weatherSystem_.setElapsedSeconds(weatherElapsedSecondsForType(nextType));
+                    pauseMenuNotice_ = fmt::format("Weather set to {}.", weatherLabel(nextType));
                     break;
                 }
                 default:
@@ -2414,12 +3165,12 @@ void Application::processInput(const float deltaTimeSeconds)
             else if (pauseSoundSettingsOpen_)
             {
                 const int hit = render::Renderer::hitTestPauseSoundMenu(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight);
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight);
                 switch (hit)
                 {
                 case 0:
@@ -2429,12 +3180,12 @@ void Application::processInput(const float deltaTimeSeconds)
                 default:
                 {
                     if (const std::optional<float> sliderValue = render::Renderer::pauseSoundSliderValueFromMouse(
-                            inputState_.mouseWindowX,
-                            inputState_.mouseWindowY,
-                            window_.width(),
-                            window_.height(),
-                            textWidth,
-                            textHeight,
+                            menuUiMetrics.mouseX,
+                            menuUiMetrics.mouseY,
+                            menuUiMetrics.windowWidth,
+                            menuUiMetrics.windowHeight,
+                            menuUiMetrics.textWidth,
+                            menuUiMetrics.textHeight,
                             true);
                         sliderValue.has_value())
                     {
@@ -2442,12 +3193,12 @@ void Application::processInput(const float deltaTimeSeconds)
                         musicDirector_.setMasterGain(musicVolume_);
                     }
                     else if (const std::optional<float> sliderValue = render::Renderer::pauseSoundSliderValueFromMouse(
-                                 inputState_.mouseWindowX,
-                                 inputState_.mouseWindowY,
-                                 window_.width(),
-                                 window_.height(),
-                                 textWidth,
-                                 textHeight,
+                                 menuUiMetrics.mouseX,
+                                 menuUiMetrics.mouseY,
+                                 menuUiMetrics.windowWidth,
+                                 menuUiMetrics.windowHeight,
+                                 menuUiMetrics.textWidth,
+                                 menuUiMetrics.textHeight,
                                  false);
                              sliderValue.has_value())
                     {
@@ -2462,12 +3213,12 @@ void Application::processInput(const float deltaTimeSeconds)
             else
             {
                 const int hit = render::Renderer::hitTestPauseMenu(
-                    inputState_.mouseWindowX,
-                    inputState_.mouseWindowY,
-                    window_.width(),
-                    window_.height(),
-                    textWidth,
-                    textHeight);
+                    menuUiMetrics.mouseX,
+                    menuUiMetrics.mouseY,
+                    menuUiMetrics.windowWidth,
+                    menuUiMetrics.windowHeight,
+                    menuUiMetrics.textWidth,
+                    menuUiMetrics.textHeight);
                 switch (hit)
                 {
                 case 0:
@@ -2484,6 +3235,10 @@ void Application::processInput(const float deltaTimeSeconds)
                     pauseMenuNotice_.clear();
                     break;
                 case 2:
+                    pauseGameSettingsOpen_ = true;
+                    pauseMenuNotice_.clear();
+                    break;
+                case 3:
                     if (multiplayerMode_ != MultiplayerRuntimeMode::Client)
                     {
                         static_cast<void>(saveActiveSingleplayerWorld(true));
@@ -2491,6 +3246,7 @@ void Application::processInput(const float deltaTimeSeconds)
                     stopMultiplayerSessions();
                     mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
                     window_.setTextInputActive(false);
+                    sessionPlayTimeSeconds_ = 0.0f;
                     gameScreen_ = GameScreen::MainMenu;
                     pauseSoundSettingsOpen_ = false;
                     pauseGameSettingsOpen_ = false;
@@ -2501,12 +3257,8 @@ void Application::processInput(const float deltaTimeSeconds)
                     unloadActiveSingleplayerWorld();
                     refreshSingleplayerWorldList();
                     break;
-                case 3:
-                    inputState_.quitRequested = true;
-                    break;
                 case 4:
-                    pauseGameSettingsOpen_ = true;
-                    pauseMenuNotice_.clear();
+                    inputState_.quitRequested = true;
                     break;
                 default:
                     break;
@@ -2958,17 +3710,30 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (!creativeModeEnabled_)
     {
-        const float healthBeforeEnvironmentTick = playerVitals_.health();
-        playerVitals_.tickEnvironment(deltaTimeSeconds, playerHazards_);
-        if (playerVitals_.health() + 0.001f < healthBeforeEnvironmentTick)
-        {
-            playerTookDamageThisFrame = true;
-        }
+        const PlayerSurvivalOxygenTickResult survivalTick = tickPlayerSurvivalOxygen(
+            deltaTimeSeconds,
+            world_,
+            terrainGenerator_,
+            playerFeetPosition_,
+            playerHazards_,
+            creativeModeEnabled_,
+            playerVitals_,
+            oxygenSystem_);
+        playerOxygenEnvironment_ = survivalTick.oxygenEnvironment;
+        playerTookDamageThisFrame = survivalTick.playerTookDamage;
     }
     else
     {
-        // Creative mode keeps vitals full and ignores environmental damage/air depletion.
-        playerVitals_.reset();
+        const PlayerSurvivalOxygenTickResult survivalTick = tickPlayerSurvivalOxygen(
+            deltaTimeSeconds,
+            world_,
+            terrainGenerator_,
+            playerFeetPosition_,
+            playerHazards_,
+            creativeModeEnabled_,
+            playerVitals_,
+            oxygenSystem_);
+        playerOxygenEnvironment_ = survivalTick.oxygenEnvironment;
     }
     if (playerTookDamageThisFrame)
     {
@@ -2987,15 +3752,37 @@ void Application::processInput(const float deltaTimeSeconds)
     if (inputState_.leftMousePressed)
     {
         const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
-        if (const std::optional<game::MobDamageResult> mobDamage = mobSpawnSystem_.damageClosestAlongRay(
-                world_,
-                camera_.position(),
-                camera_.forward(),
-                meleeReachForSlot(selectedSlot),
-                meleeDamageForSlot(selectedSlot),
-                playerFeetPosition_,
-                knockbackDistanceForSlot(selectedSlot));
-            mobDamage.has_value())
+        if (multiplayerMode_ == MultiplayerRuntimeMode::Client && clientSession_ != nullptr
+            && clientSession_->connected())
+        {
+            pendingClientMobMeleeSwing_ = false;
+            pendingClientMobMeleeTargetId_ = 0;
+            if (const std::optional<std::size_t> mobIndex = game::findClosestMobIndexAlongRay(
+                    clientReplicatedMobs_,
+                    camera_.position(),
+                    camera_.forward(),
+                    meleeReachForSlot(selectedSlot));
+                mobIndex.has_value())
+            {
+                pendingClientMobMeleeSwing_ = true;
+                pendingClientMobMeleeTargetId_ = clientReplicatedMobs_[*mobIndex].id;
+                lastClientMeleeSwingMobId_ = pendingClientMobMeleeTargetId_;
+                lastClientMeleeSwingSessionTimeSeconds_ = sessionPlayTimeSeconds_;
+                attackedMobThisFrame = true;
+                activeMiningState_.active = false;
+                activeMiningState_.elapsedSeconds = 0.0f;
+                soundEffects_.playPlayerAttack();
+            }
+        }
+        else if (const std::optional<game::MobDamageResult> mobDamage = mobSpawnSystem_.damageClosestAlongRay(
+                     world_,
+                     camera_.position(),
+                     camera_.forward(),
+                     meleeReachForSlot(selectedSlot),
+                     meleeDamageForSlot(selectedSlot),
+                     playerFeetPosition_,
+                     knockbackDistanceForSlot(selectedSlot));
+                 mobDamage.has_value())
         {
             attackedMobThisFrame = true;
             activeMiningState_.active = false;
@@ -3020,6 +3807,44 @@ void Application::processInput(const float deltaTimeSeconds)
     if (attackedMobThisFrame)
     {
         return;
+    }
+    if (inputState_.rightMousePressed)
+    {
+        InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+        const PortableOxygenItemUseResult oxygenUseResult = tryUsePortableOxygenItem(selectedSlot, oxygenSystem_);
+        if (oxygenUseResult.handled)
+        {
+            const game::OxygenTankTier tankTier = oxygenTankTierForUpgradeItem(selectedSlot.equippedItem);
+            if (tankTier != game::OxygenTankTier::None)
+            {
+                const InventorySlot previousTank = equipmentSlots_[equipmentSlotIndex(EquipmentSlotKind::OxygenTank)];
+                syncOxygenEquipmentSlotFromSystem(equipmentSlots_, oxygenSystem_);
+                if (!creativeModeEnabled_
+                    && previousTank.count > 0
+                    && previousTank.equippedItem != EquippedItem::None
+                    && previousTank.equippedItem != selectedSlot.equippedItem)
+                {
+                    const bool returnedToInventory = addEquippedItemToInventory(
+                        hotbarSlots_,
+                        bagSlots_,
+                        previousTank.equippedItem,
+                        selectedHotbarIndex_);
+                    if (!returnedToInventory)
+                    {
+                        spawnDroppedItemAtPosition(previousTank.equippedItem, playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
+                    }
+                }
+            }
+            if (oxygenUseResult.consumeSlot && !creativeModeEnabled_)
+            {
+                consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+            }
+            if (!oxygenUseResult.notice.empty())
+            {
+                respawnNotice_ = oxygenUseResult.notice;
+            }
+            return;
+        }
     }
     if (!raycastHit.has_value())
     {
@@ -3133,7 +3958,7 @@ void Application::processInput(const float deltaTimeSeconds)
                             .yawDelta = camera_.yawDegrees(),
                             .pitchDelta = camera_.pitchDegrees(),
                             .health = playerVitals_.health(),
-                            .air = playerVitals_.air(),
+                            .air = encodeLegacyNetworkAir(oxygenSystem_.state()),
                         .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
                         .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
                             .breakBlock = true,
@@ -3174,6 +3999,27 @@ void Application::processInput(const float deltaTimeSeconds)
             .position = raycastHit->buildTarget,
             .blockType = selectedSlot.blockType,
         };
+        if (selectedSlot.blockType == world::BlockType::OxygenGenerator
+            && !canPlaceRelayAtTarget(
+                world_,
+                command.position,
+                playerFeetPosition_,
+                kPlayerMovementSettings.standingColliderHeight))
+        {
+            respawnNotice_ = "Atmos relay blocked here.";
+            return;
+        }
+        const BotanyPlacementResult botanyPlacement = validateBotanyBlockPlacement(
+            world_,
+            command.position,
+            selectedSlot.blockType,
+            playerFeetPosition_,
+            creativeModeEnabled_);
+        if (!botanyPlacement.allowed)
+        {
+            respawnNotice_ = botanyPlacement.failureReason;
+            return;
+        }
         if (world_.applyEditCommand(command))
         {
             if (!creativeModeEnabled_)
@@ -3203,7 +4049,7 @@ void Application::processInput(const float deltaTimeSeconds)
                         .yawDelta = camera_.yawDegrees(),
                         .pitchDelta = camera_.pitchDegrees(),
                         .health = playerVitals_.health(),
-                        .air = playerVitals_.air(),
+                        .air = encodeLegacyNetworkAir(oxygenSystem_.state()),
                         .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
                         .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
                         .placeBlock = true,
@@ -3383,11 +4229,20 @@ void Application::respawnPlayer()
     isGrounded_ =
         isGroundedAtFeetPosition(world_, playerFeetPosition_, kPlayerMovementSettings.standingColliderHeight);
     playerVitals_.reset();
+    oxygenSystem_.resetForNewGame();
+    syncOxygenSystemFromEquipmentSlot(equipmentSlots_, oxygenSystem_, true);
+    syncOxygenEquipmentSlotFromSystem(equipmentSlots_, oxygenSystem_);
+    if (ensureStarterRelayAvailable(hotbarSlots_, bagSlots_, selectedHotbarIndex_))
+    {
+        respawnNotice_ = "Emergency Atmos Relay restocked.";
+    }
     playerHazards_ = samplePlayerHazards(
         world_,
         playerFeetPosition_,
         kPlayerMovementSettings.standingColliderHeight,
         kPlayerMovementSettings.standingEyeHeight);
+    playerOxygenEnvironment_ =
+        refreshPlayerOxygenEnvironment(world_, terrainGenerator_, playerFeetPosition_, playerHazards_, creativeModeEnabled_);
     camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
 }
 
@@ -3409,7 +4264,7 @@ void Application::openCraftingMenu(
     craftingMenuState_.bagStartRow = 0;
     craftingMenuState_.hint = useWorkbench
         ? "3x3 workbench crafting: left-click move, right-click split/place one."
-        : "2x2 inventory crafting: logs -> planks, planks -> sticks/table.";
+        : "2x2 inventory crafting: logs -> planks, planks -> sticks/table. Gear slots are on the left.";
     mouseCaptured_ = false;
     window_.setRelativeMouseMode(false);
     inputState_.clearMouseMotion();
@@ -3615,6 +4470,19 @@ void Application::handleCraftingMenuClick()
         targetSlot = &craftingMenuState_.gridSlots[static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase)];
         isCraftingGridSlot = true;
     }
+    else if (hit >= render::Renderer::kCraftingEquipmentHitBase
+             && hit < render::Renderer::kCraftingEquipmentHitBase + static_cast<int>(equipmentSlots_.size()))
+    {
+        const EquipmentSlotKind slotKind =
+            equipmentSlotKindForIndex(static_cast<std::size_t>(hit - render::Renderer::kCraftingEquipmentHitBase));
+        InventorySlot& equipmentSlot = equipmentSlots_[equipmentSlotIndex(slotKind)];
+        mergeOrSwapEquipmentSlot(craftingMenuState_.carriedSlot, equipmentSlot, slotKind);
+        if (slotKind == EquipmentSlotKind::OxygenTank)
+        {
+            syncOxygenSystemFromEquipmentSlot(equipmentSlots_, oxygenSystem_, false);
+        }
+        return;
+    }
     else if (hit >= render::Renderer::kCraftingHotbarHitBase
              && hit < render::Renderer::kCraftingHotbarHitBase + static_cast<int>(hotbarSlots_.size()))
     {
@@ -3664,6 +4532,19 @@ void Application::handleCraftingMenuRightClick()
     {
         targetSlot = &craftingMenuState_.gridSlots[static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase)];
         isCraftingGridSlot = true;
+    }
+    else if (hit >= render::Renderer::kCraftingEquipmentHitBase
+             && hit < render::Renderer::kCraftingEquipmentHitBase + static_cast<int>(equipmentSlots_.size()))
+    {
+        const EquipmentSlotKind slotKind =
+            equipmentSlotKindForIndex(static_cast<std::size_t>(hit - render::Renderer::kCraftingEquipmentHitBase));
+        InventorySlot& equipmentSlot = equipmentSlots_[equipmentSlotIndex(slotKind)];
+        rightClickEquipmentSlot(craftingMenuState_.carriedSlot, equipmentSlot, slotKind);
+        if (slotKind == EquipmentSlotKind::OxygenTank)
+        {
+            syncOxygenSystemFromEquipmentSlot(equipmentSlots_, oxygenSystem_, false);
+        }
+        return;
     }
     else if (hit >= render::Renderer::kCraftingHotbarHitBase
              && hit < render::Renderer::kCraftingHotbarHitBase + static_cast<int>(hotbarSlots_.size()))
@@ -3818,6 +4699,11 @@ void Application::refreshSingleplayerWorldList()
         }
         worldEntry.hasWorldData = std::filesystem::exists(singleplayerWorldDataPath(worldEntry.folderName), errorCode);
         worldEntry.hasPlayerData = std::filesystem::exists(singleplayerPlayerDataPath(worldEntry.folderName), errorCode);
+        const bool hasMetadata = std::filesystem::exists(singleplayerWorldMetadataPath(worldEntry.folderName), errorCode);
+        if (!hasMetadata && !worldEntry.hasWorldData && !worldEntry.hasPlayerData)
+        {
+            continue;
+        }
         singleplayerWorlds_.push_back(std::move(worldEntry));
     }
 
@@ -3945,12 +4831,14 @@ bool Application::saveActiveSingleplayerWorld(const bool showNotice)
     playerState.cameraPitchDegrees = camera_.pitchDegrees();
     playerState.health = playerVitals_.health();
     playerState.air = playerVitals_.air();
+    playerState.oxygenState = oxygenSystem_.state();
     playerState.creativeModeEnabled = creativeModeEnabled_;
     playerState.selectedHotbarIndex = static_cast<std::uint8_t>(std::min<std::size_t>(selectedHotbarIndex_, 255));
     playerState.dayNightElapsedSeconds = dayNightCycle_.elapsedSeconds();
     playerState.weatherElapsedSeconds = weatherSystem_.elapsedSeconds();
     playerState.hotbarSlots = hotbarSlots_;
     playerState.bagSlots = bagSlots_;
+    playerState.equipmentSlots = equipmentSlots_;
     playerState.chestSlotsByPosition = chestSlotsByPosition_;
     playerState.droppedItems.reserve(droppedItems_.size());
     for (const DroppedItem& droppedItem : droppedItems_)
@@ -4007,6 +4895,7 @@ void Application::unloadActiveSingleplayerWorld()
     activeSingleplayerWorldFolderName_.clear();
     activeSingleplayerWorldDisplayName_.clear();
     autosaveAccumulatorSeconds_ = 0.0f;
+    sessionPlayTimeSeconds_ = 0.0f;
 }
 
 std::filesystem::path Application::multiplayerPrefsPath() const
@@ -4376,7 +5265,7 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
         .yawDegrees = camera_.yawDegrees(),
         .pitchDegrees = camera_.pitchDegrees(),
         .health = playerVitals_.health(),
-        .air = playerVitals_.air(),
+        .air = encodeLegacyNetworkAir(oxygenSystem_.state()),
         .selectedEquippedItem = selectedSlot.equippedItem,
         .selectedBlockType = selectedSlot.blockType,
     });
@@ -4400,8 +5289,9 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
     {
         snapshot.droppedItems.push_back(multiplayer::protocol::DroppedItemSnapshotMessage{
             .blockType = droppedItem.equippedItem != EquippedItem::None
-                ? networkFallbackBlockTypeForEquippedItem(droppedItem.equippedItem)
+                ? world::BlockType::Air
                 : droppedItem.blockType,
+            .equippedItem = droppedItem.equippedItem,
             .posX = droppedItem.worldPosition.x,
             .posY = droppedItem.worldPosition.y,
             .posZ = droppedItem.worldPosition.z,
@@ -4412,12 +5302,36 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
             .spinRadians = droppedItem.spinRadians,
         });
     }
+    snapshot.mobs.reserve(
+        std::min(mobSpawnSystem_.mobs().size(), multiplayer::protocol::kMaxMobsPerSnapshot));
+    for (const game::MobInstance& mob : mobSpawnSystem_.mobs())
+    {
+        if (snapshot.mobs.size() >= multiplayer::protocol::kMaxMobsPerSnapshot)
+        {
+            break;
+        }
+        snapshot.mobs.push_back(multiplayer::protocol::MobSnapshotMessage{
+            .id = mob.id,
+            .kind = mob.kind,
+            .feetX = mob.feetX,
+            .feetY = mob.feetY,
+            .feetZ = mob.feetZ,
+            .yawRadians = mob.yawRadians,
+            .halfWidth = mob.halfWidth,
+            .height = mob.height,
+            .health = mob.health,
+        });
+    }
     return snapshot;
 }
 
 void Application::updateMultiplayer(const float deltaTimeSeconds)
 {
     networkTickAccumulatorSeconds_ += deltaTimeSeconds;
+    if (multiplayerMode_ != MultiplayerRuntimeMode::Client)
+    {
+        clientReplicatedMobs_.clear();
+    }
 
     if (hostSession_ != nullptr && hostSession_->running())
     {
@@ -4630,6 +5544,56 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                 applyRemoteBlockEdit(edit);
                 hostSession_->broadcastBlockEdit(edit);
             }
+            else if (input.mobMeleeSwing && input.mobMeleeTargetId != 0)
+            {
+                const glm::vec3 feet{input.positionX, input.positionY, input.positionZ};
+                const float eyeHeight = input.isSneaking ? kPlayerMovementSettings.sneakingEyeHeight
+                                                         : kPlayerMovementSettings.standingEyeHeight;
+                const bool useClientCameraY = input.cameraEyeY > input.positionY + 0.35f
+                    && input.cameraEyeY < input.positionY + 2.7f;
+                const glm::vec3 rayOrigin = useClientCameraY
+                    ? glm::vec3(input.positionX, input.cameraEyeY, input.positionZ)
+                    : feet + glm::vec3(0.0f, eyeHeight, 0.0f);
+                const glm::vec3 rayDir =
+                    game::Camera::forwardFromYawPitchDegrees(input.yawDelta, input.pitchDelta);
+                InventorySlot selectedSlot{};
+                selectedSlot.equippedItem = input.selectedEquippedItem;
+                selectedSlot.blockType = input.selectedBlockType;
+                selectedSlot.count = 1;
+                const float reach = meleeReachForSlot(selectedSlot);
+                const std::optional<std::size_t> closestOpt =
+                    game::findClosestMobIndexAlongRay(mobSpawnSystem_.mobs(), rayOrigin, rayDir, reach);
+                if (!closestOpt.has_value())
+                {
+                    continue;
+                }
+                if (mobSpawnSystem_.mobs()[*closestOpt].id != input.mobMeleeTargetId)
+                {
+                    continue;
+                }
+                if (const std::optional<game::MobDamageResult> mobDamage = mobSpawnSystem_.damageMobAtIndex(
+                        world_,
+                        *closestOpt,
+                        meleeDamageForSlot(selectedSlot),
+                        feet,
+                        rayDir,
+                        knockbackDistanceForSlot(selectedSlot));
+                    mobDamage.has_value())
+                {
+                    soundEffects_.playPlayerAttack();
+                    if (mobDamage->killed)
+                    {
+                        soundEffects_.playMobDefeat(mobDamage->mobKind);
+                        spawnDroppedItemAtPosition(
+                            mobDropItemForKind(mobDamage->mobKind),
+                            mobDamage->feetPosition + glm::vec3(0.0f, 0.35f, 0.0f));
+                    }
+                    else
+                    {
+                        soundEffects_.playMobHit(mobDamage->mobKind);
+                    }
+                }
+            }
         }
 
         while (networkTickAccumulatorSeconds_ >= kNetworkTickSeconds)
@@ -4699,12 +5663,62 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
             {
                 droppedItems_.push_back(DroppedItem{
                     .blockType = droppedItem.blockType,
+                    .equippedItem = droppedItem.equippedItem,
                     .worldPosition = {droppedItem.posX, droppedItem.posY, droppedItem.posZ},
                     .velocity = {droppedItem.velocityX, droppedItem.velocityY, droppedItem.velocityZ},
                     .ageSeconds = droppedItem.ageSeconds,
                     .pickupDelaySeconds = 0.1f,
                     .spinRadians = droppedItem.spinRadians,
                 });
+            }
+            const std::vector<game::MobInstance> previousClientMobs = clientReplicatedMobs_;
+            clientReplicatedMobs_.clear();
+            clientReplicatedMobs_.reserve(latest.mobs.size());
+            for (const multiplayer::protocol::MobSnapshotMessage& mobSnap : latest.mobs)
+            {
+                game::MobInstance mob{};
+                mob.id = mobSnap.id;
+                mob.kind = mobSnap.kind;
+                mob.feetX = mobSnap.feetX;
+                mob.feetY = mobSnap.feetY;
+                mob.feetZ = mobSnap.feetZ;
+                mob.yawRadians = mobSnap.yawRadians;
+                mob.halfWidth = mobSnap.halfWidth;
+                mob.height = mobSnap.height;
+                mob.health = mobSnap.health;
+                clientReplicatedMobs_.push_back(mob);
+            }
+            if (clientSession_->lastServerSnapshotProtocolVersion() >= 6 && !previousClientMobs.empty())
+            {
+                for (const game::MobInstance& prev : previousClientMobs)
+                {
+                    const auto it = std::find_if(
+                        clientReplicatedMobs_.begin(),
+                        clientReplicatedMobs_.end(),
+                        [id = prev.id](const game::MobInstance& mob)
+                        {
+                            return mob.id == id;
+                        });
+                    if (it != clientReplicatedMobs_.end())
+                    {
+                        if (it->health < prev.health - 0.05f)
+                        {
+                            soundEffects_.playMobHit(it->kind);
+                        }
+                    }
+                    else if (prev.health > 0.05f)
+                    {
+                        const float maxH = game::mobKindDefaultMaxHealth(prev.kind);
+                        const bool recentSwingOnMob =
+                            prev.id == lastClientMeleeSwingMobId_
+                            && (sessionPlayTimeSeconds_ - lastClientMeleeSwingSessionTimeSeconds_) < 0.75f;
+                        const bool likelyKillFromDamage = prev.health < maxH * 0.38f;
+                        if (recentSwingOnMob || likelyKillFromDamage)
+                        {
+                            soundEffects_.playMobDefeat(prev.kind);
+                        }
+                    }
+                }
             }
             std::vector<RemotePlayerState> updatedRemotePlayers;
             updatedRemotePlayers.reserve(latest.players.size());
@@ -4775,6 +5789,7 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                             camera_.setYawPitch(player.yawDegrees, player.pitchDegrees);
                         }
                     }
+                    applyLegacyNetworkAirToOxygenSystem(oxygenSystem_, player.air);
                     camera_.setPosition(
                         playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
                     continue;
@@ -4827,12 +5842,18 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                         .yawDelta = camera_.yawDegrees(),
                         .pitchDelta = camera_.pitchDegrees(),
                         .health = playerVitals_.health(),
-                        .air = playerVitals_.air(),
+                        .air = encodeLegacyNetworkAir(oxygenSystem_.state()),
                         .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
                         .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
+                        .mobMeleeSwing = pendingClientMobMeleeSwing_,
+                        .isSneaking = inputState_.isKeyDown(SDL_SCANCODE_LSHIFT),
                         .selectedHotbarIndex = static_cast<std::uint8_t>(selectedHotbarIndex_),
+                        .mobMeleeTargetId = pendingClientMobMeleeTargetId_,
+                        .cameraEyeY = camera_.position().y,
                     },
                     networkServerTick_);
+                pendingClientMobMeleeSwing_ = false;
+                pendingClientMobMeleeTargetId_ = 0;
             }
             multiplayerStatusLine_ = fmt::format("client id {} -> {}:{}", localClientId_, multiplayerAddress_, multiplayerPort_);
         }
@@ -4887,6 +5908,10 @@ glm::vec3 Application::findSafeMultiplayerJoinFeetPosition(const glm::vec3& anch
             {
                 continue;
             }
+            if (!isSpawnFeetPositionSafe(world_, candidateFeet, colliderHeight))
+            {
+                continue;
+            }
             return candidateFeet;
         }
     }
@@ -4896,7 +5921,22 @@ glm::vec3 Application::findSafeMultiplayerJoinFeetPosition(const glm::vec3& anch
         anchorFeetPosition.y,
         anchorFeetPosition.z,
     };
-    return findInitialSpawnFeetPosition(world_, terrainGenerator_, fallbackProbe, colliderHeight);
+    glm::vec3 fallbackFeet =
+        findInitialSpawnFeetPosition(world_, terrainGenerator_, fallbackProbe, colliderHeight);
+    if (isSpawnFeetPositionSafe(world_, fallbackFeet, colliderHeight))
+    {
+        return fallbackFeet;
+    }
+    if (const std::optional<glm::vec3> dryFeet = findNearbyDrySpawnFeetPosition(
+            world_,
+            terrainGenerator_,
+            fallbackProbe,
+            colliderHeight);
+        dryFeet.has_value())
+    {
+        return *dryFeet;
+    }
+    return fallbackFeet;
 }
 
 void Application::clearClientWorldAwaitingHostChunks()
@@ -4941,6 +5981,8 @@ void Application::beginSingleplayerLoad()
     singleplayerLoadState_.label = "Loading world...";
 
     stopMultiplayerSessions();
+    mainMenuSingleplayerPickerOpen_ = false;
+    mainMenuSingleplayerAwaitingMouseRelease_ = false;
     mainMenuMultiplayerPanel_ = MainMenuMultiplayerPanel::None;
     mainMenuSoundSettingsOpen_ = false;
     mainMenuNotice_.clear();
@@ -4967,8 +6009,12 @@ void Application::beginSingleplayerLoad()
     mobSpawnSystem_.clearAllMobs();
     applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
     bagSlots_.fill({});
+    static_cast<void>(ensureStarterRelayAvailable(hotbarSlots_, bagSlots_, selectedHotbarIndex_));
+    equipmentSlots_.fill({});
     activeMiningState_ = {};
     playerVitals_.reset();
+    oxygenSystem_.resetForNewGame();
+    syncOxygenEquipmentSlotFromSystem(equipmentSlots_, oxygenSystem_);
     playerHazards_ = {};
     verticalVelocity_ = 0.0f;
     accumulatedFallDistance_ = 0.0f;
@@ -4976,7 +6022,7 @@ void Application::beginSingleplayerLoad()
     jumpWasHeld_ = false;
     footstepDistanceAccumulator_ = 0.0f;
     heldItemSwing_ = 0.0f;
-    respawnNotice_.clear();
+    respawnNotice_ = "Starter Atmos Relays ready in slot 9.";
     dayNightCycle_.setElapsedSeconds(70.0f);
     weatherSystem_.setElapsedSeconds(0.0f);
 
@@ -5029,12 +6075,26 @@ void Application::beginSingleplayerLoad()
         camera_.setPosition(
             playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
         playerVitals_.setHealthAndAir(playerState->health, playerState->air);
+        oxygenSystem_.setState(playerState->oxygenState);
         creativeModeEnabled_ = playerState->creativeModeEnabled;
         selectedHotbarIndex_ = std::min<std::size_t>(playerState->selectedHotbarIndex, hotbarSlots_.size() - 1);
         dayNightCycle_.setElapsedSeconds(playerState->dayNightElapsedSeconds);
         weatherSystem_.setElapsedSeconds(playerState->weatherElapsedSeconds);
         hotbarSlots_ = playerState->hotbarSlots;
         bagSlots_ = playerState->bagSlots;
+        if (ensureStarterRelayAvailable(hotbarSlots_, bagSlots_, selectedHotbarIndex_))
+        {
+            respawnNotice_ = "Starter Atmos Relay added to your inventory.";
+        }
+        equipmentSlots_ = playerState->equipmentSlots;
+        if (equipmentSlots_[equipmentSlotIndex(EquipmentSlotKind::OxygenTank)].count == 0)
+        {
+            syncOxygenEquipmentSlotFromSystem(equipmentSlots_, oxygenSystem_);
+        }
+        else
+        {
+            syncOxygenSystemFromEquipmentSlot(equipmentSlots_, oxygenSystem_, false);
+        }
         chestSlotsByPosition_ = playerState->chestSlotsByPosition;
         droppedItems_.clear();
         droppedItems_.reserve(playerState->droppedItems.size());
@@ -5050,6 +6110,12 @@ void Application::beginSingleplayerLoad()
                 .spinRadians = droppedItem.spinRadians,
             });
         }
+        playerOxygenEnvironment_ = refreshPlayerOxygenEnvironment(
+            world_,
+            terrainGenerator_,
+            playerFeetPosition_,
+            playerHazards_,
+            creativeModeEnabled_);
         singleplayerLoadState_.playerStateLoaded = true;
         mainMenuNotice_ = fmt::format("Continuing {}.", activeSingleplayerWorldDisplayName_);
     }

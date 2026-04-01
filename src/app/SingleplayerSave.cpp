@@ -15,7 +15,7 @@ namespace vibecraft::app
 namespace
 {
 constexpr std::uint32_t kPlayerStateMagic = 0x56424350;  // VBCP
-constexpr std::uint32_t kPlayerStateVersion = 1;
+constexpr std::uint32_t kPlayerStateVersion = 3;
 
 template<typename T>
 bool writeBinary(std::ofstream& output, const T& value)
@@ -50,6 +50,30 @@ bool readInventorySlot(std::ifstream& input, InventorySlot& slot)
     }
     slot.blockType = static_cast<vibecraft::world::BlockType>(blockType);
     slot.equippedItem = static_cast<EquippedItem>(equippedItem);
+    return true;
+}
+
+bool writeOxygenState(std::ofstream& output, const vibecraft::game::OxygenState& oxygenState)
+{
+    const std::uint8_t tankTier = static_cast<std::uint8_t>(oxygenState.tankTier);
+    return writeBinary(output, tankTier)
+        && writeBinary(output, oxygenState.oxygen)
+        && writeBinary(output, oxygenState.capacity);
+}
+
+bool readOxygenState(std::ifstream& input, vibecraft::game::OxygenState& oxygenState)
+{
+    std::uint8_t tankTier = 0;
+    if (!readBinary(input, tankTier)
+        || !readBinary(input, oxygenState.oxygen)
+        || !readBinary(input, oxygenState.capacity))
+    {
+        return false;
+    }
+
+    oxygenState.tankTier = static_cast<vibecraft::game::OxygenTankTier>(tankTier);
+    oxygenState.capacity = std::max(0.0f, oxygenState.capacity);
+    oxygenState.oxygen = std::clamp(oxygenState.oxygen, 0.0f, oxygenState.capacity);
     return true;
 }
 
@@ -221,7 +245,8 @@ bool SingleplayerSaveSerializer::savePlayerState(
         || !writeBinary(output, state.cameraYawDegrees)
         || !writeBinary(output, state.cameraPitchDegrees)
         || !writeBinary(output, state.health)
-        || !writeBinary(output, state.air))
+        || !writeBinary(output, state.air)
+        || !writeOxygenState(output, state.oxygenState))
     {
         return false;
     }
@@ -243,6 +268,13 @@ bool SingleplayerSaveSerializer::savePlayerState(
         }
     }
     for (const InventorySlot& slot : state.bagSlots)
+    {
+        if (!writeInventorySlot(output, slot))
+        {
+            return false;
+        }
+    }
+    for (const InventorySlot& slot : state.equipmentSlots)
     {
         if (!writeInventorySlot(output, slot))
         {
@@ -310,7 +342,7 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
     std::uint32_t magic = 0;
     std::uint32_t version = 0;
     if (!readBinary(input, magic) || !readBinary(input, version)
-        || magic != kPlayerStateMagic || version != kPlayerStateVersion)
+        || magic != kPlayerStateMagic || (version < 1 || version > kPlayerStateVersion))
     {
         return std::nullopt;
     }
@@ -326,8 +358,20 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
         || !readBinary(input, state.cameraYawDegrees)
         || !readBinary(input, state.cameraPitchDegrees)
         || !readBinary(input, state.health)
-        || !readBinary(input, state.air)
-        || !readBinary(input, creativeModeEnabled)
+        || !readBinary(input, state.air))
+    {
+        return std::nullopt;
+    }
+
+    if (version >= 2)
+    {
+        if (!readOxygenState(input, state.oxygenState))
+        {
+            return std::nullopt;
+        }
+    }
+
+    if (!readBinary(input, creativeModeEnabled)
         || !readBinary(input, state.selectedHotbarIndex)
         || !readBinary(input, state.dayNightElapsedSeconds)
         || !readBinary(input, state.weatherElapsedSeconds))
@@ -348,6 +392,16 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
         if (!readInventorySlot(input, slot))
         {
             return std::nullopt;
+        }
+    }
+    if (version >= 3)
+    {
+        for (InventorySlot& slot : state.equipmentSlots)
+        {
+            if (!readInventorySlot(input, slot))
+            {
+                return std::nullopt;
+            }
         }
     }
 

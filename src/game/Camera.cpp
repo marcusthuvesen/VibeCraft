@@ -42,15 +42,20 @@ const glm::vec3& Camera::position() const
     return position_;
 }
 
-glm::vec3 Camera::forward() const
+glm::vec3 Camera::forwardFromYawPitchDegrees(const float yawDegrees, const float pitchDegrees)
 {
-    const float yawRadians = glm::radians(yawDegrees_);
-    const float pitchRadians = glm::radians(pitchDegrees_);
+    const float yawRadians = glm::radians(yawDegrees);
+    const float pitchRadians = glm::radians(glm::clamp(pitchDegrees, -kMaxPitchDegrees, kMaxPitchDegrees));
     const glm::vec3 direction(
         glm::cos(yawRadians) * glm::cos(pitchRadians),
         glm::sin(pitchRadians),
         glm::sin(yawRadians) * glm::cos(pitchRadians));
     return glm::normalize(direction);
+}
+
+glm::vec3 Camera::forward() const
+{
+    return forwardFromYawPitchDegrees(yawDegrees_, pitchDegrees_);
 }
 
 glm::vec3 Camera::right() const

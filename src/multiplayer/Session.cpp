@@ -292,6 +292,7 @@ bool ClientSession::connect(const std::string& host, const std::uint16_t port, s
     partialChunkSnapshots_.clear();
     partialChunkSectionMasks_.clear();
     pendingJoinAccept_.reset();
+    lastServerSnapshotProtocolVersion_ = 0;
     lastError_.clear();
     sendMessage(
         protocol::MessageType::JoinRequest,
@@ -320,6 +321,7 @@ void ClientSession::disconnect()
     partialChunkSnapshots_.clear();
     partialChunkSectionMasks_.clear();
     pendingJoinAccept_.reset();
+    lastServerSnapshotProtocolVersion_ = 0;
     if (transport_ != nullptr)
     {
         transport_->close();
@@ -374,6 +376,7 @@ void ClientSession::poll()
             const auto* const snapshot = std::get_if<protocol::ServerSnapshotMessage>(&decoded->payload);
             if (snapshot != nullptr)
             {
+                lastServerSnapshotProtocolVersion_ = decoded->header.version;
                 pendingSnapshots_.push_back(*snapshot);
             }
             break;
@@ -472,6 +475,11 @@ std::vector<protocol::ServerSnapshotMessage> ClientSession::takeSnapshots()
     std::vector<protocol::ServerSnapshotMessage> snapshots = std::move(pendingSnapshots_);
     pendingSnapshots_.clear();
     return snapshots;
+}
+
+std::uint16_t ClientSession::lastServerSnapshotProtocolVersion() const
+{
+    return lastServerSnapshotProtocolVersion_;
 }
 
 std::vector<protocol::BlockEditEventMessage> ClientSession::takeBlockEdits()

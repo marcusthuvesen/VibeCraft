@@ -5,11 +5,13 @@
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <thread>
 
 #include <glm/vec3.hpp>
 
+#include "vibecraft/app/ApplicationAmbientLife.hpp"
 #include "vibecraft/app/Crafting.hpp"
 #include "vibecraft/app/SingleplayerSave.hpp"
 #include "vibecraft/game/DayNightCycle.hpp"
@@ -67,6 +69,25 @@ TEST_CASE("terrain generator produces solid ground and non-solid space above it"
 
     CHECK(vibecraft::world::isSolid(terrainGenerator.blockTypeAt(12, surface, -9)));
     CHECK(!vibecraft::world::isSolid(terrainGenerator.blockTypeAt(12, surface + 1, -9)));
+}
+
+TEST_CASE("terrain generator spans dramatic elevation across macro terrain samples")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    int minSurface = std::numeric_limits<int>::max();
+    int maxSurface = std::numeric_limits<int>::min();
+
+    for (int worldX = -512; worldX <= 512; worldX += 32)
+    {
+        for (int worldZ = -512; worldZ <= 512; worldZ += 32)
+        {
+            const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            minSurface = std::min(minSurface, surface);
+            maxSurface = std::max(maxSurface, surface);
+        }
+    }
+
+    CHECK(maxSurface - minSurface >= 100);
 }
 
 TEST_CASE("terrain generator fast column fill matches per-block sampling")
@@ -466,10 +487,18 @@ TEST_CASE("world save and load round-trips edited blocks")
 {
     vibecraft::world::World world;
     world.setGenerationSeed(0x13579bdfU);
-    world.generateRadius(vibecraft::world::TerrainGenerator{}, 1);
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x13579bdfU);
+    world.generateRadius(terrainGenerator, 1);
+    int editY = terrainGenerator.surfaceHeightAt(2, 2) + 1;
+    while (editY <= vibecraft::world::kWorldMaxY && world.blockAt(2, editY, 2) != vibecraft::world::BlockType::Air)
+    {
+        ++editY;
+    }
+    REQUIRE(editY <= vibecraft::world::kWorldMaxY);
     REQUIRE(world.applyEditCommand({
         .action = vibecraft::world::WorldEditAction::Place,
-        .position = {2, 40, 2},
+        .position = {2, editY, 2},
         .blockType = vibecraft::world::BlockType::CoalOre,
     }));
 
@@ -480,7 +509,7 @@ TEST_CASE("world save and load round-trips edited blocks")
 
     vibecraft::world::World loadedWorld;
     REQUIRE(loadedWorld.load(tempPath));
-    CHECK(loadedWorld.blockAt(2, 40, 2) == vibecraft::world::BlockType::CoalOre);
+    CHECK(loadedWorld.blockAt(2, editY, 2) == vibecraft::world::BlockType::CoalOre);
     CHECK(loadedWorld.generationSeed() == 0x13579bdfU);
 
     std::error_code errorCode;
@@ -535,6 +564,11 @@ TEST_CASE("singleplayer save serializer round-trips metadata and player state")
         .count = 12,
         .equippedItem = vibecraft::app::EquippedItem::None,
     };
+    playerState.equipmentSlots[static_cast<std::size_t>(vibecraft::app::EquipmentSlotKind::OxygenTank)] = {
+        .blockType = vibecraft::world::BlockType::Air,
+        .count = 1,
+        .equippedItem = vibecraft::app::EquippedItem::FieldTank,
+    };
     playerState.droppedItems.push_back({
         .blockType = vibecraft::world::BlockType::Cobblestone,
         .equippedItem = vibecraft::app::EquippedItem::None,
@@ -567,6 +601,10 @@ TEST_CASE("singleplayer save serializer round-trips metadata and player state")
     CHECK(loadedPlayerState->hotbarSlots[0].blockType == vibecraft::world::BlockType::Stone);
     CHECK(loadedPlayerState->hotbarSlots[1].equippedItem == vibecraft::app::EquippedItem::StonePickaxe);
     CHECK(loadedPlayerState->bagSlots[3].blockType == vibecraft::world::BlockType::Torch);
+    CHECK(
+        loadedPlayerState->equipmentSlots[static_cast<std::size_t>(vibecraft::app::EquipmentSlotKind::OxygenTank)]
+            .equippedItem
+        == vibecraft::app::EquippedItem::FieldTank);
     REQUIRE(loadedPlayerState->droppedItems.size() == 1);
     CHECK(loadedPlayerState->droppedItems[0].blockType == vibecraft::world::BlockType::Cobblestone);
     CHECK(loadedPlayerState->droppedItems[0].pickupDelaySeconds == doctest::Approx(0.5f));
@@ -833,6 +871,24 @@ TEST_CASE("generateMissingChunksAround adds only missing chunks near a center")
         != vibecraft::world::BlockType::Air);
 }
 
+TEST_CASE("world chunk coordinate helpers match minecraft-style chunk math")
+{
+    using vibecraft::world::ChunkCoord;
+
+    CHECK(vibecraft::world::worldToChunkCoord(0, 0) == ChunkCoord{0, 0});
+    CHECK(vibecraft::world::worldToChunkCoord(15, 15) == ChunkCoord{0, 0});
+    CHECK(vibecraft::world::worldToChunkCoord(16, 16) == ChunkCoord{1, 1});
+    CHECK(vibecraft::world::worldToChunkCoord(-1, -1) == ChunkCoord{-1, -1});
+    CHECK(vibecraft::world::worldToChunkCoord(-16, -16) == ChunkCoord{-1, -1});
+    CHECK(vibecraft::world::worldToChunkCoord(-17, -17) == ChunkCoord{-2, -2});
+    CHECK(vibecraft::world::worldToLocalCoord(0) == 0);
+    CHECK(vibecraft::world::worldToLocalCoord(15) == 15);
+    CHECK(vibecraft::world::worldToLocalCoord(16) == 0);
+    CHECK(vibecraft::world::worldToLocalCoord(-1) == 15);
+    CHECK(vibecraft::world::worldToLocalCoord(-16) == 0);
+    CHECK(vibecraft::world::worldToLocalCoord(-17) == 15);
+}
+
 TEST_CASE("MobSpawnSystem clearAllMobs leaves empty mob list")
 {
     vibecraft::game::MobSpawnSystem sys;
@@ -872,4 +928,46 @@ TEST_CASE("MobSpawnSystem does not spawn hostiles during daytime")
     }
 
     CHECK(sys.mobs().empty());
+}
+
+TEST_CASE("terrain generator biome override forces requested biome surface blocks")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x2468ace0U);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Jungle);
+
+    const int surfaceY = terrainGenerator.surfaceHeightAt(128, -96);
+    CHECK(terrainGenerator.surfaceBiomeAt(128, -96) == vibecraft::world::SurfaceBiome::Jungle);
+    CHECK(terrainGenerator.blockTypeAt(128, surfaceY, -96) == vibecraft::world::BlockType::JungleGrass);
+
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Sandy);
+    CHECK(terrainGenerator.surfaceBiomeAt(128, -96) == vibecraft::world::SurfaceBiome::Sandy);
+    CHECK(terrainGenerator.blockTypeAt(128, surfaceY, -96) == vibecraft::world::BlockType::Sand);
+
+    terrainGenerator.setBiomeOverride(std::nullopt);
+    CHECK(terrainGenerator.biomeOverride() == std::nullopt);
+}
+
+TEST_CASE("ambient bird flocks prefer lush biomes")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x2468ace0U);
+
+    const auto jungleBirds = vibecraft::app::buildAmbientBirdHud(
+        terrainGenerator,
+        glm::vec3(0.0f, 90.0f, 0.0f),
+        vibecraft::world::SurfaceBiome::Jungle,
+        12.0f,
+        0.0f,
+        1.0f);
+    CHECK(!jungleBirds.empty());
+
+    const auto sandyBirds = vibecraft::app::buildAmbientBirdHud(
+        terrainGenerator,
+        glm::vec3(0.0f, 90.0f, 0.0f),
+        vibecraft::world::SurfaceBiome::Sandy,
+        12.0f,
+        0.0f,
+        1.0f);
+    CHECK(sandyBirds.empty());
 }

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <random>
 
 namespace vibecraft::game
@@ -28,6 +29,104 @@ namespace
     const float dx = ax - bx;
     const float dz = az - bz;
     return (dx * dx + dz * dz) < threshold * threshold;
+}
+
+[[nodiscard]] float horizontalDistSqXZ(const glm::vec3& a, const glm::vec3& b)
+{
+    const float dx = a.x - b.x;
+    const float dz = a.z - b.z;
+    return dx * dx + dz * dz;
+}
+
+struct LivingPlayerTarget
+{
+    glm::vec3 feet{};
+    /// 0 = host vitals, `1 + i` = remote index `i` in parallel feet/health spans.
+    std::size_t index = 0;
+};
+
+[[nodiscard]] std::optional<LivingPlayerTarget> findNearestLivingPlayer(
+    const glm::vec3& mobFeet,
+    const glm::vec3& hostFeet,
+    const PlayerVitals& hostVitals,
+    const bool multiTarget,
+    std::span<const glm::vec3> remoteFeet,
+    std::span<const float> remoteHealth)
+{
+    std::optional<LivingPlayerTarget> best;
+    float bestDistSq = std::numeric_limits<float>::infinity();
+
+    if (!hostVitals.isDead())
+    {
+        const float d = horizontalDistSqXZ(mobFeet, hostFeet);
+        best = LivingPlayerTarget{hostFeet, 0};
+        bestDistSq = d;
+    }
+
+    if (multiTarget && remoteFeet.size() == remoteHealth.size())
+    {
+        for (std::size_t i = 0; i < remoteFeet.size(); ++i)
+        {
+            if (remoteHealth[i] <= 0.0f)
+            {
+                continue;
+            }
+            const float d = horizontalDistSqXZ(mobFeet, remoteFeet[i]);
+            if (!best.has_value() || d < bestDistSq)
+            {
+                bestDistSq = d;
+                best = LivingPlayerTarget{remoteFeet[i], 1 + i};
+            }
+        }
+    }
+
+    return best;
+}
+
+[[nodiscard]] glm::vec3 nearestPlayerFeetForFacing(
+    const glm::vec3& candidateFeet,
+    const glm::vec3& hostFeet,
+    std::span<const glm::vec3> remoteFeet)
+{
+    glm::vec3 nearest = hostFeet;
+    float bestD = horizontalDistSqXZ(candidateFeet, hostFeet);
+    for (const glm::vec3& rf : remoteFeet)
+    {
+        const float d = horizontalDistSqXZ(candidateFeet, rf);
+        if (d < bestD)
+        {
+            bestD = d;
+            nearest = rf;
+        }
+    }
+    return nearest;
+}
+
+[[nodiscard]] bool tooCloseToAnyPlayerFeet(
+    const float feetX,
+    const float feetZ,
+    const glm::vec3& hostFeet,
+    const float playerHalfWidth,
+    const float minSeparation,
+    std::span<const glm::vec3> remoteFeet)
+{
+    if (horizontalDistLessThan(
+            feetX,
+            feetZ,
+            hostFeet.x,
+            hostFeet.z,
+            minSeparation + playerHalfWidth))
+    {
+        return true;
+    }
+    for (const glm::vec3& rf : remoteFeet)
+    {
+        if (horizontalDistLessThan(feetX, feetZ, rf.x, rf.z, minSeparation + playerHalfWidth))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 [[nodiscard]] bool mobBodyTouchesFluid(const world::World& worldState, const Aabb& aabb)
@@ -71,42 +170,22 @@ struct MobDimensionsForKind
     float height = 1.75f;
 };
 
-[[nodiscard]] float healthForKind(const MobKind kind)
-{
-    switch (kind)
-    {
-    case MobKind::HostileStalker:
-        return 20.0f;
-    case MobKind::Player:
-        return 20.0f;
-    case MobKind::Cow:
-        return 10.0f;
-    case MobKind::Pig:
-        return 10.0f;
-    case MobKind::Sheep:
-        return 8.0f;
-    case MobKind::Chicken:
-        return 4.0f;
-    }
-    return 10.0f;
-}
-
 [[nodiscard]] MobDimensionsForKind dimensionsForKind(const MobKind kind)
 {
     switch (kind)
     {
-    case MobKind::HostileStalker:
+    case MobKind::VoidStrider:
         return {.halfWidth = 0.28f, .height = 1.75f};
     case MobKind::Player:
         return {.halfWidth = 0.30f, .height = 2.0f};
-    case MobKind::Cow:
-        return {.halfWidth = 0.46f, .height = 1.48f};
-    case MobKind::Pig:
-        return {.halfWidth = 0.36f, .height = 0.92f};
-    case MobKind::Sheep:
-        return {.halfWidth = 0.38f, .height = 1.28f};
-    case MobKind::Chicken:
-        return {.halfWidth = 0.16f, .height = 0.62f};
+    case MobKind::Sporegrazer:
+        return {.halfWidth = 0.52f, .height = 1.42f};
+    case MobKind::Burrower:
+        return {.halfWidth = 0.42f, .height = 0.86f};
+    case MobKind::Shardback:
+        return {.halfWidth = 0.44f, .height = 1.20f};
+    case MobKind::Skitterwing:
+        return {.halfWidth = 0.24f, .height = 0.74f};
     }
     return {.halfWidth = 0.28f, .height = 1.75f};
 }
@@ -132,13 +211,13 @@ struct MobDimensionsForKind
     switch (dist(rng))
     {
     case 0:
-        return MobKind::Cow;
+        return MobKind::Sporegrazer;
     case 1:
-        return MobKind::Pig;
+        return MobKind::Burrower;
     case 2:
-        return MobKind::Sheep;
+        return MobKind::Shardback;
     default:
-        return MobKind::Chicken;
+        return MobKind::Skitterwing;
     }
 }
 
@@ -203,27 +282,24 @@ const MobSpawnSettings& MobSpawnSystem::settings() const
     return settings_;
 }
 
-std::optional<MobDamageResult> MobSpawnSystem::damageClosestAlongRay(
-    const world::World& world,
+std::optional<std::size_t> findClosestMobIndexAlongRay(
+    const std::vector<MobInstance>& mobs,
     const glm::vec3& rayOrigin,
     const glm::vec3& rayDirection,
-    const float maxDistance,
-    const float damageAmount,
-    const glm::vec3& attackerFeet,
-    const float knockbackDistance)
+    const float maxDistance)
 {
-    if (damageAmount <= 0.0f || maxDistance <= 0.0f || glm::length(rayDirection) <= kAabbEpsilon)
+    if (maxDistance <= 0.0f || glm::length(rayDirection) <= kAabbEpsilon)
     {
         return std::nullopt;
     }
 
     const glm::vec3 direction = glm::normalize(rayDirection);
-    std::size_t bestMobIndex = mobs_.size();
+    std::size_t bestMobIndex = mobs.size();
     float bestHitDistance = maxDistance;
 
-    for (std::size_t i = 0; i < mobs_.size(); ++i)
+    for (std::size_t i = 0; i < mobs.size(); ++i)
     {
-        const MobInstance& mob = mobs_[i];
+        const MobInstance& mob = mobs[i];
         const Aabb mobAabb = aabbAtFeet(
             glm::vec3{mob.feetX, mob.feetY, mob.feetZ},
             mob.halfWidth,
@@ -241,12 +317,32 @@ std::optional<MobDamageResult> MobSpawnSystem::damageClosestAlongRay(
         bestMobIndex = i;
     }
 
-    if (bestMobIndex >= mobs_.size())
+    if (bestMobIndex >= mobs.size())
     {
         return std::nullopt;
     }
 
-    MobInstance& target = mobs_[bestMobIndex];
+    return bestMobIndex;
+}
+
+std::optional<MobDamageResult> MobSpawnSystem::damageMobAtIndex(
+    const world::World& world,
+    const std::size_t mobIndex,
+    const float damageAmount,
+    const glm::vec3& attackerFeet,
+    const glm::vec3& attackRayDirection,
+    const float knockbackDistance)
+{
+    if (damageAmount <= 0.0f || mobIndex >= mobs_.size())
+    {
+        return std::nullopt;
+    }
+
+    const glm::vec3 direction = glm::length(attackRayDirection) > kAabbEpsilon
+        ? glm::normalize(attackRayDirection)
+        : glm::vec3(0.0f, 0.0f, -1.0f);
+
+    MobInstance& target = mobs_[mobIndex];
     target.health = std::max(0.0f, target.health - damageAmount);
     if (target.health > 0.0f && knockbackDistance > kAabbEpsilon)
     {
@@ -275,10 +371,35 @@ std::optional<MobDamageResult> MobSpawnSystem::damageClosestAlongRay(
 
     if (result.killed)
     {
-        mobs_.erase(mobs_.begin() + static_cast<std::ptrdiff_t>(bestMobIndex));
+        mobs_.erase(mobs_.begin() + static_cast<std::ptrdiff_t>(mobIndex));
     }
 
     return result;
+}
+
+std::optional<MobDamageResult> MobSpawnSystem::damageClosestAlongRay(
+    const world::World& world,
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDirection,
+    const float maxDistance,
+    const float damageAmount,
+    const glm::vec3& attackerFeet,
+    const float knockbackDistance)
+{
+    if (damageAmount <= 0.0f || maxDistance <= 0.0f || glm::length(rayDirection) <= kAabbEpsilon)
+    {
+        return std::nullopt;
+    }
+
+    const glm::vec3 direction = glm::normalize(rayDirection);
+    const std::optional<std::size_t> bestMobIndex =
+        findClosestMobIndexAlongRay(mobs_, rayOrigin, rayDirection, maxDistance);
+    if (!bestMobIndex.has_value())
+    {
+        return std::nullopt;
+    }
+
+    return damageMobAtIndex(world, *bestMobIndex, damageAmount, attackerFeet, direction, knockbackDistance);
 }
 
 void MobSpawnSystem::setRngSeedForTests(const std::uint32_t seed)
@@ -293,18 +414,25 @@ void MobSpawnSystem::clearAllMobs()
     passiveSpawnAccumulatorSeconds_ = 0.0f;
 }
 
-void MobSpawnSystem::despawnDistant(const glm::vec3& playerFeet)
+void MobSpawnSystem::despawnDistant(
+    const glm::vec3& hostFeet,
+    const std::span<const glm::vec3> remotePlayerFeet)
 {
     const float d = settings_.despawnHorizontalDistance;
+    const float dSq = d * d;
     mobs_.erase(
         std::remove_if(
             mobs_.begin(),
             mobs_.end(),
             [&](const MobInstance& e)
             {
-                const float dx = e.feetX - playerFeet.x;
-                const float dz = e.feetZ - playerFeet.z;
-                return std::sqrt(dx * dx + dz * dz) > d;
+                const glm::vec3 mobPos{e.feetX, e.feetY, e.feetZ};
+                float minDistSq = horizontalDistSqXZ(mobPos, hostFeet);
+                for (const glm::vec3& rf : remotePlayerFeet)
+                {
+                    minDistSq = std::min(minDistSq, horizontalDistSqXZ(mobPos, rf));
+                }
+                return minDistSq > dSq;
             }),
         mobs_.end());
 }
@@ -402,8 +530,13 @@ void MobSpawnSystem::moveMobAxis(
 
 void MobSpawnSystem::applyMelee(
     MobInstance& mob,
-    const glm::vec3& playerFeet,
-    PlayerVitals& playerVitals)
+    const glm::vec3& hostPlayerFeet,
+    PlayerVitals& playerVitals,
+    const float hostDamageMultiplier,
+    const std::span<const glm::vec3> remotePlayerFeet,
+    const std::span<float> remotePlayerHealth,
+    const float remotePlayerMaxHealth,
+    const float remotePlayerDamageMultiplier)
 {
     if (!isHostileMob(mob.kind))
     {
@@ -415,15 +548,43 @@ void MobSpawnSystem::applyMelee(
     }
 
     const glm::vec3 mobFeet{mob.feetX, mob.feetY, mob.feetZ};
-    const glm::vec3 delta = playerFeet - mobFeet;
-    const float dist = std::sqrt(delta.x * delta.x + delta.z * delta.z);
+    const bool multiTarget =
+        !remotePlayerFeet.empty() && remotePlayerFeet.size() == remotePlayerHealth.size();
+    const std::optional<LivingPlayerTarget> target = findNearestLivingPlayer(
+        mobFeet,
+        hostPlayerFeet,
+        playerVitals,
+        multiTarget,
+        remotePlayerFeet,
+        remotePlayerHealth);
+    if (!target.has_value())
+    {
+        return;
+    }
+
+    const float dist = std::sqrt(horizontalDistSqXZ(mobFeet, target->feet));
     if (dist > settings_.meleeReach)
     {
         return;
     }
 
-    static_cast<void>(playerVitals.applyDamage(
-        DamageEvent{.cause = DamageCause::EnemyAttack, .amount = settings_.meleeDamage}));
+    const float baseDamage = settings_.meleeDamage;
+    if (target->index == 0)
+    {
+        const float clampedDamageMultiplier = std::clamp(hostDamageMultiplier, 0.0f, 1.0f);
+        static_cast<void>(playerVitals.applyDamage(DamageEvent{
+            .cause = DamageCause::EnemyAttack,
+            .amount = baseDamage * clampedDamageMultiplier,
+        }));
+    }
+    else
+    {
+        const std::size_t remoteIndex = target->index - 1;
+        const float clampedRemoteMult = std::clamp(remotePlayerDamageMultiplier, 0.0f, 1.0f);
+        const float amount = baseDamage * clampedRemoteMult;
+        remotePlayerHealth[remoteIndex] =
+            std::clamp(remotePlayerHealth[remoteIndex] - amount, 0.0f, remotePlayerMaxHealth);
+    }
     mob.attackCooldownSeconds = settings_.attackCooldownSeconds;
 }
 
@@ -432,7 +593,8 @@ bool MobSpawnSystem::trySpawnOneHostile(
     const world::TerrainGenerator& terrain,
     const glm::vec3& playerFeet,
     const float playerHalfWidth,
-    const TimeOfDayPeriod timePeriod)
+    const TimeOfDayPeriod timePeriod,
+    const std::span<const glm::vec3> remotePlayerFeet)
 {
     if (!isHostileSpawnPeriod(timePeriod))
     {
@@ -443,7 +605,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
         return false;
     }
 
-    const MobDimensionsForKind dims = dimensionsForKind(MobKind::HostileStalker);
+    const MobDimensionsForKind dims = dimensionsForKind(MobKind::VoidStrider);
 
     std::uniform_real_distribution<float> angleDist(0.0f, 6.28318530718f);
     std::uniform_real_distribution<float> radiusDist(
@@ -480,12 +642,13 @@ bool MobSpawnSystem::trySpawnOneHostile(
             continue;
         }
 
-        if (horizontalDistLessThan(
+        if (tooCloseToAnyPlayerFeet(
                 feetX,
                 feetZ,
-                playerFeet.x,
-                playerFeet.z,
-                settings_.minSeparationFromPlayer + playerHalfWidth))
+                playerFeet,
+                playerHalfWidth,
+                settings_.minSeparationFromPlayer,
+                remotePlayerFeet))
         {
             continue;
         }
@@ -509,17 +672,36 @@ bool MobSpawnSystem::trySpawnOneHostile(
             continue;
         }
 
+        const world::SurfaceBiome surfaceBiome = terrain.surfaceBiomeAt(ix, iz);
+        if (surfaceBiome == world::SurfaceBiome::Jungle)
+        {
+            std::uniform_real_distribution<float> grovePeaceDist(0.0f, 1.0f);
+            if (grovePeaceDist(rng_) < 0.58f)
+            {
+                continue;
+            }
+        }
+        else if (surfaceBiome == world::SurfaceBiome::Sandy)
+        {
+            std::uniform_real_distribution<float> dustHostileDist(0.0f, 1.0f);
+            if (dustHostileDist(rng_) < 0.12f)
+            {
+                continue;
+            }
+        }
+
+        const glm::vec3 faceToward = nearestPlayerFeetForFacing(candidateFeet, playerFeet, remotePlayerFeet);
         mobs_.push_back(MobInstance{
             .id = nextId_++,
-            .kind = MobKind::HostileStalker,
+            .kind = MobKind::VoidStrider,
             .feetX = feetX,
             .feetY = feetY,
             .feetZ = feetZ,
-            .yawRadians = std::atan2(playerFeet.x - feetX, playerFeet.z - feetZ),
+            .yawRadians = std::atan2(faceToward.x - feetX, faceToward.z - feetZ),
             .attackCooldownSeconds = 0.0f,
             .wanderTimerSeconds = 0.0f,
             .wanderYawRadians = 0.0f,
-            .health = healthForKind(MobKind::HostileStalker),
+            .health = mobKindDefaultMaxHealth(MobKind::VoidStrider),
             .halfWidth = dims.halfWidth,
             .height = dims.height,
         });
@@ -534,7 +716,8 @@ bool MobSpawnSystem::trySpawnOnePassive(
     const world::TerrainGenerator& terrain,
     const glm::vec3& playerFeet,
     const float playerHalfWidth,
-    const TimeOfDayPeriod timePeriod)
+    const TimeOfDayPeriod timePeriod,
+    const std::span<const glm::vec3> remotePlayerFeet)
 {
     if (!isPassiveSpawnPeriod(timePeriod))
     {
@@ -587,12 +770,13 @@ bool MobSpawnSystem::trySpawnOnePassive(
             continue;
         }
 
-        if (horizontalDistLessThan(
+        if (tooCloseToAnyPlayerFeet(
                 feetX,
                 feetZ,
-                playerFeet.x,
-                playerFeet.z,
-                settings_.minSeparationFromPlayer + playerHalfWidth))
+                playerFeet,
+                playerHalfWidth,
+                settings_.minSeparationFromPlayer,
+                remotePlayerFeet))
         {
             continue;
         }
@@ -627,7 +811,7 @@ bool MobSpawnSystem::trySpawnOnePassive(
             .attackCooldownSeconds = 0.0f,
             .wanderTimerSeconds = wanderTimerDist(rng_),
             .wanderYawRadians = wy,
-            .health = healthForKind(kind),
+            .health = mobKindDefaultMaxHealth(kind),
             .halfWidth = dims.halfWidth,
             .height = dims.height,
         });
@@ -645,9 +829,26 @@ void MobSpawnSystem::tick(
     const float deltaSeconds,
     const TimeOfDayPeriod timePeriod,
     const bool spawningEnabled,
-    PlayerVitals& playerVitals)
+    PlayerVitals& playerVitals,
+    const float playerDamageMultiplier,
+    const std::span<const glm::vec3> remotePlayerFeetForMultiTarget,
+    const std::span<float> remotePlayerHealthForMelee,
+    const float remotePlayerMaxHealth,
+    const float remotePlayerDamageMultiplier)
 {
-    despawnDistant(playerFeet);
+    const bool multiTarget =
+        !remotePlayerFeetForMultiTarget.empty()
+        && remotePlayerFeetForMultiTarget.size() == remotePlayerHealthForMelee.size();
+    const std::span<const glm::vec3> spawnRemoteFeet =
+        multiTarget ? remotePlayerFeetForMultiTarget : std::span<const glm::vec3>{};
+
+    despawnDistant(playerFeet, spawnRemoteFeet);
+
+    const std::span<const glm::vec3> remoteFeetForAi =
+        multiTarget ? remotePlayerFeetForMultiTarget : std::span<const glm::vec3>{};
+    const std::span<const float> remoteHealthForAi =
+        multiTarget ? std::span<const float>(remotePlayerHealthForMelee.data(), remotePlayerHealthForMelee.size())
+                    : std::span<const float>{};
 
     for (MobInstance& mob : mobs_)
     {
@@ -663,16 +864,26 @@ void MobSpawnSystem::tick(
 
         if (isHostileMob(mob.kind))
         {
-            glm::vec3 horiz = playerFeet - mobFeet;
-            horiz.y = 0.0f;
-            const float horizLen = glm::length(horiz);
-            if (horizLen > kAabbEpsilon)
+            const std::optional<LivingPlayerTarget> chaseTarget = findNearestLivingPlayer(
+                mobFeet,
+                playerFeet,
+                playerVitals,
+                multiTarget,
+                remoteFeetForAi,
+                remoteHealthForAi);
+            if (chaseTarget.has_value())
             {
-                const glm::vec3 dir = horiz / horizLen;
-                mob.yawRadians = std::atan2(dir.x, dir.z);
-                const float move = settings_.mobMoveSpeed * deltaSeconds;
-                moveMobAxis(world, mob, 0, dir.x * move);
-                moveMobAxis(world, mob, 2, dir.z * move);
+                glm::vec3 horiz = chaseTarget->feet - mobFeet;
+                horiz.y = 0.0f;
+                const float horizLen = glm::length(horiz);
+                if (horizLen > kAabbEpsilon)
+                {
+                    const glm::vec3 dir = horiz / horizLen;
+                    mob.yawRadians = std::atan2(dir.x, dir.z);
+                    const float move = settings_.mobMoveSpeed * deltaSeconds;
+                    moveMobAxis(world, mob, 0, dir.x * move);
+                    moveMobAxis(world, mob, 2, dir.z * move);
+                }
             }
         }
         else
@@ -688,16 +899,31 @@ void MobSpawnSystem::tick(
                 mob.wanderYawRadians = wanderYawDist(rng_);
             }
 
-            glm::vec3 horizToPlayer = playerFeet - mobFeet;
-            horizToPlayer.y = 0.0f;
-            const float distToPlayer = glm::length(horizToPlayer);
+            const std::optional<LivingPlayerTarget> nearestLiving = findNearestLivingPlayer(
+                mobFeet,
+                playerFeet,
+                playerVitals,
+                multiTarget,
+                remoteFeetForAi,
+                remoteHealthForAi);
 
             glm::vec3 dir{0.0f, 0.0f, 0.0f};
             float speed = settings_.passiveWanderSpeed;
-            if (distToPlayer < settings_.passiveFleePlayerDistance && distToPlayer > kAabbEpsilon)
+            if (nearestLiving.has_value())
             {
-                dir = -horizToPlayer / distToPlayer;
-                speed = settings_.passiveFleeSpeed;
+                glm::vec3 horizToPlayer = nearestLiving->feet - mobFeet;
+                horizToPlayer.y = 0.0f;
+                const float distToPlayer = glm::length(horizToPlayer);
+                if (distToPlayer < settings_.passiveFleePlayerDistance && distToPlayer > kAabbEpsilon)
+                {
+                    dir = -horizToPlayer / distToPlayer;
+                    speed = settings_.passiveFleeSpeed;
+                }
+                else
+                {
+                    dir.x = std::sin(mob.wanderYawRadians);
+                    dir.z = std::cos(mob.wanderYawRadians);
+                }
             }
             else
             {
@@ -740,7 +966,15 @@ void MobSpawnSystem::tick(
             }
         }
 
-        applyMelee(mob, playerFeet, playerVitals);
+        applyMelee(
+            mob,
+            playerFeet,
+            playerVitals,
+            playerDamageMultiplier,
+            multiTarget ? remotePlayerFeetForMultiTarget : std::span<const glm::vec3>{},
+            multiTarget ? remotePlayerHealthForMelee : std::span<float>{},
+            remotePlayerMaxHealth,
+            remotePlayerDamageMultiplier);
     }
 
     if (!spawningEnabled)
@@ -753,12 +987,12 @@ void MobSpawnSystem::tick(
     while (hostileSpawnAccumulatorSeconds_ >= settings_.spawnAttemptIntervalSeconds)
     {
         hostileSpawnAccumulatorSeconds_ -= settings_.spawnAttemptIntervalSeconds;
-        static_cast<void>(trySpawnOneHostile(world, terrain, playerFeet, playerHalfWidth, timePeriod));
+        static_cast<void>(trySpawnOneHostile(world, terrain, playerFeet, playerHalfWidth, timePeriod, spawnRemoteFeet));
     }
     while (passiveSpawnAccumulatorSeconds_ >= settings_.spawnAttemptIntervalSeconds)
     {
         passiveSpawnAccumulatorSeconds_ -= settings_.spawnAttemptIntervalSeconds;
-        static_cast<void>(trySpawnOnePassive(world, terrain, playerFeet, playerHalfWidth, timePeriod));
+        static_cast<void>(trySpawnOnePassive(world, terrain, playerFeet, playerHalfWidth, timePeriod, spawnRemoteFeet));
     }
 }
 }  // namespace vibecraft::game

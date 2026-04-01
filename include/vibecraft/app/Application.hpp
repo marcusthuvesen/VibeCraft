@@ -13,7 +13,9 @@
 #include <vector>
 
 #include "vibecraft/app/Inventory.hpp"
+#include "vibecraft/app/ApplicationBotanyRuntime.hpp"
 #include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/ApplicationTerraformingRuntime.hpp"
 #include "vibecraft/app/SingleplayerSave.hpp"
 #include "vibecraft/audio/MusicDirector.hpp"
 #include "vibecraft/audio/SharedAudioOutput.hpp"
@@ -21,6 +23,7 @@
 #include "vibecraft/game/Camera.hpp"
 #include "vibecraft/game/DayNightCycle.hpp"
 #include "vibecraft/game/MobSpawnSystem.hpp"
+#include "vibecraft/game/OxygenSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
 #include "vibecraft/game/WeatherSystem.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
@@ -245,10 +248,21 @@ class Application
     bool isGrounded_ = false;
     bool jumpWasHeld_ = false;
     vibecraft::game::EnvironmentalHazards playerHazards_{};
+    vibecraft::game::OxygenEnvironment playerOxygenEnvironment_{};
     vibecraft::game::PlayerVitals playerVitals_{};
+    vibecraft::game::OxygenSystem oxygenSystem_{};
     vibecraft::game::MobSpawnSystem mobSpawnSystem_{};
+    /// Host-replicated mob poses when `multiplayerMode_ == Client` (render-only; local mob sim is skipped).
+    std::vector<vibecraft::game::MobInstance> clientReplicatedMobs_{};
+    /// Set in `processInput`, sent in `updateMultiplayer` (same frame), then cleared after send.
+    bool pendingClientMobMeleeSwing_ = false;
+    std::uint32_t pendingClientMobMeleeTargetId_ = 0;
+    /// Correlates snapshot "mob vanished" with a recent local swing (client defeat SFX vs despawn).
+    std::uint32_t lastClientMeleeSwingMobId_ = 0;
+    float lastClientMeleeSwingSessionTimeSeconds_ = -1000.0f;
     HotbarSlots hotbarSlots_{};
     BagSlots bagSlots_{};
+    EquipmentSlots equipmentSlots_{};
     std::size_t selectedHotbarIndex_ = 0;
     float smoothedFrameTimeMs_ = 0.0f;
     bool frameTimeInitialized_ = false;
@@ -274,6 +288,8 @@ class Application
     std::unordered_map<std::uint16_t, std::size_t> clientChunkSyncCursorById_;
     std::unordered_map<std::uint16_t, world::ChunkCoord> clientChunkSyncCenterById_;
     float mainMenuTimeSeconds_ = 0.0f;
+    /// Seconds spent in Playing this session (resets when returning to main menu / unloading world).
+    float sessionPlayTimeSeconds_ = 0.0f;
     std::string mainMenuNotice_;
     std::string pauseMenuNotice_;
     bool pauseSoundSettingsOpen_ = false;
@@ -305,6 +321,9 @@ class Application
     float autosaveAccumulatorSeconds_ = 0.0f;
     bool pendingHostStartAfterWorldLoad_ = false;
     bool pendingClientJoinAfterWorldLoad_ = false;
+    bool mainMenuBootLoading_ = true;
+    bool mainMenuSingleplayerPickerOpen_ = false;
+    bool mainMenuSingleplayerAwaitingMouseRelease_ = false;
     /// Frames spent in client join load (for throttled diagnostics).
     std::uint32_t clientJoinLoadDebugFrame_ = 0;
     bool clientJoinLoggedFirstChunkSummary_ = false;
@@ -312,5 +331,11 @@ class Application
     CraftingMenuState craftingMenuState_{};
     bool showWorldOriginGuides_ = false;
     bool debugF3KeyWasDown_ = false;
+    std::vector<glm::vec3> cachedVisibleOxygenGenerators_{};
+    glm::vec3 cachedVisibleOxygenGeneratorsReference_{0.0f};
+    float cachedVisibleOxygenGeneratorsCooldownSeconds_ = 0.0f;
+    bool cachedVisibleOxygenGeneratorsValid_ = false;
+    TerraformingRuntimeState terraformingRuntimeState_{};
+    BotanyRuntimeState botanyRuntimeState_{};
 };
 }  // namespace vibecraft::app

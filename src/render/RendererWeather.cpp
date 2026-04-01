@@ -1,6 +1,8 @@
 #include "vibecraft/render/RendererDetail.hpp"
 #include "vibecraft/render/RendererInternal.hpp"
 
+#include <cmath>
+
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
@@ -141,12 +143,26 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
             const float baseSize = 16.0f + patchStrength * 22.0f + hashUnitFloat(gridX, gridZ, 51) * 8.0f;
             const float stretch = 0.9f + hashUnitFloat(gridX, gridZ, 61) * 0.5f;
             const float secondaryOffset = 5.0f + hashUnitFloat(gridX, gridZ, 71) * 5.0f;
-            const glm::vec3 brightCloudWhite(0.97f, 0.98f, 1.0f);
-            const glm::vec3 primaryTint = glm::mix(
-                cameraFrameData.cloudTint,
-                brightCloudWhite,
-                0.72f + patchStrength * 0.24f);
-            const glm::vec3 secondaryTint = glm::mix(primaryTint, cameraFrameData.skyTint, 0.12f);
+            const glm::vec3 auroraAnchor = glm::mix(cameraFrameData.skyTint, cameraFrameData.horizonTint, 0.45f);
+            const glm::vec3 plasmaHighlight = glm::mix(auroraAnchor, glm::vec3(0.90f, 0.65f, 1.00f), 0.55f);
+            const float chromaPhase =
+                std::sin(cameraFrameData.weatherTimeSeconds * 0.12f + static_cast<float>(gridX) * 0.9f
+                         + static_cast<float>(gridZ) * 0.6f);
+            const float chromaBlend = std::clamp(0.35f + (chromaPhase * 0.5f + 0.5f) * 0.4f + patchStrength * 0.35f, 0.0f, 1.0f);
+            const glm::vec3 primaryTint = glm::mix(cameraFrameData.cloudTint, plasmaHighlight, chromaBlend);
+            const glm::vec3 secondaryTint =
+                glm::mix(primaryTint, auroraAnchor, 0.18f + patchStrength * 0.25f);
+            const bool drawIridescentHalo = patchStrength > 0.72f;
+            if (drawIridescentHalo)
+            {
+                const float haloScale = baseSize * (1.18f + patchStrength * 0.22f);
+                const glm::vec3 haloTint = glm::mix(plasmaHighlight, auroraAnchor, 0.25f);
+                debugDrawEncoder.setColor(packAbgr8(haloTint, 0.55f));
+                debugDrawEncoder.drawQuad(
+                    bx::Vec3(0.0f, 1.0f, 0.0f),
+                    bx::Vec3(centerX, y + 1.8f, centerZ),
+                    haloScale);
+            }
 
             debugDrawEncoder.setColor(packAbgr8(primaryTint, 1.0f));
             debugDrawEncoder.drawQuad(
@@ -156,7 +172,7 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
 
             if (drawSecondaryCloudLayer)
             {
-                debugDrawEncoder.setColor(packAbgr8(secondaryTint, 1.0f));
+                debugDrawEncoder.setColor(packAbgr8(secondaryTint, 0.95f));
                 debugDrawEncoder.drawQuad(
                     bx::Vec3(0.0f, 1.0f, 0.0f),
                     bx::Vec3(centerX + secondaryOffset, y - 1.0f, centerZ - secondaryOffset * 0.5f),
@@ -188,7 +204,8 @@ void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& 
     const glm::vec3 normalizedRainVector = glm::normalize(rainVector);
     const int baseCellX = static_cast<int>(std::floor(cameraFrameData.position.x / rainGridSpacing));
     const int baseCellZ = static_cast<int>(std::floor(cameraFrameData.position.z / rainGridSpacing));
-    const glm::vec3 rainTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.70f, 0.82f, 1.0f), 0.65f);
+    const glm::vec3 ionHighlight = glm::mix(cameraFrameData.skyTint, glm::vec3(0.46f, 0.92f, 0.98f), 0.60f);
+    const glm::vec3 rainTint = glm::mix(cameraFrameData.cloudTint, ionHighlight, 0.75f);
     const int rainStride =
         cameraFrameData.rainIntensity < 0.30f ? 3 : (cameraFrameData.rainIntensity < 0.65f ? 2 : 1);
 

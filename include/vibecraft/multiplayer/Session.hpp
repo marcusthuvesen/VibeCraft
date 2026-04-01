@@ -72,6 +72,8 @@ class ClientSession
 
     void sendInput(const protocol::ClientInputMessage& input, std::uint32_t tick);
     [[nodiscard]] std::vector<protocol::ServerSnapshotMessage> takeSnapshots();
+    /// Protocol version from the last decoded `ServerSnapshot` header (0 if none yet).
+    [[nodiscard]] std::uint16_t lastServerSnapshotProtocolVersion() const;
     [[nodiscard]] std::vector<protocol::BlockEditEventMessage> takeBlockEdits();
     [[nodiscard]] std::vector<protocol::ChunkSnapshotMessage> takeChunkSnapshots();
     [[nodiscard]] std::optional<protocol::JoinAcceptMessage> takeJoinAccept();
@@ -90,6 +92,7 @@ class ClientSession
     std::unordered_map<std::uint64_t, protocol::ChunkSnapshotMessage> partialChunkSnapshots_;
     std::unordered_map<std::uint64_t, std::uint32_t> partialChunkSectionMasks_;
     std::optional<protocol::JoinAcceptMessage> pendingJoinAccept_;
+    std::uint16_t lastServerSnapshotProtocolVersion_ = 0;
 
     void sendMessage(protocol::MessageType type, const protocol::MessagePayload& payload, std::uint32_t tick = 0);
 };

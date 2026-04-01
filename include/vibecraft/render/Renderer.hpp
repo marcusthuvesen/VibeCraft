@@ -89,7 +89,15 @@ enum class HudItemKind : std::uint8_t
     IronAxe,
     GoldAxe,
     DiamondAxe,
+    OxygenCanister,
+    FieldTank,
+    ExpeditionTank,
     Coal,
+    StarterTank,
+    ScoutHelmet,
+    ScoutChestRig,
+    ScoutGreaves,
+    ScoutBoots,
 };
 
 struct FrameDebugData
@@ -110,10 +118,34 @@ struct FrameDebugData
     std::uint32_t totalFaces = 0;
     std::uint32_t residentChunkCount = 0;
     glm::vec3 cameraPosition{0.0f};
+    std::string debugCoordinatesLine;
+    std::string debugBlockLine;
+    std::string debugChunkLine;
+    std::string debugFacingLine;
+    std::string debugBiomeLine;
     float uiCursorX = 0.0f;
     float uiCursorY = 0.0f;
+    /// Menu/pause overlays use logical-window-normalized debug-text dimensions for stable size across displays.
+    std::uint32_t uiMenuWindowWidth = 0;
+    std::uint32_t uiMenuWindowHeight = 0;
+    std::uint16_t uiMenuTextWidth = 0;
+    std::uint16_t uiMenuTextHeight = 0;
     float health = 20.0f;
     float maxHealth = 20.0f;
+    float oxygen = 0.0f;
+    float maxOxygen = 0.0f;
+    HudItemKind oxygenTankItemKind = HudItemKind::None;
+    bool oxygenInsideSafeZone = false;
+    bool oxygenLowWarning = false;
+    std::string oxygenStatusLine;
+    std::string oxygenZoneLabel;
+    bool relayPlacementPreviewActive = false;
+    bool relayPlacementPreviewValid = false;
+    std::string relayPlacementPreviewLabel;
+    std::string selectedHotbarLabel;
+    std::string selectedHotbarActionHint;
+    /// Rotating early-session survival tips (empty when disabled or expired).
+    std::string survivalTipLine;
     /// 0–1 progress toward the next level (visual XP bar only until gameplay tracks XP).
     float experienceFill = 0.0f;
     bool hasTarget = false;
@@ -124,6 +156,7 @@ struct FrameDebugData
     std::array<HotbarSlotHud, 9> hotbarSlots{};
     std::array<HotbarSlotHud, kBagHudSlotCount> bagSlots{};
     std::array<HotbarSlotHud, 9> craftingGridSlots{};
+    std::array<HotbarSlotHud, 5> equipmentSlots{};
     HotbarSlotHud craftingResultSlot{};
     HotbarSlotHud craftingCursorSlot{};
     std::uint8_t craftingBagStartRow = 0;
@@ -146,12 +179,37 @@ struct FrameDebugData
         float pitchRadians = 0.0f;
         float halfWidth = 0.28f;
         float height = 1.75f;
-        vibecraft::game::MobKind mobKind = vibecraft::game::MobKind::HostileStalker;
+        vibecraft::game::MobKind mobKind = vibecraft::game::MobKind::VoidStrider;
         vibecraft::world::BlockType heldBlockType = vibecraft::world::BlockType::Air;
         HudItemKind heldItemKind = HudItemKind::None;
         bool heldItemUsesSwordPose = false;
+        /// Mob HP (0 / 0 = hide bar). `MobKind::Player` entries ignore this.
+        float mobHealthCurrent = 0.0f;
+        float mobHealthMax = 0.0f;
     };
     std::vector<WorldMobHud> worldMobs;
+
+    struct WorldBirdHud
+    {
+        glm::vec3 worldPosition{0.0f};
+        float halfWidth = 1.0f;
+        float halfHeight = 0.45f;
+        glm::vec3 tint{1.0f};
+        float alpha = 1.0f;
+        float flapPhase = 0.0f;
+        /// Horizontal flight direction in the XZ plane (x, z), normalized when set by ambient life.
+        glm::vec2 flightForwardXZ{1.0f, 0.0f};
+    };
+    std::vector<WorldBirdHud> worldBirds;
+
+    struct WorldSafeZoneHud
+    {
+        glm::vec3 worldCenter{0.0f};
+        float radius = 0.0f;
+        bool preview = false;
+        bool valid = true;
+    };
+    std::vector<WorldSafeZoneHud> worldSafeZones;
 
     /// When true, the 3D view and in-game HUD are hidden and the title menu is drawn instead.
     bool mainMenuActive = false;
@@ -166,6 +224,8 @@ struct FrameDebugData
     float mainMenuLoadingProgress = 0.0f;
     std::string mainMenuLoadingTitle;
     std::string mainMenuLoadingLabel;
+    bool mainMenuSingleplayerPanelActive = false;
+    int mainMenuSingleplayerHoveredControl = -1;
     bool mainMenuSoundSettingsActive = false;
     int mainMenuSoundSettingsHoveredControl = -1;
     float mainMenuSoundMusicVolume = 0.85f;
@@ -202,6 +262,7 @@ struct FrameDebugData
     int pauseGameSettingsHoveredControl = -1;
     bool mobSpawningEnabled = true;
     std::string pauseSpawnBiomeLabel;
+    std::string pauseWeatherLabel;
     bool craftingMenuActive = false;
     bool craftingUsesWorkbench = false;
     std::string craftingTitle;
@@ -226,7 +287,7 @@ class Renderer
     [[nodiscard]] std::uint16_t menuLogoHeightPx() const { return logoHeightPx_; }
 
     /// Returns a button id for the main menu hit test, or -1. Layout must match drawMainMenuOverlay().
-    /// 0..4 main buttons, 5 creative shortcut, 6 spawn shortcut, 7 previous world, 8 new world, 9 next world.
+    /// 0..4 main buttons, 5 creative shortcut, 6 spawn shortcut.
     [[nodiscard]] static int hitTestMainMenu(
         float mouseX,
         float mouseY,
@@ -237,7 +298,16 @@ class Renderer
         std::uint16_t menuLogoWidthPx = 0,
         std::uint16_t menuLogoHeightPx = 0);
 
-    /// Pause menu: 0 Resume, 1 Sound settings, 2 Quit to title, 3 Quit game, 4 Game options.
+    /// Singleplayer panel: 0 Start saved, 1 Start new, 2 Back.
+    [[nodiscard]] static int hitTestMainMenuSingleplayerPanel(
+        float mouseX,
+        float mouseY,
+        std::uint32_t windowWidth,
+        std::uint32_t windowHeight,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight);
+
+    /// Pause menu: 0 Resume, 1 Sound settings, 2 Game options, 3 Quit to title, 4 Quit game.
     [[nodiscard]] static int hitTestPauseMenu(
         float mouseX,
         float mouseY,
@@ -246,7 +316,7 @@ class Renderer
         std::uint16_t textWidth,
         std::uint16_t textHeight);
 
-    /// Pause game options: 0 Back, 1 Mob spawning toggle, 2 Spawn biome cycle.
+    /// Pause game options: 0 Back, 1 Mob spawning toggle, 2 Spawn biome cycle, 3 Weather cycle.
     [[nodiscard]] static int hitTestPauseGameSettingsMenu(
         float mouseX,
         float mouseY,
@@ -314,11 +384,12 @@ class Renderer
         int multiplayerRowShift,
         int mainMenuContentTopBias);
 
-    /// Crafting screen hit ids: 0..8 grid, 9 result, 10..18 hotbar, 19..99 bag.
+    /// Crafting screen hit ids: 0..8 grid, 9 result, 10..14 equipment, 15..23 hotbar, 24..104 bag.
     static constexpr int kCraftingGridHitBase = 0;
     static constexpr int kCraftingResultHit = 9;
-    static constexpr int kCraftingHotbarHitBase = 10;
-    static constexpr int kCraftingBagHitBase = 19;
+    static constexpr int kCraftingEquipmentHitBase = 10;
+    static constexpr int kCraftingHotbarHitBase = 15;
+    static constexpr int kCraftingBagHitBase = 24;
 
     [[nodiscard]] static int hitTestCraftingMenu(
         float mouseX,
@@ -346,6 +417,7 @@ class Renderer
     void drawHeldItemOverlay(const FrameDebugData& frameDebugData);
     void drawBlockBreakingOverlay(const FrameDebugData& frameDebugData);
     void drawCraftingOverlay(const FrameDebugData& frameDebugData);
+    void drawSurvivalStatusHud(const FrameDebugData& frameDebugData);
     void drawUiSolidRect(float x0, float y0, float x1, float y1, std::uint32_t abgr);
     void drawInventoryItemIcons(
         const FrameDebugData& frameDebugData,
@@ -356,12 +428,19 @@ class Renderer
         std::uint16_t bagRow1,
         std::uint16_t bagRow2);
     void drawAtlasIcon(float centerX, float centerY, float iconSizePx, std::uint8_t tileIndex);
-    void drawTextureIcon(float centerX, float centerY, float iconSizePx, std::uint16_t textureHandle);
+    void drawTextureIcon(
+        float centerX,
+        float centerY,
+        float iconSizePx,
+        std::uint16_t textureHandle,
+        const TextureUvRect& uvRect = {});
     void drawWorldPickupSprites(const FrameDebugData& frameDebugData);
+    void drawWorldBirdSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     void drawWorldMobSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     [[nodiscard]] std::uint16_t mobTextureHandleForKind(vibecraft::game::MobKind kind) const;
     [[nodiscard]] TextureUvRect mobTextureUvForKind(vibecraft::game::MobKind kind) const;
     [[nodiscard]] std::uint16_t hudItemKindTextureHandle(HudItemKind kind) const;
+    [[nodiscard]] TextureUvRect hudItemKindTextureUv(HudItemKind kind) const;
 
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
@@ -393,6 +472,14 @@ class Renderer
     std::uint16_t muttonTextureHandle_ = UINT16_MAX;
     std::uint16_t featherTextureHandle_ = UINT16_MAX;
     std::uint16_t coalTextureHandle_ = UINT16_MAX;
+    std::uint16_t oxygenCanisterTextureHandle_ = UINT16_MAX;
+    std::uint16_t starterTankTextureHandle_ = UINT16_MAX;
+    std::uint16_t fieldTankTextureHandle_ = UINT16_MAX;
+    std::uint16_t expeditionTankTextureHandle_ = UINT16_MAX;
+    TextureUvRect oxygenCanisterTextureUv_{};
+    TextureUvRect starterTankTextureUv_{};
+    TextureUvRect fieldTankTextureUv_{};
+    TextureUvRect expeditionTankTextureUv_{};
     /// Optional textures for WoodSword..DiamondAxe (see HudItemKind); falls back in hudItemKindTextureHandle.
     std::array<std::uint16_t, 14> extendedToolTextureHandles_{};
     std::array<std::uint16_t, 10> blockBreakStageTextureHandles_{};
@@ -402,18 +489,20 @@ class Renderer
     std::uint16_t inventoryUiProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSolidProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSamplerHandle_ = UINT16_MAX;
-    std::uint16_t hostileMobTextureHandle_ = UINT16_MAX;
+    std::uint16_t voidStriderTextureHandle_ = UINT16_MAX;
     std::uint16_t playerMobTextureHandle_ = UINT16_MAX;
-    std::uint16_t cowMobTextureHandle_ = UINT16_MAX;
-    std::uint16_t pigMobTextureHandle_ = UINT16_MAX;
-    std::uint16_t sheepMobTextureHandle_ = UINT16_MAX;
-    std::uint16_t chickenMobTextureHandle_ = UINT16_MAX;
-    TextureUvRect hostileMobTextureUv_{};
+    std::uint16_t sporegrazerTextureHandle_ = UINT16_MAX;
+    std::uint16_t burrowerTextureHandle_ = UINT16_MAX;
+    std::uint16_t shardbackTextureHandle_ = UINT16_MAX;
+    std::uint16_t skitterwingTextureHandle_ = UINT16_MAX;
+    std::uint16_t ambientBirdTextureHandle_ = UINT16_MAX;
+    TextureUvRect voidStriderTextureUv_{};
     TextureUvRect playerMobTextureUv_{};
-    TextureUvRect cowMobTextureUv_{};
-    TextureUvRect pigMobTextureUv_{};
-    TextureUvRect sheepMobTextureUv_{};
-    TextureUvRect chickenMobTextureUv_{};
+    TextureUvRect sporegrazerTextureUv_{};
+    TextureUvRect burrowerTextureUv_{};
+    TextureUvRect shardbackTextureUv_{};
+    TextureUvRect skitterwingTextureUv_{};
+    TextureUvRect ambientBirdTextureUv_{};
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };
 }  // namespace vibecraft::render

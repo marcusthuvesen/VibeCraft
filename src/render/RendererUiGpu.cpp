@@ -94,15 +94,16 @@ struct ModelPartSpec
     using MK = vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MK::HostileStalker:
+    case MK::VoidStrider:
     case MK::Player:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 8.0f, 12.0f, 4.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 12.0f, 4.0f),
             .arm = makeCuboidUvSet(kTexW, kTexH, 40.0f, 16.0f, 4.0f, 12.0f, 4.0f),
+            .horn = makeCuboidUvSet(kTexW, kTexH, 24.0f, 0.0f, 2.0f, 8.0f, 2.0f),
         };
-    case MK::Cow:
+    case MK::Sporegrazer:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 18.0f, 4.0f, 12.0f, 18.0f, 10.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 6.0f),
@@ -110,20 +111,22 @@ struct ModelPartSpec
             .snout = makeCuboidUvSet(kTexW, kTexH, 0.0f, 22.0f, 4.0f, 3.0f, 2.0f),
             .horn = makeCuboidUvSet(kTexW, kTexH, 22.0f, 0.0f, 1.0f, 3.0f, 1.0f),
         };
-    case MK::Pig:
+    case MK::Burrower:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 28.0f, 8.0f, 10.0f, 16.0f, 8.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 6.0f, 4.0f),
             .snout = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 4.0f, 3.0f, 2.0f),
+            .horn = makeCuboidUvSet(kTexW, kTexH, 24.0f, 0.0f, 2.0f, 3.0f, 1.0f),
         };
-    case MK::Sheep:
+    case MK::Shardback:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 28.0f, 8.0f, 8.0f, 16.0f, 6.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 6.0f, 6.0f, 8.0f),
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 6.0f, 4.0f),
+            .horn = makeCuboidUvSet(kTexW, kTexH, 22.0f, 0.0f, 2.0f, 6.0f, 2.0f),
         };
-    case MK::Chicken:
+    case MK::Skitterwing:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 0.0f, 9.0f, 6.0f, 8.0f, 6.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 4.0f, 6.0f, 3.0f),
@@ -141,17 +144,17 @@ struct ModelPartSpec
     using MK = vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MK::HostileStalker:
+    case MK::VoidStrider:
     case MK::Player:
         return 32.0f;
-    case MK::Cow:
+    case MK::Sporegrazer:
         return 20.0f;
-    case MK::Pig:
+    case MK::Burrower:
         return 14.0f;
-    case MK::Sheep:
-        return 14.0f;
-    case MK::Chicken:
-        return 14.0f;
+    case MK::Shardback:
+        return 16.0f;
+    case MK::Skitterwing:
+        return 16.0f;
     }
     return 16.0f;
 }
@@ -161,16 +164,16 @@ struct ModelPartSpec
     using MK = vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MK::HostileStalker:
+    case MK::VoidStrider:
     case MK::Player:
         return 6.0f;
-    case MK::Cow:
+    case MK::Sporegrazer:
         return 6.0f;
-    case MK::Pig:
+    case MK::Burrower:
         return 5.0f;
-    case MK::Sheep:
+    case MK::Shardback:
         return 4.0f;
-    case MK::Chicken:
+    case MK::Skitterwing:
         return 4.0f;
     }
     return 4.0f;
@@ -283,11 +286,13 @@ void Renderer::drawInventoryItemIcons(
     const detail::HotbarLayoutPx hotbarLayout =
         detail::computeHotbarLayoutPx(width_, height_, textHeight, hotbarRow);
     const bool canDrawSolid = inventoryUiSolidProgramHandle_ != UINT16_MAX;
-    const auto drawUiTextureRect = [&](const float x0,
-                                       const float y0,
-                                       const float x1,
-                                       const float y1,
-                                       const std::uint16_t textureHandle)
+    const auto drawUiTextureRectUv = [&](
+                                         const float x0,
+                                         const float y0,
+                                         const float x1,
+                                         const float y1,
+                                         const std::uint16_t textureHandle,
+                                         const TextureUvRect& uvRect)
     {
         if (textureHandle == UINT16_MAX)
         {
@@ -303,10 +308,46 @@ void Renderer::drawInventoryItemIcons(
         }
 
         detail::ChunkVertex vertices[4] = {
-            detail::ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 0.0f, .abgr = 0xffffffff},
-            detail::ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 0.0f, .abgr = 0xffffffff},
-            detail::ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 1.0f, .abgr = 0xffffffff},
-            detail::ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 1.0f, .abgr = 0xffffffff},
+            detail::ChunkVertex{
+                .x = x0,
+                .y = y0,
+                .z = 0.0f,
+                .nx = 0.0f,
+                .ny = 0.0f,
+                .nz = 1.0f,
+                .u = uvRect.minU,
+                .v = uvRect.minV,
+                .abgr = 0xffffffff},
+            detail::ChunkVertex{
+                .x = x1,
+                .y = y0,
+                .z = 0.0f,
+                .nx = 0.0f,
+                .ny = 0.0f,
+                .nz = 1.0f,
+                .u = uvRect.maxU,
+                .v = uvRect.minV,
+                .abgr = 0xffffffff},
+            detail::ChunkVertex{
+                .x = x1,
+                .y = y1,
+                .z = 0.0f,
+                .nx = 0.0f,
+                .ny = 0.0f,
+                .nz = 1.0f,
+                .u = uvRect.maxU,
+                .v = uvRect.maxV,
+                .abgr = 0xffffffff},
+            detail::ChunkVertex{
+                .x = x0,
+                .y = y1,
+                .z = 0.0f,
+                .nx = 0.0f,
+                .ny = 0.0f,
+                .nz = 1.0f,
+                .u = uvRect.minU,
+                .v = uvRect.maxV,
+                .abgr = 0xffffffff},
         };
 
         bgfx::TransientVertexBuffer tvb{};
@@ -340,6 +381,15 @@ void Renderer::drawInventoryItemIcons(
             BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
         bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
     };
+    const auto drawUiTextureRect = [&](const float x0,
+                                       const float y0,
+                                       const float x1,
+                                       const float y1,
+                                       const std::uint16_t textureHandle)
+    {
+        const TextureUvRect fullUv{.minU = 0.0f, .maxU = 1.0f, .minV = 0.0f, .maxV = 1.0f};
+        drawUiTextureRectUv(x0, y0, x1, y1, textureHandle, fullUv);
+    };
     const auto itemTextureHandle = [&](const HudItemKind itemKind)
     {
         return hudItemKindTextureHandle(itemKind);
@@ -365,7 +415,7 @@ void Renderer::drawInventoryItemIcons(
         const std::uint16_t textureHandle = itemTextureHandle(slotHud.itemKind);
         if (textureHandle != UINT16_MAX)
         {
-            drawUiTextureRect(ix0, iy0, ix1, iy1, textureHandle);
+            drawUiTextureRectUv(ix0, iy0, ix1, iy1, textureHandle, hudItemKindTextureUv(slotHud.itemKind));
             return;
         }
         if (slotHud.blockType == vibecraft::world::BlockType::Air)
@@ -620,11 +670,12 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     const std::uint16_t textHeight = stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
     const float charWidthPx = static_cast<float>(width_) / static_cast<float>(std::max<std::uint16_t>(1, textWidth));
     const float charHeightPx = static_cast<float>(height_) / static_cast<float>(std::max<std::uint16_t>(1, textHeight));
-    const auto drawUiTextureRect = [&](const float x0,
-                                       const float y0,
-                                       const float x1,
-                                       const float y1,
-                                       const std::uint16_t textureHandle)
+    const auto drawUiTextureRectUv = [&](const float x0,
+                                         const float y0,
+                                         const float x1,
+                                         const float y1,
+                                         const std::uint16_t textureHandle,
+                                         const TextureUvRect& uvRect)
     {
         if (textureHandle == UINT16_MAX)
         {
@@ -640,10 +691,10 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         }
 
         detail::ChunkVertex vertices[4] = {
-            detail::ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 0.0f, .abgr = 0xffffffff},
-            detail::ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 0.0f, .abgr = 0xffffffff},
-            detail::ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 1.0f, .abgr = 0xffffffff},
-            detail::ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 1.0f, .abgr = 0xffffffff},
+            detail::ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = uvRect.minU, .v = uvRect.minV, .abgr = 0xffffffff},
+            detail::ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = uvRect.maxU, .v = uvRect.minV, .abgr = 0xffffffff},
+            detail::ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = uvRect.maxU, .v = uvRect.maxV, .abgr = 0xffffffff},
+            detail::ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = uvRect.minU, .v = uvRect.maxV, .abgr = 0xffffffff},
         };
 
         bgfx::TransientVertexBuffer tvb{};
@@ -677,7 +728,6 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
             BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
         bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
     };
-
     const bool canDrawSolid = inventoryUiSolidProgramHandle_ != UINT16_MAX;
     if (!canDrawSolid)
     {
@@ -722,17 +772,23 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
 
         const float centerX = x + layout.slotSize * 0.5f;
         const float centerY = y + layout.slotSize * 0.5f;
-        const float iconSize = std::clamp(std::round(layout.slotSize * 0.75f), 18.0f, 34.0f);
+        const float iconInset = std::max(2.0f, std::round(layout.slotSize * 0.09f));
+        const float iconMinX = x + iconInset;
+        const float iconMinY = y + iconInset;
+        const float iconMaxX = x + layout.slotSize - iconInset;
+        const float iconMaxY = y + layout.slotSize - iconInset;
+        const float iconSize = std::max(1.0f, std::min(iconMaxX - iconMinX, iconMaxY - iconMinY));
         const std::uint16_t textureHandle = hudItemKindTextureHandle(slotHud.itemKind);
 
         if (textureHandle != UINT16_MAX)
         {
-            drawUiTextureRect(
-                centerX - iconSize * 0.5f,
-                centerY - iconSize * 0.5f,
-                centerX + iconSize * 0.5f,
-                centerY + iconSize * 0.5f,
-                textureHandle);
+            drawUiTextureRectUv(
+                iconMinX,
+                iconMinY,
+                iconMaxX,
+                iconMaxY,
+                textureHandle,
+                hudItemKindTextureUv(slotHud.itemKind));
         }
         else if (slotHud.blockType != vibecraft::world::BlockType::Air)
         {
@@ -754,6 +810,84 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         }
     };
 
+    constexpr std::array<const char*, 5> kEquipmentLabels{"HELM", "CHEST", "LEGS", "BOOTS", "O2"};
+    for (std::size_t slotIndex = 0; slotIndex < frameDebugData.equipmentSlots.size(); ++slotIndex)
+    {
+        const float slotX = layout.equipmentOriginX;
+        const float slotY = layout.equipmentOriginY + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
+        drawSlotFrame(slotX, slotY, false);
+        drawSlotContents(frameDebugData.equipmentSlots[slotIndex], slotX, slotY);
+
+        const int labelCol = std::clamp(
+            static_cast<int>(std::floor((slotX + layout.slotSize + layout.slotGap * 0.7f) / charWidthPx)),
+            0,
+            static_cast<int>(textWidth) - 1);
+        const int labelRow = std::clamp(
+            static_cast<int>(std::floor((slotY + layout.slotSize * 0.38f) / charHeightPx)),
+            0,
+            static_cast<int>(textHeight) - 1);
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(labelCol),
+            static_cast<std::uint16_t>(labelRow),
+            0x0e,
+            "%s",
+            kEquipmentLabels[slotIndex]);
+    }
+
+    const auto drawInventoryPlayerPreview = [&](const float previewCenterX, const float previewTop) -> void
+    {
+        if (playerMobTextureHandle_ == UINT16_MAX)
+        {
+            return;
+        }
+        const float figurePixelHeight = 32.0f;
+        const float desiredHeight = layout.slotSize * 4.3f;
+        const float scale = desiredHeight / figurePixelHeight;
+        const float figurePixelWidth = 16.0f;
+        const float previewWidth = figurePixelWidth * scale;
+        const float previewLeft = previewCenterX - previewWidth * 0.5f;
+        const float previewBottom = previewTop + desiredHeight;
+        const float padX = layout.slotSize * 0.35f;
+        const float padY = layout.slotSize * 0.25f;
+        const std::uint32_t bgAbgr = detail::packAbgr8(glm::vec3(0.05f, 0.06f, 0.11f), 0.88f);
+        const std::uint32_t borderAbgr = detail::packAbgr8(glm::vec3(0.29f, 0.46f, 0.78f), 0.94f);
+        drawUiSolidRect(
+            previewLeft - padX,
+            previewTop - padY,
+            previewLeft + previewWidth + padX,
+            previewBottom + padY * 0.7f,
+            bgAbgr);
+        drawUiSolidRect(
+            previewLeft - padX - 3.0f,
+            previewTop - padY - 3.0f,
+            previewLeft + previewWidth + padX + 3.0f,
+            previewBottom + padY * 0.7f + 3.0f,
+            borderAbgr);
+
+        const MobUvLayout playerUv = uvLayoutForMobKind(game::MobKind::Player);
+        const auto drawPart = [&](const TextureUvRect& uv, const float px, const float py, const float pw, const float ph)
+        {
+            drawUiTextureRectUv(
+                previewLeft + px * scale,
+                previewTop + py * scale,
+                previewLeft + (px + pw) * scale,
+                previewTop + (py + ph) * scale,
+                playerMobTextureHandle_,
+                uv);
+        };
+
+        drawPart(playerUv.head.front, 4.0f, 0.0f, 8.0f, 8.0f);
+        drawPart(playerUv.body.front, 4.0f, 8.0f, 8.0f, 12.0f);
+        drawPart(playerUv.arm.front, 0.0f, 8.0f, 4.0f, 12.0f);
+        TextureUvRect armRight = playerUv.arm.front;
+        std::swap(armRight.minU, armRight.maxU);
+        drawPart(armRight, 12.0f, 8.0f, 4.0f, 12.0f);
+        drawPart(playerUv.leg.front, 4.0f, 20.0f, 4.0f, 12.0f);
+        TextureUvRect legRight = playerUv.leg.front;
+        std::swap(legRight.minU, legRight.maxU);
+        drawPart(legRight, 8.0f, 20.0f, 4.0f, 12.0f);
+    };
+
     const int craftingColumns = frameDebugData.craftingUsesWorkbench ? 3 : 2;
     const int craftingRows = frameDebugData.craftingUsesWorkbench ? 3 : 2;
     for (int row = 0; row < craftingRows; ++row)
@@ -766,6 +900,18 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
             drawSlotFrame(slotX, slotY, false);
             drawSlotContents(frameDebugData.craftingGridSlots[slotIndex], slotX, slotY);
         }
+    }
+
+    if (frameDebugData.craftingMenuActive && playerMobTextureHandle_ != UINT16_MAX)
+    {
+        float previewTop = layout.equipmentOriginY - layout.slotSize * 1.25f;
+        const float minPreviewTop = layout.panelTop + layout.slotSize * 0.35f;
+        if (previewTop < minPreviewTop)
+        {
+            previewTop = minPreviewTop;
+        }
+        const float previewCenterX = layout.equipmentOriginX + layout.slotSize * 0.85f;
+        drawInventoryPlayerPreview(previewCenterX, previewTop);
     }
 
     const float arrowY = layout.resultSlotY + layout.slotSize * 0.5f;
@@ -847,6 +993,11 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
         if (pickup.itemKind != HudItemKind::None)
         {
             textureHandle = hudItemKindTextureHandle(pickup.itemKind);
+            const TextureUvRect uvRect = hudItemKindTextureUv(pickup.itemKind);
+            minU = uvRect.minU;
+            maxU = uvRect.maxU;
+            minV = uvRect.minV;
+            maxV = uvRect.maxV;
         }
         if (textureHandle == UINT16_MAX && pickup.blockType != vibecraft::world::BlockType::Air)
         {
@@ -950,6 +1101,155 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
             0,
             detail::toUniformHandle(inventoryUiSamplerHandle_),
             detail::toTextureHandle(textureHandle));
+        bgfx::setState(
+            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+            | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS);
+        bgfx::submit(detail::kMainView, detail::toProgramHandle(inventoryUiProgramHandle_));
+    }
+}
+
+void Renderer::drawWorldBirdSprites(
+    const FrameDebugData& frameDebugData,
+    const CameraFrameData& cameraFrameData)
+{
+    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
+        || ambientBirdTextureHandle_ == UINT16_MAX)
+    {
+        return;
+    }
+
+    for (const FrameDebugData::WorldBirdHud& bird : frameDebugData.worldBirds)
+    {
+        const glm::vec3 toBird = bird.worldPosition - cameraFrameData.position;
+        const float distanceSq = glm::dot(toBird, toBird);
+        if (distanceSq < 16.0f * 16.0f || distanceSq > 220.0f * 220.0f)
+        {
+            continue;
+        }
+        if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4
+            || bgfx::getAvailTransientIndexBuffer(6) < 6)
+        {
+            break;
+        }
+
+        const float halfWidth = std::max(
+            0.28f,
+            bird.halfWidth * (0.93f + std::abs(std::sin(bird.flapPhase)) * 0.14f));  // wing extension through the stroke
+        const float halfHeight = std::max(
+            0.14f,
+            bird.halfHeight * (1.02f - std::abs(std::cos(bird.flapPhase)) * 0.09f));
+
+        glm::vec3 fwd(bird.flightForwardXZ.x, 0.0f, bird.flightForwardXZ.y);
+        const float fwdLenSq = glm::dot(fwd, fwd);
+        if (fwdLenSq > 1.0e-10f)
+        {
+            fwd /= std::sqrt(fwdLenSq);
+        }
+        else
+        {
+            fwd = glm::vec3(0.0f, 0.0f, 1.0f);
+        }
+
+        glm::vec3 toCamera = cameraFrameData.position - bird.worldPosition;
+        toCamera.y = 0.0f;
+        if (glm::dot(toCamera, toCamera) > 1.0e-6f)
+        {
+            toCamera = glm::normalize(toCamera);
+            if (glm::dot(toCamera, fwd) < 0.0f)
+            {
+                fwd = -fwd;
+            }
+        }
+
+        const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+        glm::vec3 wingAxis = glm::cross(worldUp, fwd);
+        if (glm::dot(wingAxis, wingAxis) < 1.0e-10f)
+        {
+            wingAxis = glm::cross(fwd, glm::vec3(1.0f, 0.0f, 0.0f));
+        }
+        wingAxis = glm::normalize(wingAxis);
+        const glm::vec3 bodyUp = glm::normalize(glm::cross(fwd, wingAxis));
+
+        const float roll = 0.48f * std::sin(bird.flapPhase);
+        const float cr = std::cos(roll);
+        const float sr = std::sin(roll);
+        const glm::vec3 wingR = wingAxis * cr + bodyUp * sr;
+        const glm::vec3 upR = -wingAxis * sr + bodyUp * cr;
+
+        const glm::vec3 right = wingR * halfWidth;
+        const glm::vec3 up = upR * halfHeight;
+        const std::uint32_t abgr = detail::packAbgr8(bird.tint, bird.alpha);
+
+        detail::ChunkVertex vertices[4] = {
+            detail::ChunkVertex{
+                .x = bird.worldPosition.x - right.x - up.x,
+                .y = bird.worldPosition.y - right.y - up.y,
+                .z = bird.worldPosition.z - right.z - up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = ambientBirdTextureUv_.minU,
+                .v = ambientBirdTextureUv_.maxV,
+                .abgr = abgr},
+            detail::ChunkVertex{
+                .x = bird.worldPosition.x + right.x - up.x,
+                .y = bird.worldPosition.y + right.y - up.y,
+                .z = bird.worldPosition.z + right.z - up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = ambientBirdTextureUv_.maxU,
+                .v = ambientBirdTextureUv_.maxV,
+                .abgr = abgr},
+            detail::ChunkVertex{
+                .x = bird.worldPosition.x + right.x + up.x,
+                .y = bird.worldPosition.y + right.y + up.y,
+                .z = bird.worldPosition.z + right.z + up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = ambientBirdTextureUv_.maxU,
+                .v = ambientBirdTextureUv_.minV,
+                .abgr = abgr},
+            detail::ChunkVertex{
+                .x = bird.worldPosition.x - right.x + up.x,
+                .y = bird.worldPosition.y - right.y + up.y,
+                .z = bird.worldPosition.z - right.z + up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = ambientBirdTextureUv_.minU,
+                .v = ambientBirdTextureUv_.minV,
+                .abgr = abgr},
+        };
+
+        bgfx::TransientVertexBuffer tvb{};
+        bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
+        std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+        bgfx::TransientIndexBuffer tib{};
+        bgfx::allocTransientIndexBuffer(&tib, 6);
+        auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+        indices[0] = 0;
+        indices[1] = 1;
+        indices[2] = 2;
+        indices[3] = 0;
+        indices[4] = 2;
+        indices[5] = 3;
+
+        const float identity[16] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f,
+        };
+        bgfx::setTransform(identity);
+        bgfx::setVertexBuffer(0, &tvb);
+        bgfx::setIndexBuffer(&tib);
+        bgfx::setTexture(
+            0,
+            detail::toUniformHandle(inventoryUiSamplerHandle_),
+            detail::toTextureHandle(ambientBirdTextureHandle_));
         bgfx::setState(
             BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
             | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS);
@@ -1083,6 +1383,11 @@ void Renderer::drawWorldMobSprites(
         if (mob.heldItemKind != HudItemKind::None)
         {
             textureHandle = hudItemKindTextureHandle(mob.heldItemKind);
+            const TextureUvRect uvRect = hudItemKindTextureUv(mob.heldItemKind);
+            minU = uvRect.minU;
+            maxU = uvRect.maxU;
+            minV = uvRect.minV;
+            maxV = uvRect.maxV;
         }
         if (textureHandle == UINT16_MAX && mob.heldBlockType != vibecraft::world::BlockType::Air)
         {
@@ -1277,9 +1582,9 @@ void Renderer::drawWorldMobSprites(
             }
             break;
         }
-        case MK::HostileStalker:
+        case MK::VoidStrider:
         {
-            // A mild procedural walk cycle makes hostile mobs read as "alive" without a full skeleton.
+            // The alien hunter gets a taller silhouette and crest so it reads as something native to this world.
             constexpr float kPi = 3.14159265358979323846f;
             const float gaitPhase = cameraFrameData.weatherTimeSeconds * 3.2f
                 + mob.feetPosition.x * 0.37f
@@ -1288,47 +1593,48 @@ void Renderer::drawWorldMobSprites(
             const float legSwing = std::sin(gaitPhase + kPi) * 1.05f;
             const float bodyBob = std::abs(std::sin(gaitPhase * 2.0f)) * 0.35f;
 
-            if (!submitCuboid(glm::vec3(0.0f, 18.2f + bodyBob, -0.45f), glm::vec3(3.8f, 5.8f, 2.3f), uv.body)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 28.0f + bodyBob, 0.85f), glm::vec3(4.1f, 4.1f, 4.1f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 18.8f + bodyBob, -0.55f), glm::vec3(3.7f, 6.4f, 2.1f), uv.body)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 28.2f + bodyBob, 1.15f), glm::vec3(3.7f, 4.0f, 4.5f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 31.2f + bodyBob, -0.7f), glm::vec3(0.9f, 3.6f, 0.9f), uv.horn)) break;
             if (!submitCuboid(glm::vec3(-5.8f, 18.1f + bodyBob, 0.45f + armSwing), glm::vec3(1.9f, 5.8f, 1.9f), uv.arm)) break;
             if (!submitCuboid(glm::vec3(5.8f, 18.1f + bodyBob, 0.45f - armSwing), glm::vec3(1.9f, 5.8f, 1.9f), uv.arm)) break;
             if (!submitCuboid(glm::vec3(-2.0f, 6.0f, 0.2f + legSwing), glm::vec3(1.95f, 6.0f, 1.95f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(2.0f, 6.0f, 0.2f - legSwing), glm::vec3(1.95f, 6.0f, 1.95f), uv.leg)) break;
             break;
         }
-        case MK::Cow:
+        case MK::Sporegrazer:
             if (!submitHorizontalBody(
-                    glm::vec3(0.0f, 13.8f, 0.3f),
-                    glm::vec3(6.0f, 9.0f, 5.0f),
+                    glm::vec3(0.0f, 13.2f, 0.0f),
+                    glm::vec3(6.4f, 8.4f, 4.8f),
                     uv.body))
             {
                 break;
             }
-            if (!submitCuboid(glm::vec3(0.0f, 13.9f, 8.8f), glm::vec3(4.0f, 4.0f, 3.0f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 13.0f, 12.3f), glm::vec3(2.2f, 1.6f, 1.4f), uv.snout)) break;
-            if (!submitCuboid(glm::vec3(-2.5f, 19.2f, 8.6f), glm::vec3(0.5f, 1.3f, 0.5f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(2.5f, 19.2f, 8.6f), glm::vec3(0.5f, 1.3f, 0.5f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 15.0f, 8.4f), glm::vec3(3.0f, 3.0f, 4.0f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 13.5f, 12.7f), glm::vec3(1.5f, 1.4f, 2.0f), uv.snout)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 18.8f, -0.8f), glm::vec3(1.8f, 2.2f, 4.6f), uv.horn)) break;
             if (!submitCuboid(glm::vec3(-4.2f, 6.0f, 4.5f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(4.2f, 6.0f, 4.5f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(-4.2f, 6.0f, -4.8f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(4.2f, 6.0f, -4.8f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             break;
-        case MK::Pig:
+        case MK::Burrower:
             if (!submitHorizontalBody(
-                    glm::vec3(0.0f, 8.8f, 0.0f),
-                    glm::vec3(5.0f, 8.0f, 4.0f),
+                    glm::vec3(0.0f, 7.8f, -0.8f),
+                    glm::vec3(5.4f, 7.8f, 3.6f),
                     uv.body))
             {
                 break;
             }
-            if (!submitCuboid(glm::vec3(0.0f, 8.7f, 8.6f), glm::vec3(4.0f, 4.0f, 4.0f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 8.1f, 12.8f), glm::vec3(2.1f, 1.5f, 1.2f), uv.snout)) break;
-            if (!submitCuboid(glm::vec3(-3.0f, 3.0f, 4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(3.0f, 3.0f, 4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(-3.0f, 3.0f, -4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(3.0f, 3.0f, -4.8f), glm::vec3(1.5f, 3.0f, 1.5f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 8.3f, 7.4f), glm::vec3(3.6f, 3.0f, 3.6f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(-4.3f, 7.2f, 8.4f), glm::vec3(1.0f, 0.9f, 2.0f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(4.3f, 7.2f, 8.4f), glm::vec3(1.0f, 0.9f, 2.0f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(-2.6f, 2.8f, 4.4f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.6f, 2.8f, 4.4f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-3.5f, 2.8f, -3.8f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(3.5f, 2.8f, -3.8f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
             break;
-        case MK::Sheep:
+        case MK::Shardback:
             if (!submitOrientedCuboid(
                     glm::vec3(0.0f, 9.0f, 0.0f),
                     glm::vec3(4.0f * sx, 8.0f * sz, 3.0f * sy),
@@ -1339,22 +1645,93 @@ void Renderer::drawWorldMobSprites(
             {
                 break;
             }
-            if (!submitCuboid(glm::vec3(0.0f, 9.0f, 6.0f), glm::vec3(3.0f, 3.0f, 4.0f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 9.5f, 6.5f), glm::vec3(2.7f, 2.9f, 4.2f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 14.2f, -1.0f), glm::vec3(1.0f, 3.5f, 1.0f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(-2.2f, 13.3f, 0.4f), glm::vec3(0.9f, 2.8f, 0.9f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(2.2f, 13.3f, 0.4f), glm::vec3(0.9f, 2.8f, 0.9f), uv.horn)) break;
             if (!submitCuboid(glm::vec3(-2.5f, 3.0f, 2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(2.5f, 3.0f, 2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(-2.5f, 3.0f, -2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(2.5f, 3.0f, -2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             break;
-        case MK::Chicken:
-            if (!submitCuboid(glm::vec3(0.0f, 7.0f, 0.0f), glm::vec3(3.0f, 4.0f, 3.0f), uv.body)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 11.0f, 4.5f), glm::vec3(2.0f, 3.0f, 1.5f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 10.0f, 7.0f), glm::vec3(2.0f, 1.0f, 1.0f), uv.beak)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 8.0f, 6.3f), glm::vec3(1.0f, 1.0f, 0.8f), uv.wattle)) break;
-            if (!submitCuboid(glm::vec3(-3.4f, 7.0f, 0.0f), glm::vec3(0.5f, 2.2f, 2.6f), uv.wing)) break;
-            if (!submitCuboid(glm::vec3(3.4f, 7.0f, 0.0f), glm::vec3(0.5f, 2.2f, 2.6f), uv.wing)) break;
-            if (!submitCuboid(glm::vec3(-1.0f, 2.5f, 0.0f), glm::vec3(0.45f, 2.5f, 0.45f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(1.0f, 2.5f, 0.0f), glm::vec3(0.45f, 2.5f, 0.45f), uv.leg)) break;
+        case MK::Skitterwing:
+            if (!submitCuboid(glm::vec3(0.0f, 6.7f, -0.5f), glm::vec3(2.4f, 3.2f, 2.4f), uv.body)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 9.9f, 4.2f), glm::vec3(1.8f, 2.4f, 1.7f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 7.8f, -4.8f), glm::vec3(0.7f, 0.7f, 2.0f), uv.wattle)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 9.2f, 6.6f), glm::vec3(1.2f, 0.7f, 1.4f), uv.beak)) break;
+            if (!submitCuboid(glm::vec3(-3.5f, 7.7f, -0.1f), glm::vec3(0.5f, 1.5f, 3.5f), uv.wing)) break;
+            if (!submitCuboid(glm::vec3(3.5f, 7.7f, -0.1f), glm::vec3(0.5f, 1.5f, 3.5f), uv.wing)) break;
+            if (!submitCuboid(glm::vec3(-1.7f, 2.4f, 1.2f), glm::vec3(0.35f, 2.4f, 0.35f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(1.7f, 2.4f, 1.2f), glm::vec3(0.35f, 2.4f, 0.35f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-2.2f, 2.1f, -1.0f), glm::vec3(0.3f, 1.7f, 0.3f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.2f, 2.1f, -1.0f), glm::vec3(0.3f, 1.7f, 0.3f), uv.leg)) break;
             break;
+        }
+
+        constexpr float kMobHealthBarDamagedEpsilon = 0.08f;
+        const bool mobHealthBarVisible = mob.mobKind != MK::Player && mob.mobHealthMax > 1e-3f
+            && mob.mobHealthCurrent > 1e-3f
+            && mob.mobHealthCurrent < mob.mobHealthMax - kMobHealthBarDamagedEpsilon;
+        if (mobHealthBarVisible && chunkAtlasTextureHandle_ != UINT16_MAX)
+        {
+            glm::vec3 camForward = cameraFrameData.forward;
+            if (glm::dot(camForward, camForward) > 1e-8f)
+            {
+                camForward = glm::normalize(camForward);
+            }
+            else
+            {
+                camForward = glm::vec3(0.0f, 0.0f, -1.0f);
+            }
+            const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+            glm::vec3 camRight = glm::cross(camForward, worldUp);
+            if (glm::dot(camRight, camRight) < 1e-8f)
+            {
+                camRight = glm::cross(camForward, glm::vec3(1.0f, 0.0f, 0.0f));
+            }
+            camRight = glm::normalize(camRight);
+
+            const float ratio = std::clamp(mob.mobHealthCurrent / mob.mobHealthMax, 0.0f, 1.0f);
+            const glm::vec3 headTop = mob.feetPosition + glm::vec3(0.0f, mob.height + 0.14f, 0.0f);
+            const float barHalfW = std::max(0.28f, mob.halfWidth * 1.25f);
+            const float barHalfH = 0.045f;
+            const glm::vec3 barCenter = headTop + worldUp * 0.05f;
+
+            const std::uint32_t bgAbgr = toAbgrShade(0.14f);
+            const std::uint32_t fillAbgr = toAbgrShade(0.3f + 0.62f * ratio);
+            const glm::vec3 zBias = camForward * 0.02f;
+
+            const std::uint8_t stoneTileIndex = vibecraft::world::textureTileIndex(
+                vibecraft::world::BlockType::Stone,
+                vibecraft::world::BlockFace::Side);
+            const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
+            const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
+            const float tileX = static_cast<float>(stoneTileIndex % kChunkAtlasTileColumns);
+            const float tileY = static_cast<float>(stoneTileIndex / kChunkAtlasTileColumns);
+            TextureUvRect stoneUv{
+                .minU = tileX * tileWidth,
+                .maxU = tileX * tileWidth + tileWidth,
+                .minV = tileY * tileHeight,
+                .maxV = tileY * tileHeight + tileHeight,
+            };
+
+            const glm::vec3 bgA = barCenter - camRight * barHalfW - worldUp * barHalfH;
+            const glm::vec3 bgB = barCenter + camRight * barHalfW - worldUp * barHalfH;
+            const glm::vec3 bgC = barCenter + camRight * barHalfW + worldUp * barHalfH;
+            const glm::vec3 bgD = barCenter - camRight * barHalfW + worldUp * barHalfH;
+            static_cast<void>(submitFace(bgA, bgB, bgC, bgD, stoneUv, bgAbgr, chunkAtlasTextureHandle_));
+
+            const float fillHalfW = barHalfW * ratio;
+            if (fillHalfW > 1e-4f)
+            {
+                const glm::vec3 fillCenter = barCenter - camRight * (barHalfW * (1.0f - ratio));
+                const float innerH = barHalfH * 0.88f;
+                const glm::vec3 fA = fillCenter - camRight * fillHalfW - worldUp * innerH + zBias;
+                const glm::vec3 fB = fillCenter + camRight * fillHalfW - worldUp * innerH + zBias;
+                const glm::vec3 fC = fillCenter + camRight * fillHalfW + worldUp * innerH + zBias;
+                const glm::vec3 fD = fillCenter - camRight * fillHalfW + worldUp * innerH + zBias;
+                static_cast<void>(submitFace(fA, fB, fC, fD, stoneUv, fillAbgr, chunkAtlasTextureHandle_));
+            }
         }
     }
 }
@@ -1741,6 +2118,11 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
     textureHandle = hudItemKindTextureHandle(selectedSlot.itemKind);
     if (textureHandle != UINT16_MAX)
     {
+        const TextureUvRect uvRect = hudItemKindTextureUv(selectedSlot.itemKind);
+        minU = uvRect.minU;
+        maxU = uvRect.maxU;
+        minV = uvRect.minV;
+        maxV = uvRect.maxV;
         if (selectedSlot.heldItemUsesSwordPose)
         {
             halfH = std::min(static_cast<float>(height_) * 0.46f, 420.0f);

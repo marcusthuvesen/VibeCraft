@@ -11,6 +11,7 @@
 
 #include "vibecraft/app/Crafting.hpp"
 #include "vibecraft/app/Inventory.hpp"
+#include "vibecraft/game/OxygenSystem.hpp"
 
 namespace vibecraft::app
 {
@@ -41,12 +42,14 @@ struct SingleplayerPlayerState
     float cameraPitchDegrees = -20.0f;
     float health = 20.0f;
     float air = 10.0f;
+    vibecraft::game::OxygenState oxygenState{};
     bool creativeModeEnabled = false;
     std::uint8_t selectedHotbarIndex = 0;
     float dayNightElapsedSeconds = 0.0f;
     float weatherElapsedSeconds = 0.0f;
     HotbarSlots hotbarSlots{};
     BagSlots bagSlots{};
+    EquipmentSlots equipmentSlots{};
     std::vector<SavedDroppedItem> droppedItems;
     std::unordered_map<std::int64_t, CraftingGridSlots> chestSlotsByPosition;
 };

@@ -32,6 +32,8 @@ class Window
     [[nodiscard]] void* nativeWindowHandle() const;
     [[nodiscard]] std::uint32_t width() const;
     [[nodiscard]] std::uint32_t height() const;
+    [[nodiscard]] std::uint32_t logicalWidth() const;
+    [[nodiscard]] std::uint32_t logicalHeight() const;
 
   private:
     SDL_Window* window_ = nullptr;

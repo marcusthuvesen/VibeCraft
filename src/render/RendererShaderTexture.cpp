@@ -6,6 +6,7 @@
 #include <bx/allocator.h>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -21,6 +22,46 @@ namespace vibecraft::render::detail
 {
 namespace
 {
+struct RgbaColor
+{
+    std::uint8_t r = 0;
+    std::uint8_t g = 0;
+    std::uint8_t b = 0;
+    std::uint8_t a = 255;
+};
+
+[[nodiscard]] constexpr RgbaColor lerpColor(const RgbaColor a, const RgbaColor b, const float t)
+{
+    const auto mix = [t](const std::uint8_t lhs, const std::uint8_t rhs)
+    {
+        return static_cast<std::uint8_t>(std::clamp(
+            static_cast<int>(std::lround(static_cast<float>(lhs) + (static_cast<float>(rhs) - static_cast<float>(lhs)) * t)),
+            0,
+            255));
+    };
+    return RgbaColor{
+        .r = mix(a.r, b.r),
+        .g = mix(a.g, b.g),
+        .b = mix(a.b, b.b),
+        .a = mix(a.a, b.a),
+    };
+}
+
+template <std::size_t N>
+void fillTexturePixels(
+    std::array<std::uint8_t, N>& pixels,
+    const int width,
+    const int x,
+    const int y,
+    const RgbaColor color)
+{
+    const std::size_t offset = static_cast<std::size_t>((y * width + x) * 4);
+    pixels[offset + 0] = color.b;
+    pixels[offset + 1] = color.g;
+    pixels[offset + 2] = color.r;
+    pixels[offset + 3] = color.a;
+}
+
 void stripWhiteEdgeMatteAlpha(
     std::uint8_t* const rgbaPixels,
     const int width,
@@ -687,6 +728,102 @@ void stripWhiteEdgeMatteAlpha(
     return bgfx::createTexture2D(
         static_cast<std::uint16_t>(kSize),
         static_cast<std::uint16_t>(kSize),
+        false,
+        1,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        memory);
+}
+
+[[nodiscard]] bgfx::TextureHandle createProceduralMobTexture(const vibecraft::game::MobKind mobKind)
+{
+    constexpr int kWidth = 64;
+    constexpr int kHeight = 32;
+    std::array<std::uint8_t, static_cast<std::size_t>(kWidth * kHeight * 4)> pixels{};
+
+    RgbaColor top{};
+    RgbaColor bottom{};
+    RgbaColor accent{};
+    int stripePeriod = 6;
+    int seed = 0;
+
+    using MK = vibecraft::game::MobKind;
+    switch (mobKind)
+    {
+    case MK::VoidStrider:
+        top = {.r = 68, .g = 34, .b = 110, .a = 255};
+        bottom = {.r = 15, .g = 12, .b = 34, .a = 255};
+        accent = {.r = 81, .g = 228, .b = 206, .a = 255};
+        stripePeriod = 7;
+        seed = 11;
+        break;
+    case MK::Player:
+        top = {.r = 98, .g = 98, .b = 98, .a = 255};
+        bottom = {.r = 54, .g = 54, .b = 54, .a = 255};
+        accent = {.r = 215, .g = 215, .b = 215, .a = 255};
+        stripePeriod = 8;
+        seed = 3;
+        break;
+    case MK::Sporegrazer:
+        top = {.r = 118, .g = 148, .b = 62, .a = 255};
+        bottom = {.r = 43, .g = 72, .b = 32, .a = 255};
+        accent = {.r = 198, .g = 236, .b = 112, .a = 255};
+        stripePeriod = 9;
+        seed = 19;
+        break;
+    case MK::Burrower:
+        top = {.r = 147, .g = 91, .b = 46, .a = 255};
+        bottom = {.r = 62, .g = 34, .b = 20, .a = 255};
+        accent = {.r = 229, .g = 155, .b = 78, .a = 255};
+        stripePeriod = 5;
+        seed = 27;
+        break;
+    case MK::Shardback:
+        top = {.r = 148, .g = 166, .b = 182, .a = 255};
+        bottom = {.r = 69, .g = 82, .b = 102, .a = 255};
+        accent = {.r = 102, .g = 255, .b = 250, .a = 255};
+        stripePeriod = 10;
+        seed = 7;
+        break;
+    case MK::Skitterwing:
+        top = {.r = 66, .g = 82, .b = 148, .a = 255};
+        bottom = {.r = 18, .g = 21, .b = 54, .a = 255};
+        accent = {.r = 244, .g = 188, .b = 84, .a = 255};
+        stripePeriod = 4;
+        seed = 31;
+        break;
+    }
+
+    for (int y = 0; y < kHeight; ++y)
+    {
+        const float v = static_cast<float>(y) / static_cast<float>(kHeight - 1);
+        const RgbaColor gradient = lerpColor(top, bottom, v);
+        for (int x = 0; x < kWidth; ++x)
+        {
+            RgbaColor color = gradient;
+            const bool stripe = ((x + seed) / stripePeriod + (y + seed) / std::max(2, stripePeriod - 2)) % 2 == 0;
+            const bool speckle = ((x * 13 + y * 7 + seed * 17) % 29) < 4;
+            const bool glowBand = ((x + seed * 2) % 17) < 2 && y > 3 && y < kHeight - 3;
+            if (stripe)
+            {
+                color = lerpColor(color, accent, 0.18f);
+            }
+            if (speckle)
+            {
+                color = lerpColor(color, accent, 0.36f);
+            }
+            if (glowBand)
+            {
+                color = lerpColor(color, accent, 0.55f);
+            }
+            fillTexturePixels(pixels, kWidth, x, y, color);
+        }
+    }
+
+    const bgfx::Memory* const memory = bgfx::copy(pixels.data(), static_cast<std::uint32_t>(pixels.size()));
+    return bgfx::createTexture2D(
+        static_cast<std::uint16_t>(kWidth),
+        static_cast<std::uint16_t>(kHeight),
         false,
         1,
         bgfx::TextureFormat::BGRA8,

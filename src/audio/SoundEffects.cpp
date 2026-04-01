@@ -509,7 +509,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     using vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MobKind::HostileStalker:
+    case MobKind::VoidStrider:
         return {
             "entity/zombie/hurt1.ogg",
             "entity/zombie/hurt2.ogg",
@@ -522,39 +522,14 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
             "mob/zombie/say2.ogg"};
     case MobKind::Player:
         return {"entity/player/hurt1.ogg", "entity/player/hurt2.ogg"};
-    case MobKind::Cow:
-        return {"entity/cow/hurt1.ogg",
-                "entity/cow/hurt2.ogg",
-                "entity/cow/ambient1.ogg",
-                "entity/cow/ambient2.ogg",
-                "mob/cow/hurt1.ogg",
-                "mob/cow/hurt2.ogg",
-                "mob/cow/hurt3.ogg"};
-    case MobKind::Pig:
-        return {"entity/pig/hurt1.ogg",
-                "entity/pig/hurt2.ogg",
-                "entity/pig/ambient1.ogg",
-                "entity/pig/ambient2.ogg",
-                "mob/pig/say1.ogg",
-                "mob/pig/say2.ogg",
-                "mob/pig/say3.ogg"};
-    case MobKind::Sheep:
-        return {"entity/sheep/hurt1.ogg",
-                "entity/sheep/hurt2.ogg",
-                "entity/sheep/ambient1.ogg",
-                "entity/sheep/ambient2.ogg",
-                "mob/sheep/say1.ogg",
-                "mob/sheep/say2.ogg",
-                "mob/sheep/say3.ogg"};
-    case MobKind::Chicken:
-        return {"entity/chicken/hurt1.ogg",
-                "entity/chicken/hurt2.ogg",
-                "entity/chicken/ambient1.ogg",
-                "entity/chicken/ambient2.ogg",
-                "mob/chicken/hurt1.ogg",
-                "mob/chicken/hurt2.ogg",
-                "mob/chicken/say1.ogg",
-                "mob/chicken/say2.ogg"};
+    case MobKind::Sporegrazer:
+        return {"entity/player/hurt1.ogg", "entity/player/hurt2.ogg", "entity/zombie/ambient1.ogg"};
+    case MobKind::Burrower:
+        return {"entity/player/hurt1.ogg", "entity/player/hurt2.ogg", "entity/zombie/ambient2.ogg"};
+    case MobKind::Shardback:
+        return {"entity/player/hurt1.ogg", "entity/player/hurt2.ogg", "mob/zombie/say1.ogg"};
+    case MobKind::Skitterwing:
+        return {"entity/player/hurt1.ogg", "entity/player/hurt2.ogg", "mob/zombie/say2.ogg"};
     }
     return {};
 }
@@ -564,18 +539,15 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     using vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MobKind::HostileStalker:
+    case MobKind::VoidStrider:
         return {"entity/zombie/death.ogg", "mob/zombie/death.ogg"};
     case MobKind::Player:
         return {"entity/player/death.ogg", "entity/player/hurt1.ogg"};
-    case MobKind::Cow:
-        return {"entity/cow/death.ogg", "mob/cow/hurt1.ogg", "mob/cow/hurt2.ogg"};
-    case MobKind::Pig:
-        return {"entity/pig/death.ogg", "mob/pig/death.ogg"};
-    case MobKind::Sheep:
-        return {"entity/sheep/death.ogg", "mob/sheep/say1.ogg", "mob/sheep/say2.ogg"};
-    case MobKind::Chicken:
-        return {"entity/chicken/death.ogg", "mob/chicken/hurt1.ogg", "mob/chicken/hurt2.ogg"};
+    case MobKind::Sporegrazer:
+    case MobKind::Burrower:
+    case MobKind::Shardback:
+    case MobKind::Skitterwing:
+        return {"entity/player/hurt1.ogg", "entity/player/death.ogg"};
     }
     return {};
 }
@@ -617,16 +589,16 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     append(playerDeathOptions());
 
     using MK = vibecraft::game::MobKind;
-    append(mobHitOptions(MK::HostileStalker));
-    append(mobHitOptions(MK::Cow));
-    append(mobHitOptions(MK::Pig));
-    append(mobHitOptions(MK::Sheep));
-    append(mobHitOptions(MK::Chicken));
-    append(mobDefeatOptions(MK::HostileStalker));
-    append(mobDefeatOptions(MK::Cow));
-    append(mobDefeatOptions(MK::Pig));
-    append(mobDefeatOptions(MK::Sheep));
-    append(mobDefeatOptions(MK::Chicken));
+    append(mobHitOptions(MK::VoidStrider));
+    append(mobHitOptions(MK::Sporegrazer));
+    append(mobHitOptions(MK::Burrower));
+    append(mobHitOptions(MK::Shardback));
+    append(mobHitOptions(MK::Skitterwing));
+    append(mobDefeatOptions(MK::VoidStrider));
+    append(mobDefeatOptions(MK::Sporegrazer));
+    append(mobDefeatOptions(MK::Burrower));
+    append(mobDefeatOptions(MK::Shardback));
+    append(mobDefeatOptions(MK::Skitterwing));
 
     std::unordered_set<std::string> seen;
     std::vector<std::string> unique;

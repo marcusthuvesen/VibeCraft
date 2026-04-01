@@ -153,10 +153,15 @@ void dbgTextPrintfCenteredRow(
             + static_cast<float>(craftingColumns - 1) * candidateGap;
         const float inventoryWidth = 9.0f * candidateSlotSize + 8.0f * candidateGap;
         const float resultGap = std::max(18.0f, std::round(candidateSlotSize * 1.1f));
-        const float topSectionWidth = craftWidth + resultGap + candidateSlotSize;
+        const float equipmentSectionGap = std::max(14.0f, std::round(candidateSlotSize * 0.65f));
+        const float equipmentSectionWidth = candidateSlotSize * 1.7f;
+        const float topSectionWidth =
+            equipmentSectionWidth + equipmentSectionGap + craftWidth + resultGap + candidateSlotSize;
         const float panelWidth = std::max(inventoryWidth, topSectionWidth) + candidateSlotSize * 1.8f;
-        const float topSectionHeight = static_cast<float>(craftingRows) * candidateSlotSize
+        const float craftingSectionHeight = static_cast<float>(craftingRows) * candidateSlotSize
             + static_cast<float>(craftingRows - 1) * candidateGap;
+        const float equipmentSectionHeight = 5.0f * candidateSlotSize + 4.0f * candidateGap;
+        const float topSectionHeight = std::max(craftingSectionHeight, equipmentSectionHeight);
         const float inventoryHeight =
             static_cast<float>(kVisibleInventoryRows + kVisibleHotbarRows) * candidateSlotSize
             + static_cast<float>(kVisibleInventoryRows + kVisibleHotbarRows - 1) * candidateGap;
@@ -187,15 +192,21 @@ void dbgTextPrintfCenteredRow(
     const float topSectionWidth = metrics[3];
     const float panelWidth = metrics[4];
     const float panelHeight = metrics[5];
-    const float topSectionHeight = static_cast<float>(craftingRows) * slotSize
+    const float craftingSectionHeight = static_cast<float>(craftingRows) * slotSize
         + static_cast<float>(craftingRows - 1) * slotGap;
+    const float equipmentSectionHeight = 5.0f * slotSize + 4.0f * slotGap;
+    const float topSectionHeight = std::max(craftingSectionHeight, equipmentSectionHeight);
     const float panelLeft = std::floor((static_cast<float>(windowWidth) - panelWidth) * 0.5f);
     const float panelTop = std::floor((static_cast<float>(windowHeight) - panelHeight) * 0.5f);
     const float panelInnerX = panelLeft + slotSize * 0.9f;
-    const float craftingOriginX = panelInnerX + std::floor((panelWidth - slotSize * 1.8f - topSectionWidth) * 0.5f);
+    const float equipmentSectionGap = std::max(14.0f, std::round(slotSize * 0.65f));
+    const float equipmentSectionWidth = slotSize * 1.7f;
+    const float topSectionOriginX = panelInnerX + std::floor((panelWidth - slotSize * 1.8f - topSectionWidth) * 0.5f);
+    const float equipmentOriginX = topSectionOriginX;
+    const float craftingOriginX = equipmentOriginX + equipmentSectionWidth + equipmentSectionGap;
     const float craftingOriginY = panelTop + slotSize * 1.5f;
     const float resultSlotX = craftingOriginX + craftWidth + resultGap;
-    const float resultSlotY = craftingOriginY + (topSectionHeight - slotSize) * 0.5f;
+    const float resultSlotY = craftingOriginY + (craftingSectionHeight - slotSize) * 0.5f;
     const float inventoryOriginX = panelInnerX;
     const float inventoryOriginY = craftingOriginY + topSectionHeight + slotSize * 1.55f;
 
@@ -205,6 +216,8 @@ void dbgTextPrintfCenteredRow(
     layout.panelBottom = panelTop + panelHeight;
     layout.slotSize = slotSize;
     layout.slotGap = slotGap;
+    layout.equipmentOriginX = equipmentOriginX;
+    layout.equipmentOriginY = craftingOriginY;
     layout.craftingOriginX = craftingOriginX;
     layout.craftingOriginY = craftingOriginY;
     layout.resultSlotX = resultSlotX;
@@ -972,6 +985,35 @@ void drawMainMenuOverlay(
         return;
     }
 
+    if (frameDebugData.mainMenuSingleplayerPanelActive)
+    {
+        constexpr int kWide = 72;
+        constexpr int kPanelHeight = 31;
+        const int panelCol = std::max(0, (tw - kWide) / 2);
+        const int panelRow = std::max(1, (th - kPanelHeight) / 2);
+        const int hovered = frameDebugData.mainMenuSingleplayerHoveredControl;
+        drawTextFrame(panelRow, panelCol, kWide, kPanelHeight, 0x1f, 0x17);
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(panelRow + 2), 0x3f, " SINGLEPLAYER ");
+        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(panelRow + 4), 0x07, "Choose how to start");
+        dbgTextPrintfCenteredRow(
+            static_cast<std::uint16_t>(panelRow + 6),
+            0x0f,
+            clampDbgTextLine(
+                fmt::format(
+                    "Selected world: {}",
+                    frameDebugData.mainMenuSelectedWorldLabel.empty() ? std::string("No world selected")
+                                                                      : frameDebugData.mainMenuSelectedWorldLabel),
+                tw - 2));
+        drawFramedButton3(panelRow + 9, panelCol, kWide, "Start from saved world", hovered == 0, 0x17, 0x17, 0x3f, 0x3f);
+        drawFramedButton3(panelRow + 16, panelCol, kWide, "Start new world", hovered == 1, 0x17, 0x17, 0x3f, 0x3f);
+        drawFramedButton3(panelRow + 23, panelCol, kWide, "Back", hovered == 2, 0x17, 0x17, 0x3f, 0x3f);
+        dbgTextPrintfCenteredRow(
+            footerRow,
+            0x07,
+            "Click: select option   Esc: back");
+        return;
+    }
+
     const MainMenuComputedLayout menu = computeMainMenuLayout(tw, th, mainMenuTitleContentRowOffset);
     dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.subtitleRow), 0x07, "DESKTOP EDITION");
 
@@ -999,9 +1041,6 @@ void drawMainMenuOverlay(
     }
 
     const std::uint16_t iconAttrG = hovered == 5 ? 0x0f : 0x07;
-    const std::uint16_t iconAttrPrev = hovered == 7 ? 0x0f : 0x07;
-    const std::uint16_t iconAttrNew = hovered == 8 ? 0x0f : 0x07;
-    const std::uint16_t iconAttrNext = hovered == 9 ? 0x0f : 0x07;
     const std::uint16_t iconAttrA = hovered == 6 ? 0x0f : 0x07;
     if (menu.centerCol >= 7)
     {
@@ -1011,22 +1050,6 @@ void drawMainMenuOverlay(
             iconAttrG,
             "[C]");
     }
-    const int worldPrevCol = menu.centerCol + menu.outerWidth / 2 - 5;
-    bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(worldPrevCol),
-        static_cast<std::uint16_t>(menu.iconHintsRow),
-        iconAttrPrev,
-        "[<]");
-    bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(worldPrevCol + 4),
-        static_cast<std::uint16_t>(menu.iconHintsRow),
-        iconAttrNew,
-        "[N]");
-    bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(worldPrevCol + 8),
-        static_cast<std::uint16_t>(menu.iconHintsRow),
-        iconAttrNext,
-        "[>]");
     bgfx::dbgTextPrintf(
         static_cast<std::uint16_t>(menu.centerCol + menu.outerWidth - 3),
         static_cast<std::uint16_t>(menu.iconHintsRow),
@@ -1063,7 +1086,7 @@ void drawMainMenuOverlay(
         footerRow,
         0x07,
         fmt::format(
-            "Spawn: {}   C/[C]: creative   [<]/[>]: cycle world   N/[N]: new world   V/[V]: cycle spawn",
+            "Spawn: {}   C/[C]: creative   V/[V]: cycle spawn",
             frameDebugData.mainMenuSpawnPresetLabel.empty() ? "Origin" : frameDebugData.mainMenuSpawnPresetLabel));
 }
 
@@ -1141,9 +1164,17 @@ void drawPauseMenuOverlay(
             centerCol,
             kWide,
             fmt::format(
-                "Spawn biome: {}",
+                "Biome preset: {}",
                 frameDebugData.pauseSpawnBiomeLabel.empty() ? "Any" : frameDebugData.pauseSpawnBiomeLabel),
             hovered == 2);
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::pauseGameWeatherButtonRow(th),
+            centerCol,
+            kWide,
+            fmt::format(
+                "Weather: {}",
+                frameDebugData.pauseWeatherLabel.empty() ? "Unknown" : frameDebugData.pauseWeatherLabel),
+            hovered == 3);
         drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameBackButtonRow(th),
             centerCol,
@@ -1161,9 +1192,9 @@ void drawPauseMenuOverlay(
         constexpr int kPitch = PauseMenuLayout::kButtonPitch;
         drawPauseMenuFramedButton(firstButtonRow + 0 * kPitch, centerCol, kWide, "Back to game", hovered == 0);
         drawPauseMenuFramedButton(firstButtonRow + 1 * kPitch, centerCol, kWide, "Sound settings...", hovered == 1);
-        drawPauseMenuFramedButton(firstButtonRow + 2 * kPitch, centerCol, kWide, "Quit to title", hovered == 2);
-        drawPauseMenuFramedButton(firstButtonRow + 3 * kPitch, centerCol, kWide, "Quit game", hovered == 3);
-        drawPauseMenuFramedButton(firstButtonRow + 4 * kPitch, centerCol, kWide, "Game options...", hovered == 4);
+        drawPauseMenuFramedButton(firstButtonRow + 2 * kPitch, centerCol, kWide, "Game options...", hovered == 2);
+        drawPauseMenuFramedButton(firstButtonRow + 3 * kPitch, centerCol, kWide, "Quit to title", hovered == 3);
+        drawPauseMenuFramedButton(firstButtonRow + 4 * kPitch, centerCol, kWide, "Quit game", hovered == 4);
     }
 
     const std::uint16_t footerRow =

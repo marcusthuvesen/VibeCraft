@@ -11,13 +11,13 @@ namespace vibecraft::world::underground
 {
 namespace
 {
-/// Blocks below surface before 3D cave carve is allowed (keeps shallow subsurface solid).
+/// Blocks below surface before 3D cave carve is allowed (keeps shallow regolith solid).
 constexpr int kCaveRoofBuffer = 20;
 constexpr int kSeaLevel = 63;
 constexpr int kLavaPoolMinY = -54;
 constexpr int kLavaPoolMaxY = -20;
 constexpr std::uint32_t kLavaNoiseSeed = 0x8d3b2917U;
-/// Base carve threshold (higher than legacy 2.2 → fewer caves overall).
+/// Base carve threshold tuned for sparse expedition caverns instead of swiss-cheese terrain.
 constexpr double kCaveDensityThresholdDeep = 2.48;
 /// Extra threshold added near the top of the cave band so shallow underground rarely carves.
 constexpr double kCaveShallowThresholdBoost = 0.52;
@@ -63,7 +63,7 @@ BlockType caveInteriorBlockType(
     if (y >= kLavaPoolMinY && y <= kLavaPoolMaxY && lavaField > lavaThreshold)
     {
         const double spot = noise::random01(worldX, y * 31 + worldZ, 0x51ab12efU);
-        // Lava uses chunk atlas tile 13 (lava_still); keep pool interior dry or lava — not sea water.
+        // Thermal vents use chunk atlas tile 13; keep the pocket dry or hot instead of mixing with aquifers.
         if (spot > 0.88)
         {
             return BlockType::Lava;

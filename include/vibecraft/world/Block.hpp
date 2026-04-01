@@ -4,6 +4,8 @@
 
 namespace vibecraft::world
 {
+// Keep enum values stable for save files and multiplayer payloads.
+// The content pivot reinterprets these legacy ids through labels, recipes, and world generation.
 enum class BlockType : std::uint8_t
 {
     Air = 0,
@@ -28,6 +30,7 @@ enum class BlockType : std::uint8_t
     Sandstone,
     Oven,
     Chest,
+    OxygenGenerator,
     SnowGrass,
     JungleGrass,
     Torch,
@@ -57,7 +60,16 @@ enum class BlockType : std::uint8_t
     Bamboo,
     JunglePlanks,
     MossBlock,
-    MossyCobblestone
+    MossyCobblestone,
+    HabitatPanel,
+    HabitatFloor,
+    HabitatFrame,
+    AirlockPanel,
+    PowerConduit,
+    GreenhouseGlass,
+    PlanterTray,
+    FiberSapling,
+    FiberSprout
 };
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)
@@ -75,6 +87,8 @@ enum class BlockType : std::uint8_t
         && blockType != BlockType::Allium && blockType != BlockType::OxeyeDaisy
         && blockType != BlockType::BrownMushroom && blockType != BlockType::RedMushroom
         && blockType != BlockType::DeadBush && blockType != BlockType::Vines
+        && blockType != BlockType::FiberSapling
+        && blockType != BlockType::FiberSprout
         && blockType != BlockType::CocoaPod && blockType != BlockType::Bamboo;
 }
 
@@ -96,6 +110,9 @@ enum class BlockType : std::uint8_t
         && blockType != BlockType::JungleTreeCrown
         && blockType != BlockType::SnowTreeCrown
         && blockType != BlockType::Torch && blockType != BlockType::Glass
+        && blockType != BlockType::GreenhouseGlass
+        && blockType != BlockType::FiberSapling
+        && blockType != BlockType::FiberSprout
         && blockType != BlockType::Dandelion && blockType != BlockType::Poppy
         && blockType != BlockType::BlueOrchid && blockType != BlockType::Allium
         && blockType != BlockType::OxeyeDaisy && blockType != BlockType::BrownMushroom
@@ -132,6 +149,7 @@ enum class BlockType : std::uint8_t
     case BlockType::SnowGrass:
     case BlockType::JungleGrass:
     case BlockType::Sandstone:
+    case BlockType::Gravel:
         return true;
     default:
         return false;

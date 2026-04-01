@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <random>
+#include <span>
 #include <vector>
 
 namespace vibecraft::world
@@ -48,10 +49,17 @@ struct MobSpawnSettings
 struct MobDamageResult
 {
     std::uint32_t mobId = 0;
-    MobKind mobKind = MobKind::HostileStalker;
+    MobKind mobKind = MobKind::VoidStrider;
     glm::vec3 feetPosition{0.0f};
     bool killed = false;
 };
+
+/// Ray vs mob AABBs (same rules as `MobSpawnSystem::damageClosestAlongRay`).
+[[nodiscard]] std::optional<std::size_t> findClosestMobIndexAlongRay(
+    const std::vector<MobInstance>& mobs,
+    const glm::vec3& rayOrigin,
+    const glm::vec3& rayDirection,
+    float maxDistance);
 
 class MobSpawnSystem
 {
@@ -69,6 +77,14 @@ class MobSpawnSystem
         const glm::vec3& attackerFeet,
         float knockbackDistance);
 
+    [[nodiscard]] std::optional<MobDamageResult> damageMobAtIndex(
+        const world::World& world,
+        std::size_t mobIndex,
+        float damageAmount,
+        const glm::vec3& attackerFeet,
+        const glm::vec3& attackRayDirection,
+        float knockbackDistance);
+
     void clearAllMobs();
 
     /// Deterministic tests / repro.
@@ -77,6 +93,10 @@ class MobSpawnSystem
     /// Hostile spawn (night) + passive animals (day on grass), movement, and hostile melee. Skips
     /// spawning when `spawningEnabled` is false; still runs AI on existing mobs unless you call
     /// `clearAllMobs` when disabling.
+    /// When `remotePlayerFeetForMultiTarget` is non-empty (multiplayer host), mobs chase/flee/damage
+    /// the nearest **living** player among the host and remotes; `remotePlayerHealthForMelee` must
+    /// match that span and is updated in place when a remote is hit. Spawn/despawn still anchor on
+    /// the host feet plus remotes for separation and despawn distance.
     void tick(
         const world::World& world,
         const world::TerrainGenerator& terrain,
@@ -85,7 +105,12 @@ class MobSpawnSystem
         float deltaSeconds,
         TimeOfDayPeriod timePeriod,
         bool spawningEnabled,
-        PlayerVitals& playerVitals);
+        PlayerVitals& playerVitals,
+        float playerDamageMultiplier = 1.0f,
+        std::span<const glm::vec3> remotePlayerFeetForMultiTarget = {},
+        std::span<float> remotePlayerHealthForMelee = {},
+        float remotePlayerMaxHealth = 20.0f,
+        float remotePlayerDamageMultiplier = 1.0f);
 
   private:
     MobSpawnSettings settings_{};
@@ -100,16 +125,18 @@ class MobSpawnSystem
         const world::TerrainGenerator& terrain,
         const glm::vec3& playerFeet,
         float playerHalfWidth,
-        TimeOfDayPeriod timePeriod);
+        TimeOfDayPeriod timePeriod,
+        std::span<const glm::vec3> remotePlayerFeet = {});
 
     [[nodiscard]] bool trySpawnOnePassive(
         const world::World& world,
         const world::TerrainGenerator& terrain,
         const glm::vec3& playerFeet,
         float playerHalfWidth,
-        TimeOfDayPeriod timePeriod);
+        TimeOfDayPeriod timePeriod,
+        std::span<const glm::vec3> remotePlayerFeet = {});
 
-    void despawnDistant(const glm::vec3& playerFeet);
+    void despawnDistant(const glm::vec3& hostFeet, std::span<const glm::vec3> remotePlayerFeet);
     void moveMobAxis(
         const world::World& world,
         MobInstance& mob,
@@ -117,7 +144,12 @@ class MobSpawnSystem
         float displacement);
     void applyMelee(
         MobInstance& mob,
-        const glm::vec3& playerFeet,
-        PlayerVitals& playerVitals);
+        const glm::vec3& hostPlayerFeet,
+        PlayerVitals& playerVitals,
+        float hostDamageMultiplier,
+        std::span<const glm::vec3> remotePlayerFeet,
+        std::span<float> remotePlayerHealth,
+        float remotePlayerMaxHealth,
+        float remotePlayerDamageMultiplier);
 };
 }  // namespace vibecraft::game

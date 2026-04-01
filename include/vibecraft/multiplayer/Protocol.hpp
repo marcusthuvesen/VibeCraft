@@ -9,16 +9,18 @@
 #include <vector>
 
 #include "vibecraft/app/Inventory.hpp"
+#include "vibecraft/game/MobTypes.hpp"
 #include "vibecraft/world/Chunk.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
 namespace vibecraft::multiplayer::protocol
 {
 inline constexpr std::uint32_t kProtocolMagic = 0x56434d50;  // "VCMP"
-inline constexpr std::uint16_t kProtocolVersion = 2;
+inline constexpr std::uint16_t kProtocolVersion = 7;
 inline constexpr std::size_t kMaxPlayerNameLength = 32;
 inline constexpr std::size_t kMaxStringLength = 256;
 inline constexpr std::size_t kMaxPlayersPerSnapshot = 8;
+inline constexpr std::size_t kMaxMobsPerSnapshot = 96;
 
 enum class MessageType : std::uint8_t
 {
@@ -84,11 +86,18 @@ struct ClientInputMessage
     bool jump = false;
     bool breakBlock = false;
     bool placeBlock = false;
+    /// Client requests host-authoritative melee vs replicated mob id (protocol v5+).
+    bool mobMeleeSwing = false;
+    /// Sneaking (protocol v6+): affects host ray origin for melee validation.
+    bool isSneaking = false;
     std::int32_t targetX = 0;
     std::int32_t targetY = 0;
     std::int32_t targetZ = 0;
     std::uint8_t selectedHotbarIndex = 0;
     world::BlockType placeBlockType = world::BlockType::Air;
+    std::uint32_t mobMeleeTargetId = 0;
+    /// Eye/camera world Y for host melee ray origin (protocol v7+). Invalid values fall back to feet+eye height.
+    float cameraEyeY = 0.0f;
 };
 
 struct PlayerSnapshotMessage
@@ -108,6 +117,7 @@ struct PlayerSnapshotMessage
 struct DroppedItemSnapshotMessage
 {
     world::BlockType blockType = world::BlockType::Air;
+    app::EquippedItem equippedItem = app::EquippedItem::None;
     float posX = 0.0f;
     float posY = 0.0f;
     float posZ = 0.0f;
@@ -118,6 +128,21 @@ struct DroppedItemSnapshotMessage
     float spinRadians = 0.0f;
 };
 
+/// Host-authoritative mob pose for client rendering (protocol v4+).
+struct MobSnapshotMessage
+{
+    std::uint32_t id = 0;
+    game::MobKind kind = game::MobKind::VoidStrider;
+    float feetX = 0.0f;
+    float feetY = 0.0f;
+    float feetZ = 0.0f;
+    float yawRadians = 0.0f;
+    float halfWidth = 0.28f;
+    float height = 1.75f;
+    /// Authoritative health (protocol v6+); older snapshots omit it on the wire.
+    float health = 0.0f;
+};
+
 struct ServerSnapshotMessage
 {
     std::uint32_t serverTick = 0;
@@ -125,6 +150,7 @@ struct ServerSnapshotMessage
     float weatherElapsedSeconds = 0.0f;
     std::vector<PlayerSnapshotMessage> players;
     std::vector<DroppedItemSnapshotMessage> droppedItems;
+    std::vector<MobSnapshotMessage> mobs;
 };
 
 struct BlockEditEventMessage

@@ -156,12 +156,32 @@ struct RecipeDefinition
     };
 }
 
+[[nodiscard]] RecipeDefinition makeScoutArmorRecipe(
+    const std::array<InventorySlot, 9>& pattern,
+    const EquippedItem output)
+{
+    using vibecraft::world::BlockType;
+    return RecipeDefinition{
+        .width = 3,
+        .height = 3,
+        .requiresWorkbench = true,
+        .pattern = pattern,
+        .output = InventorySlot{
+            .blockType = BlockType::Air,
+            .count = 1,
+            .equippedItem = output,
+        },
+    };
+}
+
 [[nodiscard]] const std::vector<RecipeDefinition>& allRecipes()
 {
     using vibecraft::world::BlockType;
     static const std::vector<RecipeDefinition> recipes = []
     {
         std::vector<RecipeDefinition> r;
+        const InventorySlot empty{};
+        const InventorySlot hide = ingredientItem(EquippedItem::Leather);
         r.push_back(RecipeDefinition{
             .width = 1,
             .height = 1,
@@ -241,6 +261,36 @@ struct RecipeDefinition
             .output = InventorySlot{
                 .blockType = BlockType::CraftingTable,
                 .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::HabitatPanel),
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::HabitatFrame),
+                ingredientBlock(BlockType::IronOre),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::AirlockPanel,
+                .count = 2,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Glowstone),
+                ingredientBlock(BlockType::IronOre),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::PowerConduit,
+                .count = 4,
                 .equippedItem = EquippedItem::None,
             },
         });
@@ -358,6 +408,48 @@ struct RecipeDefinition
             .height = 3,
             .requiresWorkbench = true,
             .pattern = {
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::Torch),
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::OxygenGenerator,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::Glowstone),
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::MossBlock),
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::OxygenGenerator,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
                 ingredientBlock(BlockType::Cobblestone),
                 ingredientBlock(BlockType::Cobblestone),
                 ingredientBlock(BlockType::Cobblestone),
@@ -431,6 +523,71 @@ struct RecipeDefinition
             },
         });
         r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Glowstone),
+                ingredientItem(EquippedItem::Stick),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Torch,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::Glowstone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 2,
+                .equippedItem = EquippedItem::OxygenCanister,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::IronOre),
+                ingredientItem(EquippedItem::OxygenCanister),
+                ingredientBlock(BlockType::MossBlock),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::FieldTank,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::DiamondOre),
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::IronOre),
+                ingredientItem(EquippedItem::FieldTank),
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::Glowstone),
+                ingredientBlock(BlockType::MossBlock),
+                ingredientBlock(BlockType::Glowstone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::ExpeditionTank,
+            },
+        });
+        r.push_back(RecipeDefinition{
             .width = 3,
             .height = 3,
             .requiresWorkbench = true,
@@ -467,6 +624,95 @@ struct RecipeDefinition
                 .equippedItem = EquippedItem::None,
             },
         });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::HabitatPanel,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::HabitatPanel),
+                ingredientBlock(BlockType::HabitatPanel),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Cobblestone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::HabitatFloor,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::IronOre),
+                ingredientBlock(BlockType::Cobblestone),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::HabitatFrame,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::Glass),
+                ingredientBlock(BlockType::MossBlock),
+                ingredientBlock(BlockType::IronOre),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::GreenhouseGlass,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::HabitatFloor),
+                ingredientBlock(BlockType::MossBlock),
+                ingredientBlock(BlockType::Cobblestone),
+                ingredientBlock(BlockType::Glass),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::PlanterTray,
+                .count = 2,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::MossBlock)},
+            .output = InventorySlot{
+                .blockType = BlockType::FiberSapling,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
 
         r.push_back(makeSwordRecipe(BlockType::OakPlanks, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::JunglePlanks, EquippedItem::WoodSword, true));
@@ -474,7 +720,7 @@ struct RecipeDefinition
         r.push_back(makeSwordRecipe(BlockType::JungleTreeTrunk, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::SnowTreeTrunk, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::Cobblestone, EquippedItem::StoneSword, true));
-        // Stone-tier: mined Stone/Deepslate drop as blocks; accept them like Cobblestone (Minecraft uses cobble).
+        // Let fractured basalt, basalt, or deep basalt all stand in for a rough stone tier.
         r.push_back(makeSwordRecipe(BlockType::Stone, EquippedItem::StoneSword, true));
         r.push_back(makeSwordRecipe(BlockType::Deepslate, EquippedItem::StoneSword, true));
         r.push_back(makeSwordRecipe(BlockType::IronOre, EquippedItem::IronSword, true));
@@ -515,6 +761,58 @@ struct RecipeDefinition
         r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe, true));
         r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe, false));
         r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe, true));
+        r.push_back(makeScoutArmorRecipe(
+            {
+                hide,
+                hide,
+                hide,
+                hide,
+                empty,
+                hide,
+                empty,
+                empty,
+                empty,
+            },
+            EquippedItem::ScoutHelmet));
+        r.push_back(makeScoutArmorRecipe(
+            {
+                hide,
+                empty,
+                hide,
+                hide,
+                hide,
+                hide,
+                hide,
+                hide,
+                hide,
+            },
+            EquippedItem::ScoutChestRig));
+        r.push_back(makeScoutArmorRecipe(
+            {
+                hide,
+                hide,
+                hide,
+                hide,
+                empty,
+                hide,
+                hide,
+                empty,
+                hide,
+            },
+            EquippedItem::ScoutGreaves));
+        r.push_back(makeScoutArmorRecipe(
+            {
+                hide,
+                empty,
+                hide,
+                hide,
+                empty,
+                hide,
+                empty,
+                empty,
+                empty,
+            },
+            EquippedItem::ScoutBoots));
 
         return r;
     }();

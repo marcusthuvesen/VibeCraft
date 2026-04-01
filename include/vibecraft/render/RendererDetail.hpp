@@ -147,7 +147,8 @@ constexpr int kButtonRowSpan = 3;
 constexpr int kButtonGapRows = 2;
 constexpr int kButtonPitch = kButtonRowSpan + kButtonGapRows;
 constexpr int kMainButtonCount = 5;
-constexpr int kSubmenuButtonCount = 3;
+constexpr int kPauseSoundButtonCount = 3;
+constexpr int kPauseGameButtonCount = 4;
 
 [[nodiscard]] inline int mainPauseMenuTotalRows()
 {
@@ -161,26 +162,38 @@ constexpr int kSubmenuButtonCount = 3;
     return std::clamp((textHeight - total) / 2, 1, maxFirst);
 }
 
-[[nodiscard]] inline int submenuTotalRows()
+[[nodiscard]] inline int pauseSoundTotalRows()
 {
-    return kSubmenuButtonCount * kButtonRowSpan + (kSubmenuButtonCount - 1) * kButtonGapRows;
+    return kPauseSoundButtonCount * kButtonRowSpan + (kPauseSoundButtonCount - 1) * kButtonGapRows;
 }
 
-[[nodiscard]] inline int submenuFirstButtonRow(const int textHeight)
+[[nodiscard]] inline int pauseSoundFirstButtonRow(const int textHeight)
 {
-    const int total = submenuTotalRows();
+    const int total = pauseSoundTotalRows();
+    const int maxFirst = std::max(2, textHeight - total - 1);
+    return std::clamp((textHeight - total) / 2, 2, maxFirst);
+}
+
+[[nodiscard]] inline int pauseGameTotalRows()
+{
+    return kPauseGameButtonCount * kButtonRowSpan + (kPauseGameButtonCount - 1) * kButtonGapRows;
+}
+
+[[nodiscard]] inline int pauseGameFirstButtonRow(const int textHeight)
+{
+    const int total = pauseGameTotalRows();
     const int maxFirst = std::max(2, textHeight - total - 1);
     return std::clamp((textHeight - total) / 2, 2, maxFirst);
 }
 
 [[nodiscard]] inline int pauseSoundTitleRow(const int textHeight)
 {
-    return std::max(1, submenuFirstButtonRow(textHeight) - 3);
+    return std::max(1, pauseSoundFirstButtonRow(textHeight) - 3);
 }
 
 [[nodiscard]] inline int pauseSoundMusicButtonRow(const int textHeight)
 {
-    return submenuFirstButtonRow(textHeight);
+    return pauseSoundFirstButtonRow(textHeight);
 }
 
 [[nodiscard]] inline int pauseSoundSfxButtonRow(const int textHeight)
@@ -195,12 +208,12 @@ constexpr int kSubmenuButtonCount = 3;
 
 [[nodiscard]] inline int pauseGameTitleRow(const int textHeight)
 {
-    return std::max(1, submenuFirstButtonRow(textHeight) - 3);
+    return std::max(1, pauseGameFirstButtonRow(textHeight) - 3);
 }
 
 [[nodiscard]] inline int pauseGameMobButtonRow(const int textHeight)
 {
-    return submenuFirstButtonRow(textHeight);
+    return pauseGameFirstButtonRow(textHeight);
 }
 
 [[nodiscard]] inline int pauseGameBiomeButtonRow(const int textHeight)
@@ -208,9 +221,14 @@ constexpr int kSubmenuButtonCount = 3;
     return pauseGameMobButtonRow(textHeight) + kButtonPitch;
 }
 
-[[nodiscard]] inline int pauseGameBackButtonRow(const int textHeight)
+[[nodiscard]] inline int pauseGameWeatherButtonRow(const int textHeight)
 {
     return pauseGameBiomeButtonRow(textHeight) + kButtonPitch;
+}
+
+[[nodiscard]] inline int pauseGameBackButtonRow(const int textHeight)
+{
+    return pauseGameWeatherButtonRow(textHeight) + kButtonPitch;
 }
 
 constexpr int kSoundTitleRow = 3;
@@ -224,7 +242,8 @@ constexpr int kSoundSliderFillChars = 18;
 constexpr int kGameTitleRow = 3;
 constexpr int kGameMobButtonRow = 6;
 constexpr int kGameBiomeButtonRow = kGameMobButtonRow + kButtonPitch;
-constexpr int kGameBackButtonRow = kGameBiomeButtonRow + kButtonPitch;
+constexpr int kGameWeatherButtonRow = kGameBiomeButtonRow + kButtonPitch;
+constexpr int kGameBackButtonRow = kGameWeatherButtonRow + kButtonPitch;
 }  // namespace PauseMenuLayout
 
 struct MainMenuComputedLayout
@@ -264,6 +283,8 @@ struct CraftingOverlayLayoutPx
     float panelBottom = 0.0f;
     float slotSize = 0.0f;
     float slotGap = 0.0f;
+    float equipmentOriginX = 0.0f;
+    float equipmentOriginY = 0.0f;
     float craftingOriginX = 0.0f;
     float craftingOriginY = 0.0f;
     float resultSlotX = 0.0f;
@@ -315,9 +336,15 @@ struct CraftingOverlayLayoutPx
 [[nodiscard]] bgfx::TextureHandle createMinecraftStyleCrosshairTexture();
 [[nodiscard]] bgfx::TextureHandle createBlockBreakOverlayTexture(int stage);
 [[nodiscard]] bgfx::TextureHandle createHeartTexture(int fillStage);
+[[nodiscard]] bgfx::TextureHandle createProceduralMobTexture(vibecraft::game::MobKind mobKind);
 
 void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
 void drawWeatherRain(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
+void drawSkyAtmosphereVeils(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
+void drawSkyCirrusBands(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
+void drawSkyHorizonBloom(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
+void drawSkyNebulaCanopy(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData);
+void drawCoordinateOverlay(const FrameDebugData& frameDebugData);
 
 void drawHealthHud(std::uint16_t row, const FrameDebugData& frameDebugData);
 void drawHotbarHud(std::uint16_t row, const FrameDebugData& frameDebugData);

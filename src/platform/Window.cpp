@@ -237,4 +237,18 @@ std::uint32_t Window::height() const
     SDL_GetWindowSizeInPixels(window_, nullptr, &height);
     return static_cast<std::uint32_t>(height);
 }
+
+std::uint32_t Window::logicalWidth() const
+{
+    int width = 0;
+    SDL_GetWindowSize(window_, &width, nullptr);
+    return static_cast<std::uint32_t>(width);
+}
+
+std::uint32_t Window::logicalHeight() const
+{
+    int height = 0;
+    SDL_GetWindowSize(window_, nullptr, &height);
+    return static_cast<std::uint32_t>(height);
+}
 }  // namespace vibecraft::platform

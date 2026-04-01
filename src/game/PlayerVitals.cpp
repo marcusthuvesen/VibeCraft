@@ -15,6 +15,8 @@ std::string_view damageCauseName(const DamageCause cause)
         return "lava";
     case DamageCause::Drowning:
         return "drowning";
+    case DamageCause::OxygenDepletion:
+        return "oxygen";
     case DamageCause::EnemyAttack:
         return "enemy";
     }

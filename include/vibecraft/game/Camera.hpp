@@ -21,6 +21,9 @@ class Camera
     [[nodiscard]] float yawDegrees() const;
     [[nodiscard]] float pitchDegrees() const;
 
+    /// Same basis as `forward()` (degrees: yaw around Y, pitch up).
+    [[nodiscard]] static glm::vec3 forwardFromYawPitchDegrees(float yawDegrees, float pitchDegrees);
+
   private:
     glm::vec3 position_;
     float yawDegrees_ = -90.0f;

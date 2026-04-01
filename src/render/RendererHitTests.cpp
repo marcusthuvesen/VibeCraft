@@ -54,21 +54,6 @@ int Renderer::hitTestMainMenu(
 
     if (clampedRow == menu.iconHintsRow)
     {
-        const int worldPrevLeft = menu.centerCol + menu.outerWidth / 2 - 5;
-        if (clampedCol >= worldPrevLeft && clampedCol <= worldPrevLeft + 2)
-        {
-            return 7;
-        }
-        const int worldNewLeft = worldPrevLeft + 4;
-        if (clampedCol >= worldNewLeft && clampedCol <= worldNewLeft + 2)
-        {
-            return 8;
-        }
-        const int worldNextLeft = worldNewLeft + 4;
-        if (clampedCol >= worldNextLeft && clampedCol <= worldNextLeft + 2)
-        {
-            return 9;
-        }
         const int aLeft = menu.centerCol + menu.outerWidth - 3;
         if (clampedCol >= aLeft && clampedCol <= aLeft + 2)
         {
@@ -76,6 +61,43 @@ int Renderer::hitTestMainMenu(
         }
     }
 
+    return -1;
+}
+
+int Renderer::hitTestMainMenuSingleplayerPanel(
+    const float mouseX,
+    const float mouseY,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
+    {
+        return -1;
+    }
+
+    const int col = static_cast<int>(mouseX * static_cast<float>(textWidth) / static_cast<float>(windowWidth));
+    const int row = static_cast<int>(mouseY * static_cast<float>(textHeight) / static_cast<float>(windowHeight));
+    const int tw = static_cast<int>(textWidth);
+    const int th = static_cast<int>(textHeight);
+    const int clampedCol = std::clamp(col, 0, tw - 1);
+    const int clampedRow = std::clamp(row, 0, th - 1);
+
+    constexpr int kWide = 72;
+    constexpr int kButtonSpan = 5;
+    constexpr int kPitch = 7;
+    const int centerCol = std::max(0, (tw - kWide) / 2);
+    const int firstButtonRow = std::max(8, (th - 23) / 2 + 9);
+    for (int buttonIndex = 0; buttonIndex < 3; ++buttonIndex)
+    {
+        const int row0 = firstButtonRow + buttonIndex * kPitch;
+        if (clampedRow >= row0 && clampedRow <= row0 + kButtonSpan - 1
+            && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+        {
+            return buttonIndex;
+        }
+    }
     return -1;
 }
 
@@ -144,6 +166,7 @@ int Renderer::hitTestPauseGameSettingsMenu(
     const int backRow = detail::PauseMenuLayout::pauseGameBackButtonRow(th);
     const int mobRow = detail::PauseMenuLayout::pauseGameMobButtonRow(th);
     const int biomeRow = detail::PauseMenuLayout::pauseGameBiomeButtonRow(th);
+    const int weatherRow = detail::PauseMenuLayout::pauseGameWeatherButtonRow(th);
 
     if (clampedRow >= backRow && clampedRow <= backRow + kSpan - 1 && clampedCol >= centerCol
         && clampedCol <= centerCol + kWide - 1)
@@ -159,6 +182,11 @@ int Renderer::hitTestPauseGameSettingsMenu(
         && clampedCol <= centerCol + kWide - 1)
     {
         return 2;
+    }
+    if (clampedRow >= weatherRow && clampedRow <= weatherRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
+    {
+        return 3;
     }
 
     return -1;
@@ -271,8 +299,14 @@ std::optional<float> Renderer::pauseSoundSliderValueFromMouse(
         return std::nullopt;
     }
 
-    const float t = static_cast<float>(clampedCol - fillStartCol + 1)
-        / static_cast<float>(detail::PauseMenuLayout::kSoundSliderFillChars);
+    const int columnSpan = detail::PauseMenuLayout::kSoundSliderFillChars;
+    if (columnSpan <= 1)
+    {
+        return clampedCol == fillStartCol ? std::optional<float>(0.0f) : std::optional<float>(1.0f);
+    }
+
+    const float t = static_cast<float>(clampedCol - fillStartCol)
+        / static_cast<float>(columnSpan - 1);
     return std::clamp(t, 0.0f, 1.0f);
 }
 
@@ -508,6 +542,16 @@ int Renderer::hitTestCraftingMenu(
     if (insideRect(layout.resultSlotX, layout.resultSlotY))
     {
         return kCraftingResultHit;
+    }
+
+    for (int slotIndex = 0; slotIndex < 5; ++slotIndex)
+    {
+        const float slotX = layout.equipmentOriginX;
+        const float slotY = layout.equipmentOriginY + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
+        if (insideRect(slotX, slotY))
+        {
+            return kCraftingEquipmentHitBase + slotIndex;
+        }
     }
 
     for (int row = 0; row < kVisibleBagRows; ++row)

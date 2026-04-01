@@ -6,17 +6,17 @@ namespace vibecraft::game
 {
 enum class MobKind : std::uint8_t
 {
-    HostileStalker = 0,
+    VoidStrider = 0,
     Player,
-    Cow,
-    Pig,
-    Sheep,
-    Chicken,
+    Sporegrazer,
+    Burrower,
+    Shardback,
+    Skitterwing,
 };
 
 [[nodiscard]] constexpr bool isHostileMob(const MobKind kind)
 {
-    return kind == MobKind::HostileStalker;
+    return kind == MobKind::VoidStrider;
 }
 
 [[nodiscard]] constexpr bool isPassiveMob(const MobKind kind)
@@ -24,10 +24,31 @@ enum class MobKind : std::uint8_t
     return !isHostileMob(kind);
 }
 
+/// Spawn / snapshot defaults when a precise health value is not on the wire.
+[[nodiscard]] constexpr float mobKindDefaultMaxHealth(const MobKind kind)
+{
+    switch (kind)
+    {
+    case MobKind::VoidStrider:
+        return 20.0f;
+    case MobKind::Player:
+        return 20.0f;
+    case MobKind::Sporegrazer:
+        return 12.0f;
+    case MobKind::Burrower:
+        return 8.0f;
+    case MobKind::Shardback:
+        return 10.0f;
+    case MobKind::Skitterwing:
+        return 6.0f;
+    }
+    return 10.0f;
+}
+
 struct MobInstance
 {
     std::uint32_t id = 0;
-    MobKind kind = MobKind::HostileStalker;
+    MobKind kind = MobKind::VoidStrider;
     float feetX = 0.0f;
     float feetY = 0.0f;
     float feetZ = 0.0f;

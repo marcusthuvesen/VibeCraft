@@ -206,7 +206,7 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
     writeHeader(writer, header);
 
     std::visit(
-        [&writer](const auto& message)
+        [&writer, &header](const auto& message)
         {
             using MessageT = std::decay_t<decltype(message)>;
 
@@ -256,12 +256,25 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
                 {
                     flags |= 1U << 2U;
                 }
+                if (message.mobMeleeSwing)
+                {
+                    flags |= 1U << 3U;
+                }
+                if (header.version >= 6 && message.isSneaking)
+                {
+                    flags |= 1U << 4U;
+                }
                 writer.writeU8(flags);
                 writer.writeI32(message.targetX);
                 writer.writeI32(message.targetY);
                 writer.writeI32(message.targetZ);
                 writer.writeU8(message.selectedHotbarIndex);
                 writer.writeU8(static_cast<std::uint8_t>(message.placeBlockType));
+                writer.writeU32(message.mobMeleeTargetId);
+                if (header.version >= 7)
+                {
+                    writer.writeF32(message.cameraEyeY);
+                }
             }
             else if constexpr (std::is_same_v<MessageT, ServerSnapshotMessage>)
             {
@@ -288,6 +301,7 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
                 for (const DroppedItemSnapshotMessage& droppedItem : message.droppedItems)
                 {
                     writer.writeU8(static_cast<std::uint8_t>(droppedItem.blockType));
+                    writer.writeU8(static_cast<std::uint8_t>(droppedItem.equippedItem));
                     writer.writeF32(droppedItem.posX);
                     writer.writeF32(droppedItem.posY);
                     writer.writeF32(droppedItem.posZ);
@@ -296,6 +310,24 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
                     writer.writeF32(droppedItem.velocityZ);
                     writer.writeF32(droppedItem.ageSeconds);
                     writer.writeF32(droppedItem.spinRadians);
+                }
+                const std::size_t clampedMobCount = std::min(message.mobs.size(), kMaxMobsPerSnapshot);
+                writer.writeU16(static_cast<std::uint16_t>(clampedMobCount));
+                for (std::size_t i = 0; i < clampedMobCount; ++i)
+                {
+                    const MobSnapshotMessage& mob = message.mobs[i];
+                    writer.writeU32(mob.id);
+                    writer.writeU8(static_cast<std::uint8_t>(mob.kind));
+                    writer.writeF32(mob.feetX);
+                    writer.writeF32(mob.feetY);
+                    writer.writeF32(mob.feetZ);
+                    writer.writeF32(mob.yawRadians);
+                    writer.writeF32(mob.halfWidth);
+                    writer.writeF32(mob.height);
+                    if (header.version >= 6)
+                    {
+                        writer.writeF32(mob.health);
+                    }
                 }
             }
             else if constexpr (std::is_same_v<MessageT, BlockEditEventMessage>)
@@ -347,7 +379,8 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
     {
         return std::nullopt;
     }
-    if (decoded.header.magic != kProtocolMagic || decoded.header.version != kProtocolVersion)
+    if (decoded.header.magic != kProtocolMagic || decoded.header.version < 2
+        || decoded.header.version > kProtocolVersion)
     {
         return std::nullopt;
     }
@@ -409,7 +442,32 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
         message.jump = (flags & (1U << 0U)) != 0;
         message.breakBlock = (flags & (1U << 1U)) != 0;
         message.placeBlock = (flags & (1U << 2U)) != 0;
+        message.mobMeleeSwing = (flags & (1U << 3U)) != 0;
+        message.isSneaking =
+            decoded.header.version >= 6 && ((flags & (1U << 4U)) != 0);
         message.placeBlockType = static_cast<world::BlockType>(blockType);
+        if (decoded.header.version >= 5)
+        {
+            if (!reader.readU32(message.mobMeleeTargetId))
+            {
+                return std::nullopt;
+            }
+        }
+        else
+        {
+            message.mobMeleeTargetId = 0;
+        }
+        if (decoded.header.version >= 7)
+        {
+            if (!reader.readF32(message.cameraEyeY))
+            {
+                return std::nullopt;
+            }
+        }
+        else
+        {
+            message.cameraEyeY = 0.0f;
+        }
         decoded.payload = message;
         break;
     }
@@ -449,7 +507,16 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
         {
             DroppedItemSnapshotMessage droppedItem;
             std::uint8_t blockType = 0;
-            if (!reader.readU8(blockType) || !reader.readF32(droppedItem.posX) || !reader.readF32(droppedItem.posY)
+            std::uint8_t equippedItem = 0;
+            if (!reader.readU8(blockType))
+            {
+                return std::nullopt;
+            }
+            if (decoded.header.version >= 3 && !reader.readU8(equippedItem))
+            {
+                return std::nullopt;
+            }
+            if (!reader.readF32(droppedItem.posX) || !reader.readF32(droppedItem.posY)
                 || !reader.readF32(droppedItem.posZ) || !reader.readF32(droppedItem.velocityX)
                 || !reader.readF32(droppedItem.velocityY) || !reader.readF32(droppedItem.velocityZ)
                 || !reader.readF32(droppedItem.ageSeconds) || !reader.readF32(droppedItem.spinRadians))
@@ -457,7 +524,45 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
                 return std::nullopt;
             }
             droppedItem.blockType = static_cast<world::BlockType>(blockType);
+            droppedItem.equippedItem = static_cast<app::EquippedItem>(equippedItem);
             message.droppedItems.push_back(droppedItem);
+        }
+        if (decoded.header.version >= 4)
+        {
+            std::uint16_t mobCount = 0;
+            if (!reader.readU16(mobCount))
+            {
+                return std::nullopt;
+            }
+            if (mobCount > kMaxMobsPerSnapshot)
+            {
+                return std::nullopt;
+            }
+            message.mobs.reserve(mobCount);
+            for (std::uint16_t i = 0; i < mobCount; ++i)
+            {
+                MobSnapshotMessage mob;
+                std::uint8_t kind = 0;
+                if (!reader.readU32(mob.id) || !reader.readU8(kind) || !reader.readF32(mob.feetX)
+                    || !reader.readF32(mob.feetY) || !reader.readF32(mob.feetZ) || !reader.readF32(mob.yawRadians)
+                    || !reader.readF32(mob.halfWidth) || !reader.readF32(mob.height))
+                {
+                    return std::nullopt;
+                }
+                mob.kind = static_cast<vibecraft::game::MobKind>(kind);
+                if (decoded.header.version >= 6)
+                {
+                    if (!reader.readF32(mob.health))
+                    {
+                        return std::nullopt;
+                    }
+                }
+                else
+                {
+                    mob.health = vibecraft::game::mobKindDefaultMaxHealth(mob.kind);
+                }
+                message.mobs.push_back(mob);
+            }
         }
         decoded.payload = std::move(message);
         break;
