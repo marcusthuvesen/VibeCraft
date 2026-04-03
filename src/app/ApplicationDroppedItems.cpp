@@ -1,70 +1,10 @@
 #include "vibecraft/app/Application.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 namespace vibecraft::app
 {
-namespace
-{
-template <std::size_t SlotCount>
-[[nodiscard]] bool addEquippedItemToSlots(
-    std::array<InventorySlot, SlotCount>& slots,
-    const EquippedItem equippedItem,
-    std::size_t* const selectedHotbarIndex)
-{
-    for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
-    {
-        InventorySlot& slot = slots[slotIndex];
-        if (slot.equippedItem == equippedItem && slot.count < kMaxStackSize)
-        {
-            ++slot.count;
-            if (selectedHotbarIndex != nullptr)
-            {
-                *selectedHotbarIndex = slotIndex;
-            }
-            return true;
-        }
-    }
-
-    for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
-    {
-        InventorySlot& slot = slots[slotIndex];
-        if (slot.count == 0)
-        {
-            slot.blockType = world::BlockType::Air;
-            slot.equippedItem = equippedItem;
-            slot.count = 1;
-            if (selectedHotbarIndex != nullptr)
-            {
-                *selectedHotbarIndex = slotIndex;
-            }
-            return true;
-        }
-    }
-
-    return false;
-}
-
-[[nodiscard]] bool addEquippedItemToInventory(
-    HotbarSlots& hotbarSlots,
-    BagSlots& bagSlots,
-    const EquippedItem equippedItem,
-    std::size_t& selectedHotbarIndex)
-{
-    if (equippedItem == EquippedItem::None)
-    {
-        return false;
-    }
-    if (addEquippedItemToSlots(hotbarSlots, equippedItem, &selectedHotbarIndex))
-    {
-        return true;
-    }
-    return addEquippedItemToSlots(bagSlots, equippedItem, nullptr);
-}
-}  // namespace
-
 void Application::spawnDroppedItem(
     const world::BlockType blockType,
     const glm::ivec3& blockPosition)
@@ -198,7 +138,8 @@ void Application::updateDroppedItems(const float deltaTimeSeconds, const float e
                     hotbarSlots_,
                     bagSlots_,
                     droppedItem.equippedItem,
-                    selectedHotbarIndex_);
+                    selectedHotbarIndex_,
+                    InventorySelectionBehavior::PreserveCurrent);
             }
             else
             {
@@ -206,7 +147,8 @@ void Application::updateDroppedItems(const float deltaTimeSeconds, const float e
                     hotbarSlots_,
                     bagSlots_,
                     droppedItem.blockType,
-                    selectedHotbarIndex_);
+                    selectedHotbarIndex_,
+                    InventorySelectionBehavior::PreserveCurrent);
             }
 
             if (pickedUp)

@@ -84,8 +84,24 @@ enum class BlockType : std::uint8_t
     Podzol,
     CoarseDirt,
     DarkOakLog,
-    DarkOakLeaves
+    DarkOakLeaves,
+    SculkBlock,
+    DripstoneBlock,
+    FurnaceNorth,
+    FurnaceEast,
+    FurnaceWest
 };
+
+[[nodiscard]] constexpr bool isFurnaceBlock(const BlockType blockType)
+{
+    return blockType == BlockType::Furnace || blockType == BlockType::FurnaceNorth
+        || blockType == BlockType::FurnaceEast || blockType == BlockType::FurnaceWest;
+}
+
+[[nodiscard]] constexpr BlockType normalizeFurnaceBlockType(const BlockType blockType)
+{
+    return isFurnaceBlock(blockType) ? BlockType::Furnace : blockType;
+}
 
 [[nodiscard]] constexpr bool isFluid(const BlockType blockType)
 {
@@ -193,6 +209,8 @@ enum class BlockType : std::uint8_t
     case BlockType::JungleGrass:
     case BlockType::Sandstone:
     case BlockType::Gravel:
+    case BlockType::SculkBlock:
+    case BlockType::DripstoneBlock:
         return true;
     default:
         return false;

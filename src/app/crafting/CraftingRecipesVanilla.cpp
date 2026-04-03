@@ -201,6 +201,38 @@ void appendVanillaBlockRecipes(std::vector<RecipeDefinition>& r)
             .equippedItem = EquippedItem::None,
         },
     });
+    r.push_back(RecipeDefinition{
+        .width = 2,
+        .height = 2,
+        .requiresWorkbench = false,
+        .pattern = {
+            ingredientBlock(BlockType::BirchLeaves),
+            ingredientBlock(BlockType::BirchLeaves),
+            ingredientBlock(BlockType::BirchLeaves),
+            ingredientBlock(BlockType::BirchLeaves),
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::CraftingTable,
+            .count = 1,
+            .equippedItem = EquippedItem::None,
+        },
+    });
+    r.push_back(RecipeDefinition{
+        .width = 2,
+        .height = 2,
+        .requiresWorkbench = false,
+        .pattern = {
+            ingredientBlock(BlockType::DarkOakLeaves),
+            ingredientBlock(BlockType::DarkOakLeaves),
+            ingredientBlock(BlockType::DarkOakLeaves),
+            ingredientBlock(BlockType::DarkOakLeaves),
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::CraftingTable,
+            .count = 1,
+            .equippedItem = EquippedItem::None,
+        },
+    });
 
     // Snow block: four snow layers -> one block (snowgrass stands in for snowballs).
     r.push_back(RecipeDefinition{

@@ -12,10 +12,7 @@
 
 #include "vibecraft/app/ApplicationAmbientLife.hpp"
 #include "vibecraft/app/ApplicationConfig.hpp"
-#include "vibecraft/app/ApplicationMovementHelpers.hpp"
-#include "vibecraft/app/ApplicationOxygenRuntime.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
-#include "vibecraft/app/OxygenItems.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
 #include "vibecraft/render/Renderer.hpp"
 #include "vibecraft/render/RendererDetail.hpp"
@@ -46,6 +43,16 @@ namespace
         return forward.x >= 0.0f ? "+X (East)" : "-X (West)";
     }
     return forward.z >= 0.0f ? "+Z (South)" : "-Z (North)";
+}
+
+[[nodiscard]] std::int64_t storageKeyForBlockPosition(const glm::ivec3& blockPosition)
+{
+    constexpr std::int64_t offset = 1LL << 20;
+    constexpr std::int64_t mask = (1LL << 21) - 1LL;
+    const std::int64_t x = (static_cast<std::int64_t>(blockPosition.x) + offset) & mask;
+    const std::int64_t y = (static_cast<std::int64_t>(blockPosition.y) + offset) & mask;
+    const std::int64_t z = (static_cast<std::int64_t>(blockPosition.z) + offset) & mask;
+    return (x << 42) | (y << 21) | z;
 }
 
 [[nodiscard]] render::HudItemKind hudItemKindForEquippedItem(const EquippedItem equippedItem)
@@ -128,28 +135,19 @@ void Application::buildFrameDebugData(
     frameDebugData.showWorldOriginGuides = showWorldOriginGuides_;
     frameDebugData.health = playerVitals_.health();
     frameDebugData.maxHealth = playerVitals_.maxHealth();
-    frameDebugData.oxygen = oxygenSystem_.state().oxygen;
-    frameDebugData.maxOxygen = oxygenSystem_.state().capacity;
-    frameDebugData.oxygenTankItemKind =
-        hudItemKindForEquippedItem(equippedItemForOxygenTankTier(oxygenSystem_.state().tankTier));
-    frameDebugData.oxygenInsideSafeZone = playerOxygenEnvironment_.insideSafeZone;
-    frameDebugData.oxygenLowWarning =
-        oxygenSystem_.state().capacity > 0.0f
-        && oxygenSystem_.state().oxygen <= oxygenSystem_.state().capacity * 0.2f;
-    frameDebugData.oxygenStatusLine =
-        buildOxygenStatusLine(terrainGenerator_, playerFeetPosition_, oxygenSystem_.state(), playerOxygenEnvironment_);
-    frameDebugData.oxygenZoneLabel = oxygenZoneLabel(playerOxygenEnvironment_);
+    frameDebugData.air = playerVitals_.air();
+    frameDebugData.maxAir = playerVitals_.maxAir();
     const float safeFrameTimeMs = std::max(smoothedFrameTimeMs_, 0.001f);
     const float smoothedFps = 1000.0f / safeFrameTimeMs;
     const int cycleSeconds = static_cast<int>(std::floor(dayNightSample.elapsedSeconds));
     const int cycleMinutesComponent = cycleSeconds / 60;
     const int cycleSecondsComponent = cycleSeconds % 60;
     frameDebugData.statusLine = fmt::format(
-        "HP: {:.0f}/{:.0f}  O2: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Net: {}  Peers: {}  Frame: {:.2f} ms ({:.1f} fps){}",
+        "HP: {:.0f}/{:.0f}  Air: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Net: {}  Peers: {}  Frame: {:.2f} ms ({:.1f} fps){}",
         playerVitals_.health(),
         playerVitals_.maxHealth(),
-        oxygenSystem_.state().oxygen,
-        oxygenSystem_.state().capacity,
+        playerVitals_.air(),
+        playerVitals_.maxAir(),
         hazardLabel(playerHazards_),
         mouseCaptured_ ? "captured" : "released",
         isGrounded_ ? "yes" : "no",
@@ -169,18 +167,10 @@ void Application::buildFrameDebugData(
     }
     frameDebugData.hotbarSelectedIndex = selectedHotbarIndex_;
     frameDebugData.selectedHotbarLabel = inventorySlotLabel(hotbarSlots_[selectedHotbarIndex_]);
-    frameDebugData.selectedHotbarActionHint =
-        portableOxygenItemUseHint(hotbarSlots_[selectedHotbarIndex_], oxygenSystem_.state());
-    if (frameDebugData.selectedHotbarActionHint.empty())
+    frameDebugData.selectedHotbarActionHint.clear();
     {
         const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
         if (selectedSlot.count > 0
-            && selectedSlot.equippedItem == EquippedItem::None
-            && selectedSlot.blockType == world::BlockType::OxygenGenerator)
-        {
-            frameDebugData.selectedHotbarActionHint = "Right-click: place Oxygen Generator (7-block oxygen zone)";
-        }
-        else if (selectedSlot.count > 0
             && selectedSlot.equippedItem == EquippedItem::None
             && selectedSlot.blockType == world::BlockType::PlanterTray)
         {
@@ -202,7 +192,7 @@ void Application::buildFrameDebugData(
             && selectedSlot.equippedItem == EquippedItem::None
             && selectedSlot.blockType == world::BlockType::FiberSapling)
         {
-            frameDebugData.selectedHotbarActionHint = "Right-click: plant in a tray inside oxygen";
+            frameDebugData.selectedHotbarActionHint = "Right-click: plant in a soil-filled planter tray";
         }
         else if (selectedSlot.count > 0 && selectedSlot.equippedItem != EquippedItem::None)
         {
@@ -221,13 +211,13 @@ void Application::buildFrameDebugData(
                 frameDebugData.selectedHotbarActionHint = "Open inventory: equip in Boots slot";
                 break;
             default:
-                frameDebugData.selectedHotbarActionHint = oxygenBiomeGuidance(terrainGenerator_, playerFeetPosition_);
+                frameDebugData.selectedHotbarActionHint = surfaceBiomeGuidance(terrainGenerator_, playerFeetPosition_);
                 break;
             }
         }
         else
         {
-            frameDebugData.selectedHotbarActionHint = oxygenBiomeGuidance(terrainGenerator_, playerFeetPosition_);
+            frameDebugData.selectedHotbarActionHint = surfaceBiomeGuidance(terrainGenerator_, playerFeetPosition_);
         }
     }
     frameDebugData.survivalTipLine = survivalTipLine(sessionPlayTimeSeconds_);
@@ -245,9 +235,28 @@ void Application::buildFrameDebugData(
     {
         frameDebugData.craftingMenuActive = true;
         frameDebugData.craftingUsesWorkbench = craftingMenuState_.usesWorkbench;
+        switch (craftingMenuState_.mode)
+        {
+        case CraftingMenuState::Mode::InventoryCrafting:
+            frameDebugData.craftingUiMode = render::CraftingUiMode::Inventory;
+            break;
+        case CraftingMenuState::Mode::WorkbenchCrafting:
+            frameDebugData.craftingUiMode = render::CraftingUiMode::Workbench;
+            break;
+        case CraftingMenuState::Mode::ChestStorage:
+            frameDebugData.craftingUiMode = render::CraftingUiMode::Chest;
+            break;
+        case CraftingMenuState::Mode::Furnace:
+            frameDebugData.craftingUiMode = render::CraftingUiMode::Furnace;
+            break;
+        }
         if (craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage)
         {
             frameDebugData.craftingTitle = "Chest";
+        }
+        else if (craftingMenuState_.mode == CraftingMenuState::Mode::Furnace)
+        {
+            frameDebugData.craftingTitle = "Furnace";
         }
         else
         {
@@ -259,14 +268,39 @@ void Application::buildFrameDebugData(
         const std::size_t visibleStart = craftingMenuState_.bagStartRow * 9;
         const std::size_t visibleEndExclusive =
             std::min<std::size_t>(visibleStart + 27, bagSlots_.size());
+        std::string craftingHint = craftingMenuState_.hint;
+        if (craftingMenuState_.mode == CraftingMenuState::Mode::Furnace)
+        {
+            const auto furnaceIt = furnaceStatesByPosition_.find(
+                storageKeyForBlockPosition(craftingMenuState_.furnaceBlockPosition));
+            if (furnaceIt != furnaceStatesByPosition_.end())
+            {
+                frameDebugData.craftingProgressFraction = furnaceSmeltFraction(furnaceIt->second);
+                frameDebugData.craftingFuelFraction = furnaceFuelFraction(furnaceIt->second);
+                craftingHint = fmt::format(
+                    "{}  Smelt {:>3.0f}%  Fuel {:>3.0f}%",
+                    craftingHint,
+                    frameDebugData.craftingProgressFraction * 100.0f,
+                    frameDebugData.craftingFuelFraction * 100.0f);
+            }
+        }
         frameDebugData.craftingHint = fmt::format(
             "{}  |  Bag slots: {}-{} / {} (mouse wheel to scroll)",
-            craftingMenuState_.hint,
+            craftingHint,
             visibleStart + 1,
             visibleEndExclusive,
             bagSlots_.size());
         frameDebugData.craftingCursorSlot = makeHudSlot(craftingMenuState_.carriedSlot);
-        if (craftingMenuState_.mode != CraftingMenuState::Mode::ChestStorage)
+        if (craftingMenuState_.mode == CraftingMenuState::Mode::Furnace)
+        {
+            const auto furnaceIt = furnaceStatesByPosition_.find(
+                storageKeyForBlockPosition(craftingMenuState_.furnaceBlockPosition));
+            if (furnaceIt != furnaceStatesByPosition_.end())
+            {
+                frameDebugData.craftingResultSlot = makeHudSlot(furnaceIt->second.outputSlot);
+            }
+        }
+        else if (craftingMenuState_.mode != CraftingMenuState::Mode::ChestStorage)
         {
             if (const std::optional<CraftingMatch> craftingMatch = evaluateCraftingGrid(
                     craftingMenuState_.gridSlots,
@@ -295,82 +329,6 @@ void Application::buildFrameDebugData(
 
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
-        constexpr int kRelayVisualSearchBlocks = 48;
-        constexpr float kRelayVisualRescanIntervalSeconds = 0.35f;
-        constexpr float kRelayVisualRescanDistanceSq = 4.0f * 4.0f;
-        cachedVisibleOxygenGeneratorsCooldownSeconds_ = std::max(
-            0.0f,
-            cachedVisibleOxygenGeneratorsCooldownSeconds_ - deltaTimeSeconds);
-        const glm::vec3 visualScanDelta = playerFeetPosition_ - cachedVisibleOxygenGeneratorsReference_;
-        const bool movedEnoughForVisualRescan =
-            glm::dot(visualScanDelta, visualScanDelta) >= kRelayVisualRescanDistanceSq;
-        if (!cachedVisibleOxygenGeneratorsValid_ || cachedVisibleOxygenGeneratorsCooldownSeconds_ <= 0.0f
-            || movedEnoughForVisualRescan)
-        {
-            cachedVisibleOxygenGenerators_ =
-                collectVisibleOxygenGenerators(world_, playerFeetPosition_, kRelayVisualSearchBlocks, 48);
-            cachedVisibleOxygenGeneratorsReference_ = playerFeetPosition_;
-            cachedVisibleOxygenGeneratorsCooldownSeconds_ = kRelayVisualRescanIntervalSeconds;
-            cachedVisibleOxygenGeneratorsValid_ = true;
-        }
-
-        constexpr float kRelayVisualMinSpacing = 2.25f;
-        constexpr float kRelayVisualMinSpacingSq = kRelayVisualMinSpacing * kRelayVisualMinSpacing;
-        constexpr std::size_t kMaxRelayVisualZones = 24;
-        std::size_t relayVisualCount = 0;
-        const std::vector<OxygenSafeZone> visibleSafeZones =
-            buildOxygenSafeZones(cachedVisibleOxygenGenerators_);
-        for (const OxygenSafeZone& zone : visibleSafeZones)
-        {
-            bool tooCloseToExistingZone = false;
-            for (const render::FrameDebugData::WorldSafeZoneHud& existingZone : frameDebugData.worldSafeZones)
-            {
-                const glm::vec3 delta = existingZone.worldCenter - zone.center;
-                if (glm::dot(delta, delta) < kRelayVisualMinSpacingSq)
-                {
-                    tooCloseToExistingZone = true;
-                    break;
-                }
-            }
-            if (tooCloseToExistingZone)
-            {
-                continue;
-            }
-
-            frameDebugData.worldSafeZones.push_back(render::FrameDebugData::WorldSafeZoneHud{
-                .worldCenter = zone.center,
-                .radius = zone.radius,
-                .preview = false,
-            });
-            ++relayVisualCount;
-            if (relayVisualCount >= kMaxRelayVisualZones)
-            {
-                break;
-            }
-        }
-        if (raycastHit.has_value())
-        {
-            const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
-            if (selectedSlot.count > 0
-                && selectedSlot.blockType == world::BlockType::OxygenGenerator
-                && selectedSlot.equippedItem == EquippedItem::None)
-            {
-                const bool relayPlacementValid = canPlaceRelayAtTarget(
-                    world_,
-                    raycastHit->buildTarget,
-                    playerFeetPosition_,
-                    kPlayerMovementSettings.standingColliderHeight);
-                frameDebugData.relayPlacementPreviewActive = true;
-                frameDebugData.relayPlacementPreviewValid = relayPlacementValid;
-                frameDebugData.relayPlacementPreviewLabel = relayPlacementValid ? "relay ready" : "relay blocked";
-                frameDebugData.worldSafeZones.push_back(render::FrameDebugData::WorldSafeZoneHud{
-                    .worldCenter = glm::vec3(raycastHit->buildTarget) + glm::vec3(0.5f),
-                    .radius = 7.0f,
-                    .preview = true,
-                    .valid = relayPlacementValid,
-                });
-            }
-        }
         const std::vector<game::MobInstance>& mobsForHud = multiplayerMode_ == MultiplayerRuntimeMode::Client
             ? clientReplicatedMobs_
             : mobSpawnSystem_.mobs();

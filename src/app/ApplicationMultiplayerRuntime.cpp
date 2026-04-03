@@ -15,7 +15,6 @@
 #include "vibecraft/app/ApplicationConfig.hpp"
 #include "vibecraft/app/ApplicationMultiplayerLog.hpp"
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
-#include "vibecraft/app/ApplicationSurvival.hpp"
 
 namespace vibecraft::app
 {
@@ -504,7 +503,7 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                             camera_.setYawPitch(player.yawDegrees, player.pitchDegrees);
                         }
                     }
-                    applyLegacyNetworkAirToOxygenSystem(oxygenSystem_, player.air);
+                    playerVitals_.setHealthAndAir(player.health, player.air);
                     camera_.setPosition(
                         playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
                     continue;
@@ -557,7 +556,7 @@ void Application::updateMultiplayer(const float deltaTimeSeconds)
                         .yawDelta = camera_.yawDegrees(),
                         .pitchDelta = camera_.pitchDegrees(),
                         .health = playerVitals_.health(),
-                        .air = encodeLegacyNetworkAir(oxygenSystem_.state()),
+                        .air = playerVitals_.air(),
                         .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
                         .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
                         .mobMeleeSwing = pendingClientMobMeleeSwing_,

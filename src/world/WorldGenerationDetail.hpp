@@ -16,4 +16,5 @@ namespace vibecraft::world::detail
 
 void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainGenerator& terrainGenerator);
 void populateSurfaceFloraForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainGenerator& terrainGenerator);
+void populateCaveDecorForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainGenerator& terrainGenerator);
 }  // namespace vibecraft::world::detail

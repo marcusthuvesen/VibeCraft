@@ -263,7 +263,6 @@ bool Application::saveActiveSingleplayerWorld(const bool showNotice)
     playerState.cameraPitchDegrees = camera_.pitchDegrees();
     playerState.health = playerVitals_.health();
     playerState.air = playerVitals_.air();
-    playerState.oxygenState = oxygenSystem_.state();
     playerState.creativeModeEnabled = creativeModeEnabled_;
     playerState.selectedHotbarIndex = static_cast<std::uint8_t>(std::min<std::size_t>(selectedHotbarIndex_, 255));
     playerState.dayNightElapsedSeconds = dayNightCycle_.elapsedSeconds();
@@ -272,6 +271,7 @@ bool Application::saveActiveSingleplayerWorld(const bool showNotice)
     playerState.bagSlots = bagSlots_;
     playerState.equipmentSlots = equipmentSlots_;
     playerState.chestSlotsByPosition = chestSlotsByPosition_;
+    playerState.furnaceStatesByPosition = furnaceStatesByPosition_;
     playerState.droppedItems.reserve(droppedItems_.size());
     for (const DroppedItem& droppedItem : droppedItems_)
     {

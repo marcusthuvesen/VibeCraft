@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "vibecraft/app/crafting/Crafting.hpp"
+#include "vibecraft/app/Furnace.hpp"
 #include "vibecraft/app/Inventory.hpp"
-#include "vibecraft/game/OxygenSystem.hpp"
 
 namespace vibecraft::app
 {
@@ -42,7 +42,6 @@ struct SingleplayerPlayerState
     float cameraPitchDegrees = -20.0f;
     float health = 20.0f;
     float air = 10.0f;
-    vibecraft::game::OxygenState oxygenState{};
     bool creativeModeEnabled = false;
     std::uint8_t selectedHotbarIndex = 0;
     float dayNightElapsedSeconds = 0.0f;
@@ -52,6 +51,7 @@ struct SingleplayerPlayerState
     EquipmentSlots equipmentSlots{};
     std::vector<SavedDroppedItem> droppedItems;
     std::unordered_map<std::int64_t, CraftingGridSlots> chestSlotsByPosition;
+    std::unordered_map<std::int64_t, FurnaceBlockState> furnaceStatesByPosition;
 };
 
 class SingleplayerSaveSerializer

@@ -143,10 +143,10 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/app/ApplicationEquipment.hpp
     include/vibecraft/app/ApplicationMultiplayerLog.hpp
     include/vibecraft/app/ApplicationMovementHelpers.hpp
-    include/vibecraft/app/ApplicationOxygenRuntime.hpp
+    include/vibecraft/app/Furnace.hpp
+    include/vibecraft/app/Mining.hpp
     include/vibecraft/app/ApplicationSpawnHelpers.hpp
     include/vibecraft/app/ApplicationTerraformingRuntime.hpp
-    include/vibecraft/app/OxygenItems.hpp
     include/vibecraft/app/ApplicationSurvival.hpp
     include/vibecraft/app/crafting/Crafting.hpp
     include/vibecraft/app/input/ApplicationInputMenuHelpers.hpp
@@ -166,7 +166,6 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/game/CollisionHelpers.hpp
     include/vibecraft/game/MobTypes.hpp
     include/vibecraft/game/MobSpawnSystem.hpp
-    include/vibecraft/game/OxygenSystem.hpp
     include/vibecraft/game/PlayerVitals.hpp
     include/vibecraft/meshing/ChunkMesher.hpp
     include/vibecraft/platform/InputState.hpp
@@ -179,11 +178,14 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/world/biomes/BiomeProfile.hpp
     include/vibecraft/world/biomes/BiomeSelection.hpp
     include/vibecraft/world/biomes/BiomeTerrainContribution.hpp
+    include/vibecraft/world/biomes/FloraGenerationTuning.hpp
     include/vibecraft/world/biomes/SurfaceBiome.hpp
+    include/vibecraft/world/biomes/TreeGenerationTuning.hpp
     include/vibecraft/world/Chunk.hpp
     include/vibecraft/world/TerrainNoise.hpp
     include/vibecraft/world/TerrainGenerator.hpp
     include/vibecraft/world/WorldVerticalScale.hpp
+    include/vibecraft/world/underground/CaveBiomeRules.hpp
     include/vibecraft/world/underground/CaveRules.hpp
     include/vibecraft/world/underground/OreVeinRules.hpp
     include/vibecraft/world/World.hpp
@@ -205,14 +207,14 @@ set(VIBECRAFT_SOURCES
     src/app/ApplicationMultiplayerSession.cpp
     src/app/ApplicationMultiplayerRuntime.cpp
     src/app/ApplicationMovementHelpers.cpp
-    src/app/ApplicationOxygenRuntime.cpp
+    src/app/Furnace.cpp
+    src/app/Mining.cpp
     src/app/ApplicationPlayerLifecycle.cpp
     src/app/ApplicationPersistence.cpp
     src/app/ApplicationSingleplayerLoad.cpp
     src/app/ApplicationSpawnHelpers.cpp
     src/app/ApplicationTerraformingRuntime.cpp
     src/app/ApplicationWorldSync.cpp
-    src/app/OxygenItems.cpp
     src/app/ApplicationSurvival.cpp
     src/app/crafting/Crafting.cpp
     src/app/crafting/CraftingRecipesCatalog.cpp
@@ -234,7 +236,6 @@ set(VIBECRAFT_SOURCES
     src/game/Camera.cpp
     src/game/CollisionHelpers.cpp
     src/game/MobSpawnSystem.cpp
-    src/game/OxygenSystem.cpp
     src/game/PlayerVitals.cpp
     src/multiplayer/Protocol.cpp
     src/multiplayer/Session.cpp
@@ -255,12 +256,17 @@ set(VIBECRAFT_SOURCES
     src/render/RendererWeather.cpp
     src/world/Chunk.cpp
     src/world/TerrainGenerator.cpp
+    src/world/WoodlandRavine.cpp
     src/world/biomes/BiomeProfile.cpp
     src/world/biomes/BiomeSelection.cpp
     src/world/biomes/BiomeTerrainContribution.cpp
+    src/world/biomes/FloraGenerationTuning.cpp
+    src/world/biomes/TreeGenerationTuning.cpp
     src/world/WorldGeneration.cpp
+    src/world/WorldGenerationCaveDecor.cpp
     src/world/WorldGenerationTrees.cpp
     src/world/WorldGenerationFlora.cpp
+    src/world/underground/CaveBiomeRules.cpp
     src/world/underground/CaveRules.cpp
     src/world/underground/OreVeinRules.cpp
     src/world/World.cpp
@@ -324,12 +330,11 @@ add_executable(vibecraft_tests
     tests/armor_equipment_tests.cpp
     tests/botany_runtime_tests.cpp
     tests/crafting/crafting_tests.cpp
+    tests/furnace_tests.cpp
     tests/game/player_vitals_smoke_tests.cpp
     tests/multiplayer/multiplayer_smoke_tests.cpp
     tests/multiplayer_dropped_item_tests.cpp
-    tests/oxygen_canister_tests.cpp
-    tests/oxygen_generator_tests.cpp
-    tests/oxygen_system_tests.cpp
+    tests/inventory_mining_tests.cpp
     tests/terraforming_runtime_tests.cpp
     tests/terrain_biome_pass_tests.cpp
     tests/world/world_ambient_smoke_tests.cpp
@@ -346,14 +351,13 @@ add_executable(vibecraft_tests
     src/app/ApplicationEquipment.cpp
     src/app/ApplicationAmbientLife.cpp
     src/app/ApplicationBotanyRuntime.cpp
-    src/app/ApplicationOxygenRuntime.cpp
+    src/app/Furnace.cpp
+    src/app/Mining.cpp
     src/app/ApplicationTerraformingRuntime.cpp
-    src/app/OxygenItems.cpp
     src/app/SingleplayerSave.cpp
     src/app/ApplicationSurvival.cpp
     src/game/CollisionHelpers.cpp
     src/game/MobSpawnSystem.cpp
-    src/game/OxygenSystem.cpp
     src/game/PlayerVitals.cpp
     src/multiplayer/Protocol.cpp
     src/multiplayer/Session.cpp
@@ -361,12 +365,17 @@ add_executable(vibecraft_tests
     src/meshing/ChunkMesher.cpp
     src/world/Chunk.cpp
     src/world/TerrainGenerator.cpp
+    src/world/WoodlandRavine.cpp
     src/world/biomes/BiomeProfile.cpp
     src/world/biomes/BiomeSelection.cpp
     src/world/biomes/BiomeTerrainContribution.cpp
+    src/world/biomes/FloraGenerationTuning.cpp
+    src/world/biomes/TreeGenerationTuning.cpp
     src/world/WorldGeneration.cpp
+    src/world/WorldGenerationCaveDecor.cpp
     src/world/WorldGenerationTrees.cpp
     src/world/WorldGenerationFlora.cpp
+    src/world/underground/CaveBiomeRules.cpp
     src/world/underground/CaveRules.cpp
     src/world/underground/OreVeinRules.cpp
     src/world/World.cpp

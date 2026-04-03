@@ -13,77 +13,17 @@
 #include <string>
 
 #include "debugdraw.h"
-#include "stb_image.h"
 
 namespace vibecraft::render
 {
 namespace
 {
-struct GlassShieldProfile
-{
-    glm::vec3 tint{0.36f, 0.84f, 1.0f};
-};
-
-[[nodiscard]] const GlassShieldProfile& glassShieldProfile()
-{
-    static const GlassShieldProfile kProfile = []()
-    {
-        GlassShieldProfile profile{};
-        const std::filesystem::path path = detail::runtimeAssetPath("textures/effects/oxygen_glass.png");
-        int width = 0;
-        int height = 0;
-        int channels = 0;
-        stbi_uc* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, 4);
-        if (pixels == nullptr || width <= 0 || height <= 0)
-        {
-            if (pixels != nullptr)
-            {
-                stbi_image_free(pixels);
-            }
-            return profile;
-        }
-
-        double sumR = 0.0;
-        double sumG = 0.0;
-        double sumB = 0.0;
-        double sumA = 0.0;
-        std::uint64_t sampleCount = 0;
-        const std::uint64_t total = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
-        for (std::uint64_t i = 0; i < total; ++i)
-        {
-            const std::size_t idx = static_cast<std::size_t>(i) * 4U;
-            const double a = static_cast<double>(pixels[idx + 3]) / 255.0;
-            if (a <= 1e-5)
-            {
-                continue;
-            }
-            sumR += static_cast<double>(pixels[idx + 0]) * a;
-            sumG += static_cast<double>(pixels[idx + 1]) * a;
-            sumB += static_cast<double>(pixels[idx + 2]) * a;
-            sumA += a;
-            ++sampleCount;
-        }
-        stbi_image_free(pixels);
-        if (sampleCount == 0 || sumA <= 1e-6)
-        {
-            return profile;
-        }
-
-        profile.tint = glm::vec3(
-            static_cast<float>(sumR / (sumA * 255.0)),
-            static_cast<float>(sumG / (sumA * 255.0)),
-            static_cast<float>(sumB / (sumA * 255.0)));
-        return profile;
-    }();
-    return kProfile;
-}
-
-[[nodiscard]] std::string oxygenBarString(const FrameDebugData& frameDebugData)
+[[nodiscard]] std::string airBarString(const FrameDebugData& frameDebugData)
 {
     constexpr int kBarSegments = 16;
-    const float clampedMaxOxygen = std::max(0.0f, frameDebugData.maxOxygen);
-    const float clampedOxygen = std::clamp(frameDebugData.oxygen, 0.0f, clampedMaxOxygen);
-    const float fillRatio = clampedMaxOxygen > 0.0f ? clampedOxygen / clampedMaxOxygen : 0.0f;
+    const float clampedMaxAir = std::max(0.0f, frameDebugData.maxAir);
+    const float clampedAir = std::clamp(frameDebugData.air, 0.0f, clampedMaxAir);
+    const float fillRatio = clampedMaxAir > 0.0f ? clampedAir / clampedMaxAir : 0.0f;
     const int filledSegments = std::clamp(static_cast<int>(std::round(fillRatio * kBarSegments)), 0, kBarSegments);
 
     std::string bar = "[";
@@ -93,11 +33,7 @@ struct GlassShieldProfile
     }
     bar += "]";
 
-    return fmt::format(
-        "Oxygen {} {:>3.0f}%  {}",
-        bar,
-        fillRatio * 100.0f,
-        frameDebugData.oxygenInsideSafeZone ? "safe zone" : "exposed");
+    return fmt::format("Air {} {:>3.0f}%", bar, fillRatio * 100.0f);
 }
 
 [[nodiscard]] float hashUnitFloat(std::uint32_t seed)
@@ -522,7 +458,11 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         };
         bx::buildFrustumPlanes(frustumPlanes, viewProjection);
 
-        const float chunkMaxDrawDistance = cameraFrameData.farClip * 1.08f;
+        // Keep rendering local, but allow farther ground-level visibility.
+        constexpr float kChunkHorizontalRenderDistance = 64.0f;
+        constexpr float kBelowCameraDistanceWeight = 2.3f;
+        constexpr float kAboveCameraDistanceWeight = 1.0f;
+        const float chunkMaxDrawDistance = std::min(cameraFrameData.farClip * 1.08f, kChunkHorizontalRenderDistance);
         const float chunkMaxDrawDistanceSq = chunkMaxDrawDistance * chunkMaxDrawDistance;
 
         for (const auto& [sceneMeshId, sceneMesh] : sceneMeshes_)
@@ -538,7 +478,17 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
                 continue;
             }
 
-            if (detail::distanceSqCameraToAabb(cameraFrameData.position, sceneMesh.boundsMin, sceneMesh.boundsMax)
+            if (detail::distanceSqCameraToAabbXZ(cameraFrameData.position, sceneMesh.boundsMin, sceneMesh.boundsMax)
+                > chunkMaxDrawDistanceSq)
+            {
+                continue;
+            }
+            if (detail::distanceSqCameraToAabbDownWeighted(
+                    cameraFrameData.position,
+                    sceneMesh.boundsMin,
+                    sceneMesh.boundsMax,
+                    kBelowCameraDistanceWeight,
+                    kAboveCameraDistanceWeight)
                 > chunkMaxDrawDistanceSq)
             {
                 continue;
@@ -610,65 +560,6 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     detail::drawWeatherRain(debugDrawEncoder, cameraFrameData);
     // Celestial pass uses reversed depth-test for sky quads; restore normal depth for world overlays.
     debugDrawEncoder.setDepthTestLess(true);
-    // Draw relay safe-zones as layered translucent shields so they read like protective glass domes.
-    for (const FrameDebugData::WorldSafeZoneHud& safeZone : frameDebugData.worldSafeZones)
-    {
-        const glm::vec3 toPlayer = cameraFrameData.position - safeZone.worldCenter;
-        const float distanceSq = glm::dot(toPlayer, toPlayer);
-        const float radiusWithPadding = safeZone.radius + 156.0f;
-        if (distanceSq > radiusWithPadding * radiusWithPadding)
-        {
-            continue;
-        }
-
-        const glm::vec3 activeColor = safeZone.preview
-            ? (safeZone.valid ? glm::vec3(0.48f, 1.0f, 0.84f) : glm::vec3(1.0f, 0.46f, 0.52f))
-            : glm::vec3(0.30f, 0.86f, 1.0f);
-        const GlassShieldProfile& shieldProfile = glassShieldProfile();
-        const glm::vec3 glassColor = glm::clamp(glm::mix(activeColor, shieldProfile.tint, 0.68f), glm::vec3(0.0f), glm::vec3(1.0f));
-        const float shellAlpha = safeZone.preview ? 0.62f : 0.52f;
-        const bx::Vec3 center(safeZone.worldCenter.x, safeZone.worldCenter.y, safeZone.worldCenter.z);
-        const float shellRadius = safeZone.radius;
-
-        debugDrawEncoder.push();
-        // Transparent material behavior: test against depth but do not write depth.
-        debugDrawEncoder.setWireframe(false);
-        const auto drawTwoSidedShell = [&](const float radius, const std::uint32_t color)
-        {
-            debugDrawEncoder.setState(true, false, false);
-            debugDrawEncoder.setColor(color);
-            debugDrawEncoder.draw(bx::Sphere(center, radius));
-            // Render opposite winding so the shell is visible from both inside and outside.
-            debugDrawEncoder.setState(true, false, true);
-            debugDrawEncoder.setColor(color);
-            debugDrawEncoder.draw(bx::Sphere(center, radius));
-        };
-        drawTwoSidedShell(shellRadius, detail::packAbgr8(glassColor, shellAlpha));
-
-        // Emphasize the grid so shield boundaries are obvious both near and far.
-        const glm::vec3 gridTint = glm::clamp(glm::mix(glassColor, glm::vec3(1.0f), 0.35f), glm::vec3(0.0f), glm::vec3(1.0f));
-        const float gridAlpha = safeZone.preview ? 0.82f : 0.70f;
-        const std::uint32_t gridColor = detail::packAbgr8(gridTint, gridAlpha);
-        const auto drawShieldGrid = [&]()
-        {
-            debugDrawEncoder.setColor(gridColor);
-            debugDrawEncoder.draw(bx::Sphere(center, shellRadius));
-            debugDrawEncoder.drawCircle(Axis::X, center.x, center.y, center.z, shellRadius, 0.0f);
-            debugDrawEncoder.drawCircle(Axis::Y, center.x, center.y, center.z, shellRadius, 0.0f);
-            debugDrawEncoder.drawCircle(Axis::Z, center.x, center.y, center.z, shellRadius, 0.0f);
-            // Extra lat/long rings to make the grid denser and easier to read.
-            debugDrawEncoder.drawCircle(Axis::X, center.x, center.y, center.z, shellRadius * 0.70f, 0.0f);
-            debugDrawEncoder.drawCircle(Axis::Y, center.x, center.y, center.z, shellRadius * 0.70f, 0.0f);
-            debugDrawEncoder.drawCircle(Axis::Z, center.x, center.y, center.z, shellRadius * 0.70f, 0.0f);
-        };
-        debugDrawEncoder.setWireframe(true);
-        debugDrawEncoder.setState(true, false, false);
-        drawShieldGrid();
-        debugDrawEncoder.setState(true, false, true);
-        drawShieldGrid();
-        debugDrawEncoder.setWireframe(false);
-        debugDrawEncoder.pop();
-    }
     if (frameDebugData.showWorldOriginGuides)
     {
         debugDrawEncoder.setColor(0xff455a64);
@@ -762,10 +653,6 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
 
     bgfx::dbgTextPrintf(0, 1, 0x0f, "VibeCraft foundation slice");
     bgfx::dbgTextPrintf(0, 3, 0x0a, "%s", frameDebugData.statusLine.c_str());
-    if (inventoryUiSolidProgramHandle_ == UINT16_MAX && !frameDebugData.oxygenStatusLine.empty())
-    {
-        bgfx::dbgTextPrintf(0, 4, 0x0b, "%s", frameDebugData.oxygenStatusLine.c_str());
-    }
     bgfx::dbgTextPrintf(
         0,
         5,
@@ -830,46 +717,17 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     }
     if (inventoryUiSolidProgramHandle_ == UINT16_MAX)
     {
-        const std::uint16_t oxygenAttr = frameDebugData.oxygenLowWarning
-            ? 0x0c
-            : (frameDebugData.oxygenInsideSafeZone ? 0x0a : 0x0b);
-        const std::string oxygenBar = oxygenBarString(frameDebugData);
-        bgfx::dbgTextPrintf(0, 10, oxygenAttr, "%s", oxygenBar.c_str());
-        if (frameDebugData.oxygenLowWarning)
+        const bool airLow =
+            frameDebugData.maxAir > 0.0f && frameDebugData.air <= frameDebugData.maxAir * 0.2f + 1e-3f;
+        const std::uint16_t airAttr = airLow ? 0x0c : 0x0b;
+        const std::string airBar = airBarString(frameDebugData);
+        bgfx::dbgTextPrintf(0, 10, airAttr, "%s", airBar.c_str());
+        if (airLow)
         {
-            bgfx::dbgTextPrintf(0, 11, 0x0c, "Warning: oxygen low. Reach a generator or safe biome.");
+            bgfx::dbgTextPrintf(0, 11, 0x0c, "Warning: air low. Surface to breathe.");
         }
     }
-    else
-    {
-        const std::string zoneLine = fmt::format("O2 zone: {}", frameDebugData.oxygenZoneLabel);
-        const int zoneCol = std::max(0, static_cast<int>(textWidthForHud) / 2 - static_cast<int>(zoneLine.size()) / 2);
-        const std::uint16_t zoneAttr = frameDebugData.oxygenLowWarning
-            ? 0x0c
-            : (frameDebugData.oxygenInsideSafeZone ? 0x0a : 0x0b);
-        const std::uint16_t zoneRow = healthRow > 2 ? static_cast<std::uint16_t>(healthRow - 2) : 0;
-        bgfx::dbgTextPrintf(zoneCol, zoneRow, zoneAttr, "%s", zoneLine.c_str());
-
-        if (frameDebugData.relayPlacementPreviewActive)
-        {
-            const std::string previewLine = fmt::format(
-                "Atmos relay: {}",
-                frameDebugData.relayPlacementPreviewLabel.empty()
-                    ? (frameDebugData.relayPlacementPreviewValid ? "ready" : "blocked")
-                    : frameDebugData.relayPlacementPreviewLabel);
-            const int previewCol =
-                std::max(0, static_cast<int>(textWidthForHud) / 2 - static_cast<int>(previewLine.size()) / 2);
-            const std::uint16_t previewRow = zoneRow > 0 ? static_cast<std::uint16_t>(zoneRow - 1) : zoneRow;
-            bgfx::dbgTextPrintf(
-                previewCol,
-                previewRow,
-                frameDebugData.relayPlacementPreviewValid ? 0x0a : 0x0c,
-                "%s",
-                previewLine.c_str());
-        }
-    }
-    const std::uint16_t selectedLabelRow =
-        inventoryUiSolidProgramHandle_ == UINT16_MAX ? (frameDebugData.oxygenLowWarning ? 12 : 11) : 10;
+    const std::uint16_t selectedLabelRow = inventoryUiSolidProgramHandle_ == UINT16_MAX ? 12 : 10;
     if (!frameDebugData.selectedHotbarLabel.empty())
     {
         bgfx::dbgTextPrintf(0, selectedLabelRow, 0x0f, "Selected: %s", frameDebugData.selectedHotbarLabel.c_str());

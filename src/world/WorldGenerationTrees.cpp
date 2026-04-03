@@ -6,9 +6,13 @@
 
 #include "vibecraft/world/TerrainNoise.hpp"
 #include "vibecraft/world/biomes/BiomeProfile.hpp"
+#include "vibecraft/world/biomes/TreeGenerationTuning.hpp"
 
 namespace vibecraft::world::detail
 {
+using biomes::TreeBiomeSettings;
+using biomes::treeBiomeSettingsForSurfaceBiome;
+
 namespace
 {
 constexpr int kTreeCellSize = 7;
@@ -25,24 +29,6 @@ constexpr std::uint32_t kJungleTrunkVineSeed = 0xc8407b5fU;
 constexpr std::uint32_t kJungleCocoaSeed = 0xd9518c60U;
 constexpr std::uint32_t kJungleDenseTreeSeed = 0xea629d71U;
 constexpr std::uint32_t kJungleDenseTreeRollSeed = 0xfb73ae82U;
-
-struct TreeBiomeSettings
-{
-    enum class CanopyStyle : std::uint8_t
-    {
-        Temperate,
-        Snowy,
-        Jungle,
-    };
-
-    float spawnChance = 0.0f;
-    int minTrunkHeight = 4;
-    int maxTrunkHeight = 6;
-    int crownRadius = 2;
-    BlockType trunkBlock = BlockType::OakLog;
-    BlockType crownBlock = BlockType::OakLeaves;
-    CanopyStyle canopyStyle = CanopyStyle::Temperate;
-};
 
 [[nodiscard]] int floorDiv(const int value, const int divisor)
 {
@@ -132,98 +118,6 @@ void placeBlockIfInsideChunk(
     return true;
 }
 
-[[nodiscard]] TreeBiomeSettings treeBiomeSettingsForSurfaceBiome(const SurfaceBiome biome)
-{
-    switch (biomes::biomeProfile(biome).treeFamily)
-    {
-    case biomes::TreeGenerationFamily::Jungle:
-        return TreeBiomeSettings{
-            .spawnChance = 0.20f,
-            .minTrunkHeight = 6,
-            .maxTrunkHeight = 9,
-            .crownRadius = 3,
-            .trunkBlock = BlockType::JungleLog,
-            .crownBlock = BlockType::JungleLeaves,
-            .canopyStyle = TreeBiomeSettings::CanopyStyle::Jungle,
-        };
-    case biomes::TreeGenerationFamily::SparseJungle:
-        return TreeBiomeSettings{
-            .spawnChance = 0.13f,
-            .minTrunkHeight = 6,
-            .maxTrunkHeight = 8,
-            .crownRadius = 3,
-            .trunkBlock = BlockType::JungleLog,
-            .crownBlock = BlockType::JungleLeaves,
-            .canopyStyle = TreeBiomeSettings::CanopyStyle::Jungle,
-        };
-    case biomes::TreeGenerationFamily::BambooJungle:
-        return TreeBiomeSettings{
-            .spawnChance = 0.24f,
-            .minTrunkHeight = 7,
-            .maxTrunkHeight = 10,
-            .crownRadius = 3,
-            .trunkBlock = BlockType::JungleLog,
-            .crownBlock = BlockType::JungleLeaves,
-            .canopyStyle = TreeBiomeSettings::CanopyStyle::Jungle,
-        };
-    case biomes::TreeGenerationFamily::SnowyTaiga:
-        return TreeBiomeSettings{
-            .spawnChance = 0.22f,
-            .minTrunkHeight = 6,
-            .maxTrunkHeight = 8,
-            .crownRadius = 2,
-            .trunkBlock = BlockType::SpruceLog,
-            .crownBlock = BlockType::SpruceLeaves,
-            .canopyStyle = TreeBiomeSettings::CanopyStyle::Snowy,
-        };
-    case biomes::TreeGenerationFamily::Taiga:
-        return TreeBiomeSettings{
-            .spawnChance = 0.26f,
-            .minTrunkHeight = 6,
-            .maxTrunkHeight = 8,
-            .crownRadius = 2,
-            .trunkBlock = BlockType::SpruceLog,
-            .crownBlock = BlockType::SpruceLeaves,
-            .canopyStyle = TreeBiomeSettings::CanopyStyle::Snowy,
-        };
-    case biomes::TreeGenerationFamily::Forest:
-        return TreeBiomeSettings{
-            .spawnChance = 0.38f,
-            .minTrunkHeight = 4,
-            .maxTrunkHeight = 7,
-            .crownRadius = 2,
-        };
-    case biomes::TreeGenerationFamily::BirchForest:
-        return TreeBiomeSettings{
-            .spawnChance = 0.28f,
-            .minTrunkHeight = 5,
-            .maxTrunkHeight = 8,
-            .crownRadius = 2,
-            .trunkBlock = BlockType::BirchLog,
-            .crownBlock = BlockType::BirchLeaves,
-        };
-    case biomes::TreeGenerationFamily::DarkForest:
-        return TreeBiomeSettings{
-            .spawnChance = 0.40f,
-            .minTrunkHeight = 5,
-            .maxTrunkHeight = 8,
-            .crownRadius = 3,
-            .trunkBlock = BlockType::DarkOakLog,
-            .crownBlock = BlockType::DarkOakLeaves,
-        };
-    case biomes::TreeGenerationFamily::Plains:
-        return TreeBiomeSettings{
-            .spawnChance = 0.08f,
-            .minTrunkHeight = 4,
-            .maxTrunkHeight = 6,
-            .crownRadius = 2,
-        };
-    case biomes::TreeGenerationFamily::None:
-    default:
-        return TreeBiomeSettings{};
-    }
-}
-
 [[nodiscard]] float forestDensityAt(const SurfaceBiome biome, const int worldX, const int worldZ)
 {
     const double worldXd = static_cast<double>(worldX);
@@ -302,13 +196,13 @@ void placeBlockIfInsideChunk(
         {
             return std::clamp(density * 0.12f, 0.0f, 0.04f);
         }
-        return std::clamp(settings.spawnChance + (density - 0.12f) * 0.68f, 0.0f, 0.78f);
+        return std::clamp(settings.spawnChance + (density - 0.12f) * 0.75f, 0.0f, 0.87f);
     case biomes::TreeGenerationFamily::BirchForest:
         if (density < 0.12f)
         {
             return std::clamp(density * 0.12f, 0.0f, 0.04f);
         }
-        return std::clamp(settings.spawnChance + (density - 0.12f) * 0.42f, 0.0f, 0.56f);
+        return std::clamp(settings.spawnChance + (density - 0.12f) * 0.45f, 0.0f, 0.60f);
     case biomes::TreeGenerationFamily::DarkForest:
         if (density < 0.08f)
         {
@@ -377,8 +271,8 @@ void placeBlockIfInsideChunk(
         }
         break;
     case biomes::TreeGenerationFamily::Forest:
-        // Keep starter forests close to Minecraft's woodland feel: mostly oak with some birch.
-        if (variantRoll < 0.86f)
+        // Minecraft Forest: dominant oak with scattered birch (roughly ~1 in 8 trees birch).
+        if (variantRoll < 0.88f)
         {
             settings.trunkBlock = BlockType::OakLog;
             settings.crownBlock = BlockType::OakLeaves;
@@ -858,7 +752,7 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
             switch (biomeFamily)
             {
             case biomes::TreeGenerationFamily::Forest:
-                extraChance = 0.58f;
+                extraChance = 0.70f;
                 break;
             case biomes::TreeGenerationFamily::BirchForest:
                 extraChance = 0.28f;

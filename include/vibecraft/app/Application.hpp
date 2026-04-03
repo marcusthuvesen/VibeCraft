@@ -14,6 +14,7 @@
 
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/app/ApplicationBotanyRuntime.hpp"
+#include "vibecraft/app/Furnace.hpp"
 #include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/app/ApplicationTerraformingRuntime.hpp"
 #include "vibecraft/app/SingleplayerSave.hpp"
@@ -23,7 +24,6 @@
 #include "vibecraft/game/Camera.hpp"
 #include "vibecraft/game/DayNightCycle.hpp"
 #include "vibecraft/game/MobSpawnSystem.hpp"
-#include "vibecraft/game/OxygenSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
 #include "vibecraft/game/WeatherSystem.hpp"
 #include "vibecraft/meshing/ChunkMesher.hpp"
@@ -158,6 +158,7 @@ class Application
             InventoryCrafting,
             WorkbenchCrafting,
             ChestStorage,
+            Furnace,
         };
 
         bool active = false;
@@ -165,6 +166,7 @@ class Application
         bool usesWorkbench = false;
         glm::ivec3 workbenchBlockPosition{0};
         glm::ivec3 chestBlockPosition{0};
+        glm::ivec3 furnaceBlockPosition{0};
         std::size_t bagStartRow = 0;
         CraftingGridSlots gridSlots{};
         InventorySlot carriedSlot{};
@@ -228,10 +230,14 @@ class Application
     void respawnPlayer();
     void openCraftingMenu(bool useWorkbench, const glm::ivec3& workbenchBlockPosition = glm::ivec3(0));
     void openChestMenu(const glm::ivec3& chestBlockPosition);
+    void openFurnaceMenu(const glm::ivec3& furnaceBlockPosition);
     void closeCraftingMenu();
     void handleCraftingMenuClick();
     void handleCraftingMenuRightClick();
-    void returnCraftingSlotsToInventory();
+    void returnCraftingSlotsToInventory(bool includeGridSlots);
+    void syncOpenFurnaceMenuToState();
+    void syncFurnaceStateToOpenMenu();
+    void tickFurnaces(float deltaTimeSeconds);
     void updateMobSoundEffects(float deltaTimeSeconds, const std::vector<vibecraft::game::MobInstance>& mobs);
     void spawnDroppedItem(vibecraft::world::BlockType blockType, const glm::ivec3& blockPosition);
     void spawnDroppedItemAtPosition(vibecraft::world::BlockType blockType, const glm::vec3& worldPosition);
@@ -261,9 +267,7 @@ class Application
     bool jumpWasHeld_ = false;
     float autoJumpCooldownSeconds_ = 0.0f;
     vibecraft::game::EnvironmentalHazards playerHazards_{};
-    vibecraft::game::OxygenEnvironment playerOxygenEnvironment_{};
     vibecraft::game::PlayerVitals playerVitals_{};
-    vibecraft::game::OxygenSystem oxygenSystem_{};
     vibecraft::game::MobSpawnSystem mobSpawnSystem_{};
     /// Host-replicated mob poses when `multiplayerMode_ == Client` (render-only; local mob sim is skipped).
     std::vector<vibecraft::game::MobInstance> clientReplicatedMobs_{};
@@ -325,6 +329,7 @@ class Application
     std::string respawnNotice_;
     std::vector<DroppedItem> droppedItems_;
     std::unordered_map<std::int64_t, CraftingGridSlots> chestSlotsByPosition_;
+    std::unordered_map<std::int64_t, FurnaceBlockState> furnaceStatesByPosition_;
     ActiveMiningState activeMiningState_{};
     SingleplayerLoadState singleplayerLoadState_{};
     std::vector<SingleplayerWorldEntry> singleplayerWorlds_;
@@ -345,12 +350,10 @@ class Application
     bool clientJoinLoggedFirstChunkSummary_ = false;
     std::uint8_t clientJoinAuthoritativeSnapLogsRemaining_ = 0;
     CraftingMenuState craftingMenuState_{};
+    bool craftingDragActive_ = false;
+    int craftingDragLastHit_ = -1;
     bool showWorldOriginGuides_ = false;
     bool debugF3KeyWasDown_ = false;
-    std::vector<glm::vec3> cachedVisibleOxygenGenerators_{};
-    glm::vec3 cachedVisibleOxygenGeneratorsReference_{0.0f};
-    float cachedVisibleOxygenGeneratorsCooldownSeconds_ = 0.0f;
-    bool cachedVisibleOxygenGeneratorsValid_ = false;
     struct MobAudioState
     {
         glm::vec3 lastFeetPosition{0.0f};

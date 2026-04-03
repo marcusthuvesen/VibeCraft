@@ -137,7 +137,7 @@ TEST_CASE("relay zones slowly terraform red dust into fertile soil")
     CHECK(hasSurfaceBlockNear(world, terrainGenerator, patchCenter, 3, vibecraft::world::BlockType::Dirt));
 }
 
-TEST_CASE("stacked relays can push restored ground into oxygen moss")
+TEST_CASE("stacked relays can push restored ground into jungle grass")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);

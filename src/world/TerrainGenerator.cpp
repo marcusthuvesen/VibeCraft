@@ -10,8 +10,10 @@
 #include "vibecraft/world/biomes/BiomeProfile.hpp"
 #include "vibecraft/world/biomes/BiomeSelection.hpp"
 #include "vibecraft/world/biomes/BiomeTerrainContribution.hpp"
+#include "vibecraft/world/biomes/BiomeProfile.hpp"
 #include "vibecraft/world/underground/CaveRules.hpp"
 #include "vibecraft/world/underground/OreVeinRules.hpp"
+#include "vibecraft/world/WoodlandRavine.hpp"
 
 namespace vibecraft::world
 {
@@ -145,7 +147,7 @@ struct ColumnContext
     }
 
     const double blend = 1.0 - distanceFromOrigin / 720.0;
-    return blend * blend * 8.0;
+    return blend * blend * 4.0;
 }
 
 [[nodiscard]] double baseTerrainHeightAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
@@ -219,7 +221,8 @@ struct ColumnContext
         144);
     const SurfaceBiome targetBiome = columnBiomeAt(worldX, worldZ, provisionalSurfaceHeight, worldSeed, biomeOverride);
     const double terrainHeight = baseTerrainHeightAt(worldX, worldZ, worldSeed)
-        + biomes::biomeTerrainContribution(targetBiome, worldX, worldZ, continents, uplands, ridges, worldSeed);
+        + biomes::biomeTerrainContribution(targetBiome, worldX, worldZ, continents, uplands, ridges, worldSeed)
+        + woodlandSurfaceHeightDelta(targetBiome, worldX, worldZ, worldSeed);
     return std::clamp(static_cast<int>(std::round(terrainHeight)), 36, 144);
 }
 
@@ -283,6 +286,14 @@ struct ColumnContext
         }
         return BlockType::JungleGrass;
     }
+    if (biome == SurfaceBiome::MushroomField)
+    {
+        if (maxNeighborSurfaceDelta >= 14 || (surfaceHeight >= 108 && maxNeighborSurfaceDelta >= 9))
+        {
+            return BlockType::Stone;
+        }
+        return BlockType::MossBlock;
+    }
     if (maxNeighborSurfaceDelta >= 20 || (surfaceHeight >= 120 && maxNeighborSurfaceDelta >= 12))
     {
         return BlockType::Stone;
@@ -331,7 +342,8 @@ struct ColumnContext
     const int worldX,
     const int worldZ,
     const int surfaceHeight,
-    const std::uint32_t worldSeed)
+    const std::uint32_t worldSeed,
+    const SurfaceBiome biome)
 {
     if (surfaceHeight < kSeaLevel || surfaceHeight > kSeaLevel + kLowlandPondMaxHeightAboveSea)
     {
@@ -348,7 +360,11 @@ struct ColumnContext
         88.0,
         3,
         mixedSeed(kPondNoiseSeed, worldSeed));
-    return floodNoise > 0.90;
+    // Forest and swamp biomes get more tiny surface pools (closer to vanilla wetlands behavior).
+    const double threshold = biome == SurfaceBiome::Swamp
+        ? 0.78
+        : (biomes::isForestSurfaceBiome(biome) ? 0.875 : 0.90);
+    return floodNoise > threshold;
 }
 
 [[nodiscard]] ColumnContext buildColumnContext(
@@ -362,7 +378,7 @@ struct ColumnContext
     const int maxNeighborSurfaceDelta =
         maxNeighborSurfaceDeltaAt(worldX, worldZ, surfaceHeight, worldSeed, biomeOverride);
     const double moisturePocket = moisturePocketNoiseAt(worldX, worldZ, worldSeed);
-    const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight, worldSeed);
+    const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight, worldSeed, biome);
     const bool lushPondPocket = !biomeOverride.has_value()
         && (biomes::isJungleSurfaceBiome(biome) || biomes::isTemperateGrassSurfaceBiome(biome) || biomes::isSnowySurfaceBiome(biome))
         && surfaceHeight >= kSeaLevel - 1
@@ -405,18 +421,36 @@ struct ColumnContext
     switch (biome)
     {
     case SurfaceBiome::Desert:
+    case SurfaceBiome::Savanna:
+    case SurfaceBiome::SavannaPlateau:
+    case SurfaceBiome::WindsweptSavanna:
         return underground::BiomeOreProfile::DustFlats;
     case SurfaceBiome::SnowyPlains:
+    case SurfaceBiome::IcePlains:
+    case SurfaceBiome::IceSpikePlains:
     case SurfaceBiome::SnowyTaiga:
+    case SurfaceBiome::SnowySlopes:
+    case SurfaceBiome::FrozenPeaks:
+    case SurfaceBiome::JaggedPeaks:
         return underground::BiomeOreProfile::IceShelf;
     case SurfaceBiome::Jungle:
     case SurfaceBiome::SparseJungle:
     case SurfaceBiome::BambooJungle:
-        return underground::BiomeOreProfile::OxygenGrove;
+        return underground::BiomeOreProfile::VerdantGrove;
     case SurfaceBiome::Plains:
+    case SurfaceBiome::SunflowerPlains:
+    case SurfaceBiome::Meadow:
+    case SurfaceBiome::WindsweptHills:
+    case SurfaceBiome::StonyPeaks:
     case SurfaceBiome::Forest:
+    case SurfaceBiome::FlowerForest:
     case SurfaceBiome::BirchForest:
+    case SurfaceBiome::OldGrowthBirchForest:
     case SurfaceBiome::DarkForest:
+    case SurfaceBiome::OldGrowthSpruceTaiga:
+    case SurfaceBiome::OldGrowthPineTaiga:
+    case SurfaceBiome::Swamp:
+    case SurfaceBiome::MushroomField:
     case SurfaceBiome::Taiga:
     default:
         return underground::BiomeOreProfile::RegolithPlains;
@@ -437,6 +471,16 @@ struct ColumnContext
     if (y > columnContext.surfaceHeight)
     {
         return y <= columnContext.columnWaterLevel ? BlockType::Water : BlockType::Air;
+    }
+    if (underground::shouldCarveWoodlandSurfaceRavine(
+            worldX,
+            y,
+            worldZ,
+            columnContext.surfaceHeight,
+            columnContext.biome,
+            worldSeed))
+    {
+        return underground::caveInteriorBlockType(worldX, y, worldZ, columnContext.surfaceHeight);
     }
     if (y == columnContext.surfaceHeight)
     {
@@ -529,7 +573,6 @@ void TerrainGenerator::fillColumn(const int worldX, const int worldZ, BlockType*
 
     const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
     const ColumnContext columnContext = buildColumnContext(worldX, worldZ, surfaceHeight, worldSeed_, biomeOverride_);
-    const int surfaceIndex = surfaceHeight - kWorldMinY;
 
     for (int y = kWorldMinY; y <= kBedrockFloorMaxY; ++y)
     {
@@ -559,17 +602,11 @@ void TerrainGenerator::fillColumn(const int worldX, const int worldZ, BlockType*
         }
     }
 
-    if (surfaceIndex >= 0 && surfaceIndex < kWorldHeight)
-    {
-        outColumnBlocks[surfaceIndex] = columnContext.surfaceBlockType;
-    }
-
     const int topsoilStart = std::max(kUndergroundStartY, surfaceHeight - columnContext.topsoilDepth);
-    for (int y = topsoilStart; y < surfaceHeight; ++y)
+    for (int y = topsoilStart; y <= surfaceHeight; ++y)
     {
-        outColumnBlocks[y - kWorldMinY] = isMountainStoneCapLayer(y, surfaceHeight)
-            ? BlockType::Stone
-            : columnContext.subsurfaceBlockType;
+        outColumnBlocks[y - kWorldMinY] =
+            blockTypeAtWithContext(worldX, y, worldZ, columnContext, worldSeed_);
     }
 
     const int undergroundEnd = std::min(surfaceHeight - columnContext.topsoilDepth - 1, kWorldMaxY);

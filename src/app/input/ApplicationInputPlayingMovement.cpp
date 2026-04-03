@@ -13,7 +13,6 @@
 
 #include "vibecraft/app/ApplicationConfig.hpp"
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
-#include "vibecraft/app/ApplicationOxygenRuntime.hpp"
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
 
@@ -443,19 +442,15 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
         footstepDistanceAccumulator_ = 0.0f;
     }
 
-    const PlayerSurvivalOxygenTickResult survivalTick = tickPlayerSurvivalOxygen(
-        deltaTimeSeconds,
-        world_,
-        terrainGenerator_,
-        playerFeetPosition_,
-        playerHazards_,
-        creativeModeEnabled_,
-        playerVitals_,
-        oxygenSystem_);
-    playerOxygenEnvironment_ = survivalTick.oxygenEnvironment;
-    if (!creativeModeEnabled_)
+    if (creativeModeEnabled_)
     {
-        playerTookDamageThisFrame = survivalTick.playerTookDamage;
+        playerVitals_.reset();
+    }
+    else
+    {
+        const float healthBeforeTick = playerVitals_.health();
+        playerVitals_.tickEnvironment(deltaTimeSeconds, playerHazards_);
+        playerTookDamageThisFrame = playerVitals_.health() + 0.001f < healthBeforeTick;
     }
     if (playerTookDamageThisFrame)
     {

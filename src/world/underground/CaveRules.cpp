@@ -5,6 +5,7 @@
 
 #include "vibecraft/world/Block.hpp"
 #include "vibecraft/world/TerrainNoise.hpp"
+#include "vibecraft/world/WoodlandRavine.hpp"
 #include "vibecraft/world/WorldVerticalScale.hpp"
 
 namespace vibecraft::world::underground
@@ -44,6 +45,44 @@ bool shouldCarveCave(const int worldX, const int y, const int worldZ, const int 
     const double carveThreshold = kCaveDensityThresholdDeep + kCaveShallowThresholdBoost * shallow01;
 
     return caveDensity > carveThreshold;
+}
+
+bool shouldCarveWoodlandSurfaceRavine(
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const int surfaceHeight,
+    const SurfaceBiome surfaceBiome,
+    const std::uint32_t worldSeed)
+{
+    if (!isWoodlandRavineBiome(surfaceBiome))
+    {
+        return false;
+    }
+    if (y > surfaceHeight || y < kUndergroundStartY)
+    {
+        return false;
+    }
+    const int depth = surfaceHeight - y;
+    if (depth < 1 || depth > 11)
+    {
+        return false;
+    }
+    const WoodlandRavineSample s = sampleWoodlandRavine(worldX, worldZ, worldSeed);
+    const double core = s.ravineShape * s.regionalMask;
+    if (core < 0.44)
+    {
+        return false;
+    }
+    const double scale = woodlandRavineBiomeScale(surfaceBiome);
+    const int maxOpen =
+        std::clamp(static_cast<int>(2.0 + core * s.depthNoise * 6.5 * scale), 2, 9);
+    if (depth > maxOpen)
+    {
+        return false;
+    }
+    const double depthRatio = static_cast<double>(depth) / static_cast<double>(maxOpen + 1);
+    return core * (1.05 - depthRatio * 0.4) > 0.48;
 }
 
 BlockType caveInteriorBlockType(

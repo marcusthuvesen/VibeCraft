@@ -18,12 +18,10 @@ namespace vibecraft::app
 {
 namespace
 {
-constexpr int kOxygenGeneratorRadiusBlocks = 7;
+constexpr int kLegacyRelayRadiusBlocks = 7;
 constexpr int kAirlockOutletRadiusBlocks = 4;
 constexpr int kPoweredAirlockConduitReachBlocks = 12;
 constexpr float kGeneratorStackingBonusPerRelay = 2.35f;
-constexpr float kLegacyNetworkAirCapacity = 10.0f;
-constexpr float kLegacyNetworkAirTierStride = 100.0f;
 
 [[nodiscard]] glm::ivec3 blockPositionFromCenter(const glm::vec3& center)
 {
@@ -79,7 +77,7 @@ constexpr float kLegacyNetworkAirTierStride = 100.0f;
 
     const glm::vec3 referenceCenter = referencePosition + glm::vec3(0.0f, 0.9f, 0.0f);
     const float maxGeneratorDistance =
-        static_cast<float>(kOxygenGeneratorRadiusBlocks + kPoweredAirlockConduitReachBlocks + kAirlockOutletRadiusBlocks);
+        static_cast<float>(kLegacyRelayRadiusBlocks + kPoweredAirlockConduitReachBlocks + kAirlockOutletRadiusBlocks);
     const float radiusSq = maxGeneratorDistance * maxGeneratorDistance;
     std::queue<std::pair<glm::ivec3, int>> frontier;
     std::unordered_set<std::int64_t> visitedNetworkBlocks;
@@ -141,25 +139,6 @@ constexpr float kLegacyNetworkAirTierStride = 100.0f;
     return airlockCenters;
 }
 
-[[nodiscard]] vibecraft::game::OxygenTankTier decodeLegacyNetworkTankTier(
-    const int rawTier,
-    const vibecraft::game::OxygenTankTier fallbackTier)
-{
-    switch (rawTier)
-    {
-    case static_cast<int>(vibecraft::game::OxygenTankTier::None):
-        return vibecraft::game::OxygenTankTier::None;
-    case static_cast<int>(vibecraft::game::OxygenTankTier::Starter):
-        return vibecraft::game::OxygenTankTier::Starter;
-    case static_cast<int>(vibecraft::game::OxygenTankTier::Field):
-        return vibecraft::game::OxygenTankTier::Field;
-    case static_cast<int>(vibecraft::game::OxygenTankTier::Expedition):
-        return vibecraft::game::OxygenTankTier::Expedition;
-    default:
-        return fallbackTier;
-    }
-}
-
 [[nodiscard]] vibecraft::world::SurfaceBiome surfaceBiomeAtPlayerFeet(
     const vibecraft::world::TerrainGenerator& terrainGenerator,
     const glm::vec3& playerFeetPosition)
@@ -169,56 +148,61 @@ constexpr float kLegacyNetworkAirTierStride = 100.0f;
         static_cast<int>(std::floor(playerFeetPosition.z)));
 }
 
-[[nodiscard]] float oxygenDrainMultiplierForBiome(const vibecraft::world::SurfaceBiome biome)
-{
-    if (vibecraft::world::biomes::isJungleSurfaceBiome(biome))
-    {
-        return 0.0f;
-    }
-    if (vibecraft::world::biomes::isSandySurfaceBiome(biome))
-    {
-        return 1.45f;
-    }
-    if (vibecraft::world::biomes::isSnowySurfaceBiome(biome))
-    {
-        return 1.15f;
-    }
-    if (biome == vibecraft::world::SurfaceBiome::DarkForest)
-    {
-        return 0.92f;
-    }
-    return 1.0f;
-}
-
-[[nodiscard]] const char* oxygenBiomeLabel(const vibecraft::world::SurfaceBiome biome)
-{
-    return vibecraft::world::surfaceBiomeLabel(biome);
-}
-
-[[nodiscard]] bool oxygenGrovesProvideRefill(const vibecraft::world::SurfaceBiome biome)
-{
-    return vibecraft::world::biomes::isJungleSurfaceBiome(biome);
-}
-
-[[nodiscard]] const char* oxygenBiomeGuidanceForBiome(const vibecraft::world::SurfaceBiome biome)
+[[nodiscard]] const char* surfaceBiomeGuidanceForBiome(const vibecraft::world::SurfaceBiome biome)
 {
     using B = vibecraft::world::SurfaceBiome;
     switch (biome)
     {
     case B::Plains:
         return "Plains: open grassland with gentle terrain, exposed ore near the surface, and easy routes between forest belts.";
+    case B::SunflowerPlains:
+        return "Sunflower plains: broad open fields with extra flower coverage and long sight lines.";
+    case B::Meadow:
+        return "Meadow: elevated flower-rich grassland near hills, with softer terrain than mountain ridges.";
+    case B::WindsweptHills:
+        return "Windswept hills: steeper ridges and exposed slopes with sparse vegetation and rough traversal.";
+    case B::Savanna:
+        return "Savanna: warm, dry grassland with sparse trees and patchy low vegetation.";
+    case B::SavannaPlateau:
+        return "Savanna plateau: elevated dry grassland with broader views and sharper slopes than low savanna.";
+    case B::WindsweptSavanna:
+        return "Windswept savanna: steep warm cliffs and ridges with sparse tree cover and exposed stone.";
     case B::Forest:
         return "Forest: the default woodland around spawn, with mixed oak and birch cover and frequent safe tree lines.";
+    case B::FlowerForest:
+        return "Flower forest: mixed woodland with much denser flower patches than standard forest.";
+    case B::OldGrowthBirchForest:
+        return "Old growth birch forest: birch-heavy woodland with denser, taller-feeling birch stands.";
     case B::BirchForest:
         return "Birch forest: brighter woodland with cleaner spacing and tall pale trunks for easy navigation.";
     case B::DarkForest:
         return "Dark forest: denser canopy, more mushrooms, and heavier shade than the starter woods.";
     case B::Taiga:
         return "Taiga: spruce-heavy woodland with rougher undergrowth, ferns, and darker forest floor patches.";
+    case B::OldGrowthSpruceTaiga:
+        return "Old growth spruce taiga: denser spruce woodland with heavier canopy and rough forest floor.";
+    case B::OldGrowthPineTaiga:
+        return "Old growth pine taiga: broad conifer woodland with dense undergrowth and patchy podzol-like floors.";
     case B::SnowyPlains:
         return "Snowy plains: colder shelves, bright snow cover, and exposed stone along steeper ridges.";
+    case B::IcePlains:
+        return "Ice plains: colder open shelves with sparse tree cover and broad snow-dusted terrain.";
+    case B::IceSpikePlains:
+        return "Ice spike plains: frozen flats punctuated by sharp ice-like spires and harsher wind exposure.";
     case B::SnowyTaiga:
         return "Snowy taiga: cold spruce woods with snowy ground and sparser cover than warm forests.";
+    case B::SnowySlopes:
+        return "Snowy slopes: cold mountain shoulders with steeper terrain and persistent snow cover.";
+    case B::FrozenPeaks:
+        return "Frozen peaks: high frozen summits with sharp relief and sparse surface cover.";
+    case B::JaggedPeaks:
+        return "Jagged peaks: the steepest high mountain spines, with abrupt terrain and exposed stone.";
+    case B::StonyPeaks:
+        return "Stony peaks: high rocky summits in warmer ranges with little snow and sparse vegetation.";
+    case B::Swamp:
+        return "Swamp: low, wet ground with shallow pools and dense humidity-loving vegetation.";
+    case B::MushroomField:
+        return "Mushroom field: rare mossy island-like terrain with frequent mushroom growth and sparse trees.";
     case B::Desert:
         return "Desert: warm sand, exposed sandstone, and harsher open ridgelines between safer basins.";
     case B::Jungle:
@@ -228,44 +212,6 @@ constexpr float kLegacyNetworkAirTierStride = 100.0f;
     }
 
     return {};
-}
-
-[[nodiscard]] std::vector<glm::vec3> collectNearbyGeneratorCenters(
-    const vibecraft::world::World& world,
-    const glm::vec3& playerFeetPosition)
-{
-    const glm::vec3 playerCenter = playerFeetPosition + glm::vec3(0.0f, 0.9f, 0.0f);
-    const int centerX = static_cast<int>(std::floor(playerCenter.x));
-    const int centerY = static_cast<int>(std::floor(playerCenter.y));
-    const int centerZ = static_cast<int>(std::floor(playerCenter.z));
-    const float radiusSq = static_cast<float>(kOxygenGeneratorRadiusBlocks * kOxygenGeneratorRadiusBlocks);
-    std::vector<glm::vec3> generatorCenters;
-
-    for (int y = centerY - kOxygenGeneratorRadiusBlocks; y <= centerY + kOxygenGeneratorRadiusBlocks; ++y)
-    {
-        for (int z = centerZ - kOxygenGeneratorRadiusBlocks; z <= centerZ + kOxygenGeneratorRadiusBlocks; ++z)
-        {
-            for (int x = centerX - kOxygenGeneratorRadiusBlocks; x <= centerX + kOxygenGeneratorRadiusBlocks; ++x)
-            {
-                if (world.blockAt(x, y, z) != vibecraft::world::BlockType::OxygenGenerator)
-                {
-                    continue;
-                }
-
-                const glm::vec3 generatorCenter(
-                    static_cast<float>(x) + 0.5f,
-                    static_cast<float>(y) + 0.5f,
-                    static_cast<float>(z) + 0.5f);
-                const glm::vec3 delta = generatorCenter - playerCenter;
-                if (glm::dot(delta, delta) <= radiusSq)
-                {
-                    generatorCenters.push_back(generatorCenter);
-                }
-            }
-        }
-    }
-
-    return generatorCenters;
 }
 
 [[nodiscard]] std::vector<glm::vec3> collectGeneratorCentersInRange(
@@ -312,28 +258,6 @@ constexpr float kLegacyNetworkAirTierStride = 100.0f;
     }
 
     return generatorCenters;
-}
-
-[[nodiscard]] bool hasNearbyGeneratorInSafeZoneRange(
-    const vibecraft::world::World& world,
-    const glm::vec3& playerFeetPosition)
-{
-    constexpr int kSafeZoneSearchRadiusBlocks = kOxygenGeneratorRadiusBlocks * 3;
-    const glm::vec3 playerCenter = playerFeetPosition + glm::vec3(0.0f, 0.9f, 0.0f);
-    const std::vector<OxygenSafeZone> safeZones = collectOxygenSafeZones(
-        world,
-        playerFeetPosition,
-        kSafeZoneSearchRadiusBlocks,
-        48);
-    for (const OxygenSafeZone& zone : safeZones)
-    {
-        const glm::vec3 delta = zone.center - playerCenter;
-        if (glm::dot(delta, delta) <= zone.radius * zone.radius)
-        {
-            return true;
-        }
-    }
-    return false;
 }
 }  // namespace
 
@@ -384,99 +308,11 @@ const char* hazardLabel(const vibecraft::game::EnvironmentalHazards& hazards)
     return "clear";
 }
 
-vibecraft::game::OxygenEnvironment sampleOxygenEnvironment(
-    const vibecraft::world::World& world,
-    const vibecraft::world::TerrainGenerator& terrainGenerator,
-    const glm::vec3& playerFeetPosition,
-    const vibecraft::game::EnvironmentalHazards& hazards,
-    const bool creativeModeEnabled)
-{
-    if (creativeModeEnabled)
-    {
-        return {.insideSafeZone = true, .drainMultiplier = 0.0f, .safeZoneRefillPerSecond = 999.0f};
-    }
-
-    const vibecraft::world::SurfaceBiome biome = surfaceBiomeAtPlayerFeet(terrainGenerator, playerFeetPosition);
-    const bool generatorSafeZone = hasNearbyGeneratorInSafeZoneRange(world, playerFeetPosition);
-    vibecraft::game::OxygenEnvironment environment{
-        .insideSafeZone = generatorSafeZone,
-        .drainMultiplier = oxygenDrainMultiplierForBiome(biome),
-        .safeZoneRefillPerSecond = generatorSafeZone ? 16.0f : 0.0f,
-    };
-
-    if (!generatorSafeZone && oxygenGrovesProvideRefill(biome))
-    {
-        environment.insideSafeZone = true;
-        environment.drainMultiplier = 0.0f;
-        environment.safeZoneRefillPerSecond = 4.5f;
-    }
-
-    if (hazards.headSubmergedInWater)
-    {
-        environment.insideSafeZone = false;
-        environment.drainMultiplier = std::max(environment.drainMultiplier, 2.35f);
-        environment.safeZoneRefillPerSecond = 0.0f;
-    }
-    else if (hazards.bodyInWater)
-    {
-        environment.insideSafeZone = false;
-        environment.drainMultiplier = std::max(environment.drainMultiplier, 1.35f);
-        environment.safeZoneRefillPerSecond = 0.0f;
-    }
-
-    if (hazards.bodyInLava)
-    {
-        environment.insideSafeZone = false;
-        environment.drainMultiplier = std::max(environment.drainMultiplier, 2.1f);
-        environment.safeZoneRefillPerSecond = 0.0f;
-    }
-
-    return environment;
-}
-
-std::string buildOxygenStatusLine(
-    const vibecraft::world::TerrainGenerator& terrainGenerator,
-    const glm::vec3& playerFeetPosition,
-    const vibecraft::game::OxygenState& oxygenState,
-    const vibecraft::game::OxygenEnvironment& oxygenEnvironment)
-{
-    const vibecraft::world::SurfaceBiome biome = surfaceBiomeAtPlayerFeet(terrainGenerator, playerFeetPosition);
-    return fmt::format(
-        "O2: {:.0f}/{:.0f}  Tank: {}  Zone: {}  Biome: {}  Drain: {}",
-        oxygenState.oxygen,
-        oxygenState.capacity,
-        vibecraft::game::oxygenTankTierName(oxygenState.tankTier),
-        oxygenZoneLabel(oxygenEnvironment),
-        oxygenBiomeLabel(biome),
-        oxygenEnvironment.insideSafeZone ? "paused" : fmt::format("x{:.2f}", oxygenEnvironment.drainMultiplier));
-}
-
-const char* oxygenZoneLabel(const vibecraft::game::OxygenEnvironment& oxygenEnvironment)
-{
-    if (!oxygenEnvironment.insideSafeZone)
-    {
-        return "hostile";
-    }
-
-    // Relay-safe zones use a strong fixed refill (16/s) while groves use a lower biome refill.
-    if (oxygenEnvironment.safeZoneRefillPerSecond >= 15.0f)
-    {
-        return "relay";
-    }
-
-    if (oxygenEnvironment.safeZoneRefillPerSecond > 0.0f)
-    {
-        return "grove";
-    }
-
-    return "safe";
-}
-
-const char* oxygenBiomeGuidance(
+const char* surfaceBiomeGuidance(
     const vibecraft::world::TerrainGenerator& terrainGenerator,
     const glm::vec3& playerFeetPosition)
 {
-    return oxygenBiomeGuidanceForBiome(surfaceBiomeAtPlayerFeet(terrainGenerator, playerFeetPosition));
+    return surfaceBiomeGuidanceForBiome(surfaceBiomeAtPlayerFeet(terrainGenerator, playerFeetPosition));
 }
 
 std::string survivalTipLine(const float sessionPlaySeconds)
@@ -493,49 +329,29 @@ std::string survivalTipLine(const float sessionPlaySeconds)
     switch (phase)
     {
     case 0:
-        return "Tip: E — inventory, oxygen tank slot, armor, 2×2 craft.";
+        return "Tip: E — inventory, armor slots, and 2×2 craft.";
     case 1:
-        return "Tip: right-click places Oxygen Generator; the sphere shows the breathable radius.";
+        return "Tip: right-click blocks from the hotbar to place them where you aim.";
     case 2:
-        return "Tip: watch O2; jungles and oxygen generators refill you in safe conditions.";
+        return "Tip: watch health and air when swimming — surface to refill your breath.";
     case 3:
-        return "Tip: water and lava override oxygen safety — move or build upward.";
+        return "Tip: water and lava are hazardous — move upward or bridge across.";
     case 4:
         return "Tip: cured hide (3×3 workbench) → Scout armor — less damage from hostiles.";
     case 5:
     default:
-        return "Tip: use biome hints - iron, glass, glowstone, and moss help with your next goal.";
+        return "Tip: use biome hints — iron, glass, glowstone, and moss help with your next goal.";
     }
 }
 
-std::vector<glm::vec3> collectNearbyOxygenGenerators(
-    const vibecraft::world::World& world,
-    const glm::vec3& playerFeetPosition)
+std::vector<GreenhouseZone> buildGreenhouseZones(const std::vector<glm::vec3>& generatorCenters)
 {
-    return collectNearbyGeneratorCenters(world, playerFeetPosition);
-}
-
-std::vector<glm::vec3> collectVisibleOxygenGenerators(
-    const vibecraft::world::World& world,
-    const glm::vec3& referencePosition,
-    const int searchRadiusBlocks,
-    const std::size_t maxResults)
-{
-    return collectGeneratorCentersInRange(
-        world,
-        referencePosition,
-        std::max(searchRadiusBlocks, kOxygenGeneratorRadiusBlocks),
-        std::max<std::size_t>(1, maxResults));
-}
-
-std::vector<OxygenSafeZone> buildOxygenSafeZones(const std::vector<glm::vec3>& generatorCenters)
-{
-    std::vector<OxygenSafeZone> safeZones;
+    std::vector<GreenhouseZone> safeZones;
     if (generatorCenters.empty())
     {
         return safeZones;
     }
-    const float baseRadius = static_cast<float>(kOxygenGeneratorRadiusBlocks);
+    const float baseRadius = static_cast<float>(kLegacyRelayRadiusBlocks);
     const float mergeDistance = baseRadius * 2.0f;
     const float mergeDistanceSq = mergeDistance * mergeDistance;
     std::vector<int> clusterIds(generatorCenters.size(), -1);
@@ -590,7 +406,7 @@ std::vector<OxygenSafeZone> buildOxygenSafeZones(const std::vector<glm::vec3>& g
         const float stackingBonus =
             kGeneratorStackingBonusPerRelay * static_cast<float>(members.size() > 1 ? members.size() - 1 : 0);
         const float combinedRadius = baseRadius + std::max(maxDistance, stackingBonus);
-        safeZones.push_back(OxygenSafeZone{
+        safeZones.push_back(GreenhouseZone{
             .center = centroid,
             .radius = combinedRadius,
             .generatorCount = members.size(),
@@ -601,7 +417,7 @@ std::vector<OxygenSafeZone> buildOxygenSafeZones(const std::vector<glm::vec3>& g
     return safeZones;
 }
 
-std::vector<OxygenSafeZone> collectOxygenSafeZones(
+std::vector<GreenhouseZone> collectGreenhouseZones(
     const vibecraft::world::World& world,
     const glm::vec3& referencePosition,
     const int searchRadiusBlocks,
@@ -611,15 +427,15 @@ std::vector<OxygenSafeZone> collectOxygenSafeZones(
     const std::vector<glm::vec3> centers = collectGeneratorCentersInRange(
         world,
         referencePosition,
-        std::max(searchRadiusBlocks, kOxygenGeneratorRadiusBlocks),
+        std::max(searchRadiusBlocks, kLegacyRelayRadiusBlocks),
         generatorBudget);
-    std::vector<OxygenSafeZone> zones = buildOxygenSafeZones(centers);
+    std::vector<GreenhouseZone> zones = buildGreenhouseZones(centers);
     const std::size_t airlockBudget = maxZones > 0
         ? (zones.size() < maxZones ? maxZones - zones.size() : 0)
         : generatorBudget;
     for (const glm::vec3& airlockCenter : collectPoweredAirlockCenters(world, centers, referencePosition, airlockBudget))
     {
-        zones.push_back(OxygenSafeZone{
+        zones.push_back(GreenhouseZone{
             .center = airlockCenter,
             .radius = static_cast<float>(kAirlockOutletRadiusBlocks),
             .generatorCount = 1,
@@ -630,47 +446,5 @@ std::vector<OxygenSafeZone> collectOxygenSafeZones(
         zones.resize(maxZones);
     }
     return zones;
-}
-
-float encodeLegacyNetworkAir(const vibecraft::game::OxygenState& oxygenState)
-{
-    if (oxygenState.capacity <= 0.0f)
-    {
-        return 0.0f;
-    }
-
-    const float normalizedFill = std::clamp(oxygenState.oxygen / oxygenState.capacity, 0.0f, 1.0f);
-    const float legacyFill = normalizedFill * kLegacyNetworkAirCapacity;
-    const float encodedTier =
-        static_cast<float>(static_cast<std::uint8_t>(oxygenState.tankTier)) * kLegacyNetworkAirTierStride;
-    return encodedTier + legacyFill;
-}
-
-void applyLegacyNetworkAirToOxygenSystem(vibecraft::game::OxygenSystem& oxygenSystem, const float encodedAir)
-{
-    vibecraft::game::OxygenState state = oxygenSystem.state();
-    if (!std::isfinite(encodedAir))
-    {
-        return;
-    }
-
-    float legacyFill = encodedAir;
-    if (encodedAir >= kLegacyNetworkAirTierStride)
-    {
-        const int rawTier = static_cast<int>(std::floor(encodedAir / kLegacyNetworkAirTierStride));
-        state.tankTier = decodeLegacyNetworkTankTier(rawTier, state.tankTier);
-        legacyFill = encodedAir - static_cast<float>(rawTier) * kLegacyNetworkAirTierStride;
-    }
-
-    state.capacity = vibecraft::game::oxygenTankDefinition(state.tankTier).capacity;
-    if (state.capacity <= 0.0f)
-    {
-        oxygenSystem.setState(state);
-        return;
-    }
-
-    const float normalizedFill = std::clamp(legacyFill / kLegacyNetworkAirCapacity, 0.0f, 1.0f);
-    state.oxygen = state.capacity * normalizedFill;
-    oxygenSystem.setState(state);
 }
 }  // namespace vibecraft::app

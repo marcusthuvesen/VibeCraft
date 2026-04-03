@@ -6,22 +6,33 @@ namespace vibecraft::app
 {
 namespace
 {
+void maybeSelectHotbarSlot(
+    std::size_t* const selectedHotbarIndex,
+    const InventorySelectionBehavior selectionBehavior,
+    const std::size_t slotIndex)
+{
+    if (selectedHotbarIndex != nullptr
+        && selectionBehavior == InventorySelectionBehavior::SelectAffectedHotbarSlot)
+    {
+        *selectedHotbarIndex = slotIndex;
+    }
+}
+
 template <std::size_t SlotCount>
 bool addToMatchingOrEmptySlots(
     std::array<InventorySlot, SlotCount>& slots,
     const vibecraft::world::BlockType blockType,
-    std::size_t* const selectedHotbarIndex)
+    std::size_t* const selectedHotbarIndex,
+    const InventorySelectionBehavior selectionBehavior)
 {
     for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
     {
         InventorySlot& slot = slots[slotIndex];
-        if (slot.blockType == blockType && slot.count < kMaxStackSize)
+        if (slot.blockType == blockType && slot.equippedItem == EquippedItem::None
+            && slot.count < inventorySlotStackLimit(slot))
         {
             ++slot.count;
-            if (selectedHotbarIndex != nullptr)
-            {
-                *selectedHotbarIndex = slotIndex;
-            }
+            maybeSelectHotbarSlot(selectedHotbarIndex, selectionBehavior, slotIndex);
             return true;
         }
     }
@@ -37,10 +48,46 @@ bool addToMatchingOrEmptySlots(
             }
             slot.blockType = blockType;
             slot.count = 1;
-            if (selectedHotbarIndex != nullptr)
+            slot.durabilityRemaining = 0;
+            maybeSelectHotbarSlot(selectedHotbarIndex, selectionBehavior, slotIndex);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+template <std::size_t SlotCount>
+bool addEquippedItemToSlots(
+    std::array<InventorySlot, SlotCount>& slots,
+    const EquippedItem equippedItem,
+    std::size_t* const selectedHotbarIndex,
+    const InventorySelectionBehavior selectionBehavior)
+{
+    if (!isDamageableEquippedItem(equippedItem))
+    {
+        for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
+        {
+            InventorySlot& slot = slots[slotIndex];
+            if (slot.equippedItem == equippedItem && slot.count < inventorySlotStackLimit(slot))
             {
-                *selectedHotbarIndex = slotIndex;
+                ++slot.count;
+                maybeSelectHotbarSlot(selectedHotbarIndex, selectionBehavior, slotIndex);
+                return true;
             }
+        }
+    }
+
+    for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex)
+    {
+        InventorySlot& slot = slots[slotIndex];
+        if (slot.count == 0)
+        {
+            slot.blockType = vibecraft::world::BlockType::Air;
+            slot.equippedItem = equippedItem;
+            slot.count = 1;
+            slot.durabilityRemaining = maxDurabilityForEquippedItem(equippedItem);
+            maybeSelectHotbarSlot(selectedHotbarIndex, selectionBehavior, slotIndex);
             return true;
         }
     }
@@ -63,6 +110,7 @@ void refillHotbarSlotFromBag(HotbarSlots& hotbarSlots, BagSlots& bagSlots, const
             const std::uint32_t transferCount = std::min(kMaxStackSize, bagSlot.count);
             hotbarSlot.count = transferCount;
             hotbarSlot.equippedItem = EquippedItem::None;
+            hotbarSlot.durabilityRemaining = 0;
             bagSlot.count -= transferCount;
             if (bagSlot.count == 0)
             {
@@ -80,6 +128,7 @@ void refillHotbarSlotFromBag(HotbarSlots& hotbarSlots, BagSlots& bagSlots, const
             hotbarSlot.blockType = bagSlot.blockType;
             hotbarSlot.count = transferCount;
             hotbarSlot.equippedItem = EquippedItem::None;
+            hotbarSlot.durabilityRemaining = 0;
             bagSlot.count -= transferCount;
             if (bagSlot.count == 0)
             {
@@ -96,6 +145,74 @@ bool inventorySlotIsEmpty(const InventorySlot& slot)
         || (slot.blockType == vibecraft::world::BlockType::Air && slot.equippedItem == EquippedItem::None);
 }
 }  // namespace
+
+bool isDamageableEquippedItem(const EquippedItem equippedItem)
+{
+    return maxDurabilityForEquippedItem(equippedItem) > 0;
+}
+
+std::uint16_t maxDurabilityForEquippedItem(const EquippedItem equippedItem)
+{
+    switch (equippedItem)
+    {
+    case EquippedItem::WoodSword:
+    case EquippedItem::WoodPickaxe:
+    case EquippedItem::WoodAxe:
+        return 59;
+    case EquippedItem::StoneSword:
+    case EquippedItem::StonePickaxe:
+    case EquippedItem::StoneAxe:
+        return 131;
+    case EquippedItem::IronSword:
+    case EquippedItem::IronPickaxe:
+    case EquippedItem::IronAxe:
+        return 250;
+    case EquippedItem::DiamondSword:
+    case EquippedItem::DiamondPickaxe:
+    case EquippedItem::DiamondAxe:
+        return 1561;
+    case EquippedItem::GoldSword:
+    case EquippedItem::GoldPickaxe:
+    case EquippedItem::GoldAxe:
+        return 32;
+    case EquippedItem::None:
+    default:
+        return 0;
+    }
+}
+
+std::uint32_t inventorySlotStackLimit(const InventorySlot& slot)
+{
+    return isDamageableEquippedItem(slot.equippedItem) ? 1U : kMaxStackSize;
+}
+
+bool consumeEquippedItemDurability(InventorySlot& slot, const std::uint16_t amount)
+{
+    if (amount == 0 || slot.count == 0 || !isDamageableEquippedItem(slot.equippedItem))
+    {
+        return false;
+    }
+    const std::uint16_t maxDurability = maxDurabilityForEquippedItem(slot.equippedItem);
+    if (maxDurability == 0)
+    {
+        return false;
+    }
+    if (slot.durabilityRemaining == 0 || slot.durabilityRemaining > maxDurability)
+    {
+        slot.durabilityRemaining = maxDurability;
+    }
+    if (amount >= slot.durabilityRemaining)
+    {
+        slot.blockType = vibecraft::world::BlockType::Air;
+        slot.equippedItem = EquippedItem::None;
+        slot.count = 0;
+        slot.durabilityRemaining = 0;
+        return true;
+    }
+    slot.durabilityRemaining =
+        static_cast<std::uint16_t>(slot.durabilityRemaining - amount);
+    return false;
+}
 
 void compactBagSlots(BagSlots& bagSlots)
 {
@@ -160,6 +277,10 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Dark Oak Log";
     case vibecraft::world::BlockType::DarkOakLeaves:
         return "Dark Oak Leaves";
+    case vibecraft::world::BlockType::SculkBlock:
+        return "Sculk Block";
+    case vibecraft::world::BlockType::DripstoneBlock:
+        return "Dripstone Block";
     case vibecraft::world::BlockType::JungleLog:
         return "Jungle Log";
     case vibecraft::world::BlockType::JungleLeaves:
@@ -177,11 +298,14 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
     case vibecraft::world::BlockType::Sandstone:
         return "Sandstone";
     case vibecraft::world::BlockType::Furnace:
+    case vibecraft::world::BlockType::FurnaceNorth:
+    case vibecraft::world::BlockType::FurnaceEast:
+    case vibecraft::world::BlockType::FurnaceWest:
         return "Furnace";
     case vibecraft::world::BlockType::Chest:
         return "Chest";
     case vibecraft::world::BlockType::OxygenGenerator:
-        return "Oxygen Generator";
+        return "Industrial Relay";
     case vibecraft::world::BlockType::Torch:
         return "Torch";
     case vibecraft::world::BlockType::TNT:
@@ -322,16 +446,10 @@ const char* equippedItemLabel(const EquippedItem equippedItem)
         return "Golden Axe";
     case EquippedItem::DiamondAxe:
         return "Diamond Axe";
-    case EquippedItem::OxygenCanister:
-        return "Oxygen Canister";
-    case EquippedItem::FieldTank:
-        return "Field Tank";
-    case EquippedItem::ExpeditionTank:
-        return "Expedition Tank";
     case EquippedItem::Coal:
         return "Coal";
-    case EquippedItem::StarterTank:
-        return "Starter Tank";
+    case EquippedItem::Charcoal:
+        return "Charcoal";
     case EquippedItem::ScoutHelmet:
         return "Scout Helmet";
     case EquippedItem::ScoutChestRig:
@@ -340,6 +458,10 @@ const char* equippedItemLabel(const EquippedItem equippedItem)
         return "Scout Greaves";
     case EquippedItem::ScoutBoots:
         return "Scout Boots";
+    case EquippedItem::IronIngot:
+        return "Iron Ingot";
+    case EquippedItem::GoldIngot:
+        return "Gold Ingot";
     case EquippedItem::None:
     default:
         return "Empty";
@@ -358,8 +480,6 @@ const char* equipmentSlotLabel(const EquipmentSlotKind slotKind)
         return "Legs";
     case EquipmentSlotKind::Boots:
         return "Boots";
-    case EquipmentSlotKind::OxygenTank:
-        return "Tank";
     }
 
     return "Slot";
@@ -373,7 +493,16 @@ std::string inventorySlotLabel(const InventorySlot& slot)
     }
     if (slot.equippedItem != EquippedItem::None)
     {
-        return equippedItemLabel(slot.equippedItem);
+        const std::string label = equippedItemLabel(slot.equippedItem);
+        if (!isDamageableEquippedItem(slot.equippedItem))
+        {
+            return label;
+        }
+        const std::uint16_t maxDurability = maxDurabilityForEquippedItem(slot.equippedItem);
+        const std::uint16_t durability =
+            slot.durabilityRemaining == 0 ? maxDurability : slot.durabilityRemaining;
+        return std::string(label)
+            + " (" + std::to_string(durability) + "/" + std::to_string(maxDurability) + ")";
     }
     return blockTypeLabel(slot.blockType);
 }
@@ -403,15 +532,6 @@ bool canPlaceIntoEquipmentSlot(const InventorySlot& slot, const EquipmentSlotKin
         return true;
     }
 
-    if (slotKind == EquipmentSlotKind::OxygenTank)
-    {
-        return slot.blockType == vibecraft::world::BlockType::Air
-            && slot.count == 1
-            && (slot.equippedItem == EquippedItem::StarterTank
-                || slot.equippedItem == EquippedItem::FieldTank
-                || slot.equippedItem == EquippedItem::ExpeditionTank);
-    }
-
     if (slot.blockType != vibecraft::world::BlockType::Air || slot.equippedItem == EquippedItem::None)
     {
         return false;
@@ -427,8 +547,6 @@ bool canPlaceIntoEquipmentSlot(const InventorySlot& slot, const EquipmentSlotKin
         return slot.equippedItem == EquippedItem::ScoutGreaves;
     case EquipmentSlotKind::Boots:
         return slot.equippedItem == EquippedItem::ScoutBoots;
-    case EquipmentSlotKind::OxygenTank:
-        return false;
     }
 
     return false;
@@ -438,7 +556,8 @@ bool addBlockToInventory(
     HotbarSlots& hotbarSlots,
     BagSlots& bagSlots,
     const vibecraft::world::BlockType blockType,
-    std::size_t& selectedHotbarIndex)
+    std::size_t& selectedHotbarIndex,
+    const InventorySelectionBehavior selectionBehavior)
 {
     if (blockType == vibecraft::world::BlockType::Air || blockType == vibecraft::world::BlockType::Water
         || blockType == vibecraft::world::BlockType::Lava)
@@ -446,12 +565,40 @@ bool addBlockToInventory(
         return false;
     }
 
-    if (addToMatchingOrEmptySlots(hotbarSlots, blockType, &selectedHotbarIndex))
+    if (addToMatchingOrEmptySlots(hotbarSlots, blockType, &selectedHotbarIndex, selectionBehavior))
     {
         return true;
     }
 
-    return addToMatchingOrEmptySlots(bagSlots, blockType, nullptr);
+    return addToMatchingOrEmptySlots(
+        bagSlots,
+        blockType,
+        nullptr,
+        InventorySelectionBehavior::PreserveCurrent);
+}
+
+bool addEquippedItemToInventory(
+    HotbarSlots& hotbarSlots,
+    BagSlots& bagSlots,
+    const EquippedItem equippedItem,
+    std::size_t& selectedHotbarIndex,
+    const InventorySelectionBehavior selectionBehavior)
+{
+    if (equippedItem == EquippedItem::None)
+    {
+        return false;
+    }
+
+    if (addEquippedItemToSlots(hotbarSlots, equippedItem, &selectedHotbarIndex, selectionBehavior))
+    {
+        return true;
+    }
+
+    return addEquippedItemToSlots(
+        bagSlots,
+        equippedItem,
+        nullptr,
+        InventorySelectionBehavior::PreserveCurrent);
 }
 
 void consumeSelectedHotbarSlot(HotbarSlots& hotbarSlots, BagSlots& bagSlots, const std::size_t selectedHotbarIndex)
@@ -460,6 +607,8 @@ void consumeSelectedHotbarSlot(HotbarSlots& hotbarSlots, BagSlots& bagSlots, con
     if (selectedSlot.count == 0)
     {
         selectedSlot.blockType = vibecraft::world::BlockType::Air;
+        selectedSlot.equippedItem = EquippedItem::None;
+        selectedSlot.durabilityRemaining = 0;
         refillHotbarSlotFromBag(hotbarSlots, bagSlots, selectedHotbarIndex);
         return;
     }
@@ -467,6 +616,9 @@ void consumeSelectedHotbarSlot(HotbarSlots& hotbarSlots, BagSlots& bagSlots, con
     --selectedSlot.count;
     if (selectedSlot.count == 0)
     {
+        selectedSlot.blockType = vibecraft::world::BlockType::Air;
+        selectedSlot.equippedItem = EquippedItem::None;
+        selectedSlot.durabilityRemaining = 0;
         refillHotbarSlotFromBag(hotbarSlots, bagSlots, selectedHotbarIndex);
     }
 }

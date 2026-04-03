@@ -86,7 +86,7 @@ constexpr std::array<SampleOffset, 24> kTerraformSampleOffsets{{
 }
 
 [[nodiscard]] bool sampleFallsInsideSafeZone(
-    const OxygenSafeZone& safeZone,
+    const GreenhouseZone& safeZone,
     const int worldX,
     const int surfaceY,
     const int worldZ)
@@ -114,7 +114,7 @@ constexpr std::array<SampleOffset, 24> kTerraformSampleOffsets{{
 [[nodiscard]] bool tryTerraformOneSample(
     vibecraft::world::World& world,
     const vibecraft::world::TerrainGenerator& terrainGenerator,
-    const OxygenSafeZone& safeZone,
+    const GreenhouseZone& safeZone,
     const std::size_t sampleIndex)
 {
     const SampleOffset& offset = kTerraformSampleOffsets[sampleIndex % kTerraformSampleOffsets.size()];
@@ -206,14 +206,14 @@ TerraformingTickResult tickLocalTerraforming(
     while (runtimeState.pulseAccumulatorSeconds >= kTerraformPulseIntervalSeconds)
     {
         runtimeState.pulseAccumulatorSeconds -= kTerraformPulseIntervalSeconds;
-        const std::vector<OxygenSafeZone> safeZones = collectOxygenSafeZones(
+        const std::vector<GreenhouseZone> safeZones = collectGreenhouseZones(
             world,
             referencePosition,
             kTerraformZoneSearchRadiusBlocks,
             kMaxTerraformZones);
         for (std::size_t zoneIndex = 0; zoneIndex < safeZones.size(); ++zoneIndex)
         {
-            const OxygenSafeZone& safeZone = safeZones[zoneIndex];
+            const GreenhouseZone& safeZone = safeZones[zoneIndex];
             for (std::size_t attempt = 0; attempt < kSampleAttemptsPerZone; ++attempt)
             {
                 const std::size_t sampleIndex =

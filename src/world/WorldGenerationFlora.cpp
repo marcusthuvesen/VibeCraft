@@ -6,6 +6,7 @@
 
 #include "vibecraft/world/TerrainNoise.hpp"
 #include "vibecraft/world/biomes/BiomeProfile.hpp"
+#include "vibecraft/world/biomes/FloraGenerationTuning.hpp"
 
 namespace vibecraft::world::detail
 {
@@ -25,20 +26,14 @@ constexpr std::uint32_t kDeadBushChanceSeed = 0x6db7d041U;
 constexpr std::uint32_t kGrassTuftNoiseSeed = 0xe42e37b8U;
 constexpr std::uint32_t kGrassTuftScatterSeed = 0xf53f48c9U;
 constexpr std::uint32_t kJungleSpecialSeed = 0x1650a19dU;
+constexpr std::uint32_t kSwampSpecialSeed = 0x1f63b4bfU;
+constexpr std::uint32_t kMushroomFieldSeed = 0x2c74c5d0U;
 constexpr std::uint32_t kTemperateForestPatchSeed = 0x2761b2aeU;
 constexpr std::uint32_t kTemperateForestWetSeed = 0x3872c3bfU;
 constexpr std::uint32_t kTemperateFernSeed = 0x4983d4c0U;
 constexpr std::uint32_t kTemperateMushroomSeed = 0x5a94e5d1U;
 constexpr std::uint32_t kTemperateGroundSeed = 0x6ba5f6e2U;
 constexpr double kGrassTuftPatchScale = 28.0;
-
-struct FloraPatchParams
-{
-    double flowerPatchMin = 1.0;
-    double flowerSpotChance = 0.0;
-    double mushroomPatchMin = 1.0;
-    double mushroomSpotChance = 0.0;
-};
 
 struct SurfaceSample
 {
@@ -49,83 +44,16 @@ struct SurfaceSample
     SurfaceBiome biome = SurfaceBiome::Forest;
 };
 
-[[nodiscard]] FloraPatchParams floraPatchParamsForBiome(const SurfaceBiome biome)
-{
-    switch (biomes::biomeProfile(biome).floraFamily)
-    {
-    case biomes::FloraGenerationFamily::Plains:
-        return FloraPatchParams{
-            .flowerPatchMin = 0.62,
-            .flowerSpotChance = 0.028,
-            .mushroomPatchMin = 0.88,
-            .mushroomSpotChance = 0.012,
-        };
-    case biomes::FloraGenerationFamily::Forest:
-        return FloraPatchParams{
-            .flowerPatchMin = 0.70,
-            .flowerSpotChance = 0.018,
-            .mushroomPatchMin = 0.76,
-            .mushroomSpotChance = 0.026,
-        };
-    case biomes::FloraGenerationFamily::BirchForest:
-        return FloraPatchParams{
-            .flowerPatchMin = 0.64,
-            .flowerSpotChance = 0.022,
-            .mushroomPatchMin = 0.86,
-            .mushroomSpotChance = 0.012,
-        };
-    case biomes::FloraGenerationFamily::DarkForest:
-        return FloraPatchParams{
-            .flowerPatchMin = 0.94,
-            .flowerSpotChance = 0.003,
-            .mushroomPatchMin = 0.64,
-            .mushroomSpotChance = 0.050,
-        };
-    case biomes::FloraGenerationFamily::Taiga:
-        return FloraPatchParams{
-            .flowerPatchMin = 0.94,
-            .flowerSpotChance = 0.002,
-            .mushroomPatchMin = 0.72,
-            .mushroomSpotChance = 0.028,
-        };
-    case biomes::FloraGenerationFamily::Jungle:
-    case biomes::FloraGenerationFamily::SparseJungle:
-    case biomes::FloraGenerationFamily::BambooJungle:
-        return FloraPatchParams{
-            .flowerPatchMin = 0.52,
-            .flowerSpotChance = 0.10,
-            .mushroomPatchMin = 0.60,
-            .mushroomSpotChance = 0.18,
-        };
-    case biomes::FloraGenerationFamily::SnowyPlains:
-    case biomes::FloraGenerationFamily::SnowyTaiga:
-    case biomes::FloraGenerationFamily::Desert:
-    default:
-        return {};
-    }
-}
-
 [[nodiscard]] BlockType pickTemperateFlowerBlock(const int worldX, const int worldZ, const double wetNoise)
 {
     const std::uint32_t h = noise::hashCoordinates(worldX, worldZ, kFloraTypeSeed);
     if (wetNoise > 0.52)
     {
-        constexpr std::array<BlockType, 5> wetPool{
-            BlockType::BlueOrchid,
-            BlockType::BlueOrchid,
-            BlockType::Allium,
-            BlockType::OxeyeDaisy,
-            BlockType::RedMushroom,
-        };
+        const auto& wetPool = biomes::temperateWetFlowerPool();
         return wetPool[h % wetPool.size()];
     }
 
-    constexpr std::array<BlockType, 4> dryPool{
-        BlockType::Poppy,
-        BlockType::Allium,
-        BlockType::BlueOrchid,
-        BlockType::OxeyeDaisy,
-    };
+    const auto& dryPool = biomes::temperateDryFlowerPool();
     return dryPool[h % dryPool.size()];
 }
 
@@ -258,9 +186,9 @@ bool tryPopulateTemperateSurfaceDecor(Chunk& chunk, const int localX, const int 
     }
 
     const biomes::FloraGenerationFamily floraFamily = biomes::biomeProfile(sample.biome).floraFamily;
+    const biomes::TemperateForestDecorProfile decor = biomes::temperateForestDecorProfile(sample.biome);
     const double forestPatch = temperateForestPatchAt(sample.worldX, sample.worldZ);
-    const double patchThreshold = sample.biome == SurfaceBiome::DarkForest ? 0.48 : 0.56;
-    if (forestPatch < patchThreshold)
+    if (forestPatch < decor.patchEnterThreshold)
     {
         return false;
     }
@@ -269,48 +197,64 @@ bool tryPopulateTemperateSurfaceDecor(Chunk& chunk, const int localX, const int 
     const double fernRoll = noise::random01(sample.worldX, sample.worldZ, kTemperateFernSeed);
     const double mushroomRoll = noise::random01(sample.worldX, sample.worldZ, kTemperateMushroomSeed);
     const double groundRoll = noise::random01(sample.worldX, sample.worldZ, kTemperateGroundSeed);
-    const bool denseForest = forestPatch >= (sample.biome == SurfaceBiome::DarkForest ? 0.68 : 0.76);
+    const bool denseForest = forestPatch >= decor.denseForestThreshold;
+    const bool isDark = sample.biome == SurfaceBiome::DarkForest;
 
     if ((floraFamily == biomes::FloraGenerationFamily::Taiga || floraFamily == biomes::FloraGenerationFamily::SnowyTaiga)
         && denseForest
-        && groundRoll < 0.15)
+        && groundRoll < decor.taigaPodzolGroundRollMax)
     {
         chunk.setBlock(
             localX,
             sample.surfaceY,
             localZ,
-            wetness > 0.54 || forestPatch > 0.88 ? BlockType::Podzol : BlockType::CoarseDirt);
-        if (fernRoll < 0.26 && sample.biome == SurfaceBiome::Taiga)
+            wetness > decor.taigaPodzolWetnessPreferPodzol || forestPatch > decor.taigaPodzolForestPatchBoost
+                ? BlockType::Podzol
+                : BlockType::CoarseDirt);
+        if (fernRoll < decor.taigaFernOnPodzolChance && sample.biome == SurfaceBiome::Taiga)
         {
             chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Fern);
         }
         return true;
     }
 
-    if (wetness > 0.70 && denseForest && groundRoll < (sample.biome == SurfaceBiome::DarkForest ? 0.13 : 0.09))
+    if (wetness > decor.mossWetnessMin && denseForest
+        && groundRoll < (isDark ? decor.mossGroundRollDark : decor.mossGroundRollOther))
     {
         chunk.setBlock(localX, sample.surfaceY, localZ, BlockType::MossBlock);
-        if (fernRoll < (sample.biome == SurfaceBiome::DarkForest ? 0.18 : 0.32))
+        if (fernRoll < (isDark ? decor.mossFernChanceDark : decor.mossFernChanceOther))
         {
             chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Fern);
         }
         return true;
     }
 
-    if (denseForest && wetness > 0.48
-        && mushroomRoll < (sample.biome == SurfaceBiome::DarkForest ? 0.20 : 0.10))
+    if (denseForest && wetness > decor.mushroomWetnessMin
+        && mushroomRoll < (isDark ? decor.mushroomRollDark : decor.mushroomRollOther))
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, pickMushroomBlock(sample.worldX, sample.worldZ));
         return true;
     }
 
-    if (forestPatch > 0.64 && fernRoll < (denseForest ? 0.28 : 0.18))
+    if (forestPatch > decor.fernForestPatchMin
+        && fernRoll < (denseForest ? decor.fernChanceDense : decor.fernChanceSparse))
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Fern);
         return true;
     }
 
-    if (denseForest && wetness > 0.58 && groundRoll < 0.025)
+    if (decor.woodlandGroundPatchEnabled && forestPatch > decor.woodlandGroundPatchForestMin
+        && groundRoll < decor.woodlandGroundPatchRollMax)
+    {
+        chunk.setBlock(
+            localX,
+            sample.surfaceY,
+            localZ,
+            wetness > decor.woodlandGroundPatchWetnessPodzol ? BlockType::Podzol : BlockType::CoarseDirt);
+        return true;
+    }
+
+    if (denseForest && wetness > decor.mossyCobbleWetnessMin && groundRoll < decor.mossyCobbleGroundRollMax)
     {
         chunk.setBlock(localX, sample.surfaceY, localZ, BlockType::MossyCobblestone);
         return true;
@@ -331,6 +275,7 @@ void tryPopulateTufts(Chunk& chunk, const int localX, const int localZ, const Su
     }
 
     const biomes::FloraGenerationFamily floraFamily = biomes::biomeProfile(sample.biome).floraFamily;
+    const biomes::GrassTuftTuning tuft = biomes::grassTuftTuning(floraFamily);
     const double tuftField = noise::fbmNoise2d(
         static_cast<double>(sample.worldX) + 13.0,
         static_cast<double>(sample.worldZ) - 37.0,
@@ -341,44 +286,11 @@ void tryPopulateTufts(Chunk& chunk, const int localX, const int localZ, const Su
     const double scatter = noise::random01(sample.worldX, sample.worldZ, kGrassTuftScatterSeed);
     const double tuftVariantRoll = noise::random01(sample.worldX, sample.worldZ, kGrassTuftScatterSeed + 23U);
 
-    double baseChance = 0.0;
-    BlockType tuftBlock = BlockType::GrassTuft;
-    switch (floraFamily)
-    {
-    case biomes::FloraGenerationFamily::Plains:
-        baseChance = 0.013;
-        tuftBlock = tuftVariantRoll < 0.94 ? BlockType::GrassTuft : BlockType::FlowerTuft;
-        break;
-    case biomes::FloraGenerationFamily::Forest:
-    case biomes::FloraGenerationFamily::BirchForest:
-        baseChance = 0.010;
-        tuftBlock = tuftVariantRoll < 0.85 ? BlockType::GrassTuft : BlockType::CloverTuft;
-        break;
-    case biomes::FloraGenerationFamily::DarkForest:
-        baseChance = 0.004;
-        tuftBlock = BlockType::SparseTuft;
-        break;
-    case biomes::FloraGenerationFamily::Taiga:
-        baseChance = 0.008;
-        tuftBlock = BlockType::SparseTuft;
-        break;
-    case biomes::FloraGenerationFamily::Jungle:
-    case biomes::FloraGenerationFamily::SparseJungle:
-    case biomes::FloraGenerationFamily::BambooJungle:
-        baseChance = 0.012;
-        tuftBlock = BlockType::LushTuft;
-        break;
-    case biomes::FloraGenerationFamily::SnowyPlains:
-    case biomes::FloraGenerationFamily::SnowyTaiga:
-        baseChance = 0.004;
-        tuftBlock = BlockType::FrostTuft;
-        break;
-    case biomes::FloraGenerationFamily::Desert:
-    default:
-        return;
-    }
+    const BlockType tuftBlock = tuft.primaryFraction >= 1.0
+        ? tuft.primaryTuft
+        : (tuftVariantRoll < tuft.primaryFraction ? tuft.primaryTuft : tuft.secondaryTuft);
 
-    const double tuftChance = std::clamp(baseChance + tuftStrength * 0.03, 0.0, 0.06);
+    const double tuftChance = std::clamp(tuft.baseChance + tuftStrength * 0.03, 0.0, 0.06);
     if (scatter < tuftChance)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, tuftBlock);
@@ -419,9 +331,53 @@ bool tryPopulateJungleSpecials(Chunk& chunk, const int localX, const int localZ,
     return false;
 }
 
+bool tryPopulateSwampSpecials(Chunk& chunk, const int localX, const int localZ, const SurfaceSample& sample)
+{
+    if (sample.biome != SurfaceBiome::Swamp || sample.surfaceBlock != BlockType::Grass)
+    {
+        return false;
+    }
+
+    if (noise::random01(sample.worldX, sample.worldZ, kSwampSpecialSeed) < 0.17f)
+    {
+        chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Vines);
+        return true;
+    }
+    if (noise::random01(sample.worldX, sample.worldZ, kSwampSpecialSeed + 13U) < 0.11f)
+    {
+        chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Water);
+        return true;
+    }
+
+    return false;
+}
+
+bool tryPopulateMushroomFieldSpecials(Chunk& chunk, const int localX, const int localZ, const SurfaceSample& sample)
+{
+    if (sample.biome != SurfaceBiome::MushroomField || sample.surfaceBlock != BlockType::MossBlock)
+    {
+        return false;
+    }
+
+    if (noise::random01(sample.worldX, sample.worldZ, kMushroomFieldSeed) < 0.34f)
+    {
+        chunk.setBlock(localX, sample.surfaceY + 1, localZ, pickMushroomBlock(sample.worldX, sample.worldZ));
+        return true;
+    }
+    if (noise::random01(sample.worldX, sample.worldZ, kMushroomFieldSeed + 7U) < 0.06f)
+    {
+        chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::BrownMushroom);
+        chunk.setBlock(localX, sample.surfaceY + 2, localZ, BlockType::BrownMushroom);
+        return true;
+    }
+
+    return false;
+}
+
 bool tryPopulateFlowersAndMushrooms(Chunk& chunk, const int localX, const int localZ, const SurfaceSample& sample)
 {
-    const FloraPatchParams patch = floraPatchParamsForBiome(sample.biome);
+    const biomes::FloraPatchTuning patch
+        = biomes::floraPatchTuning(biomes::biomeProfile(sample.biome).floraFamily);
     const double flowerField = noise::fbmNoise2d(
         static_cast<double>(sample.worldX),
         static_cast<double>(sample.worldZ),
@@ -513,6 +469,10 @@ void populateSurfaceFloraForChunk(Chunk& chunk, const ChunkCoord& coord, const T
             {
                 continue;
             }
+            if (tryPopulateMushroomFieldSpecials(chunk, localX, localZ, sample))
+            {
+                continue;
+            }
             if (tryPopulateTemperateSurfaceDecor(chunk, localX, localZ, sample))
             {
                 continue;
@@ -524,6 +484,10 @@ void populateSurfaceFloraForChunk(Chunk& chunk, const ChunkCoord& coord, const T
             }
 
             tryPopulateTufts(chunk, localX, localZ, sample);
+            if (tryPopulateSwampSpecials(chunk, localX, localZ, sample))
+            {
+                continue;
+            }
             if (tryPopulateJungleSpecials(chunk, localX, localZ, sample))
             {
                 continue;

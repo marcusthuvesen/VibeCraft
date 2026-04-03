@@ -244,6 +244,27 @@ struct BlockMetadata
             .hardness = 3.5f,
             .breakable = true,
         };
+    case BlockType::FurnaceNorth:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 24, .bottom = 24, .side = 25, .north = 26},
+            .hardness = 3.5f,
+            .breakable = true,
+        };
+    case BlockType::FurnaceEast:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 24, .bottom = 24, .side = 25, .east = 26},
+            .hardness = 3.5f,
+            .breakable = true,
+        };
+    case BlockType::FurnaceWest:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 24, .bottom = 24, .side = 25, .west = 26},
+            .hardness = 3.5f,
+            .breakable = true,
+        };
     case BlockType::Chest:
         // Tiles 27-29 from build_chunk_atlas.sh row 5 (chest_top/front/side).
         return {
@@ -583,6 +604,20 @@ struct BlockMetadata
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 87, .bottom = 87, .side = 87},
             .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::SculkBlock:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 104, .bottom = 104, .side = 104},
+            .hardness = 0.6f,
+            .breakable = true,
+        };
+    case BlockType::DripstoneBlock:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 105, .bottom = 105, .side = 105},
+            .hardness = 1.5f,
             .breakable = true,
         };
     case BlockType::Air:

@@ -14,7 +14,6 @@
 #include "vibecraft/app/ApplicationConfig.hpp"
 #include "vibecraft/app/ApplicationEquipment.hpp"
 #include "vibecraft/app/ApplicationMultiplayerLog.hpp"
-#include "vibecraft/app/ApplicationOxygenRuntime.hpp"
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
 #include "vibecraft/core/Logger.hpp"
 
@@ -60,6 +59,7 @@ void Application::beginSingleplayerLoad()
     vibecraft::world::World::ChunkMap emptyChunks;
     world_.replaceChunks(std::move(emptyChunks));
     droppedItems_.clear();
+    furnaceStatesByPosition_.clear();
     remotePlayers_.clear();
     worldSyncSentClients_.clear();
     clientChunkSyncCoordsById_.clear();
@@ -68,12 +68,9 @@ void Application::beginSingleplayerLoad()
     mobSpawnSystem_.clearAllMobs();
     applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
     bagSlots_.fill({});
-    static_cast<void>(ensureStarterRelayAvailable(hotbarSlots_, bagSlots_, selectedHotbarIndex_));
     equipmentSlots_.fill({});
     activeMiningState_ = {};
     playerVitals_.reset();
-    oxygenSystem_.resetForNewGame();
-    syncOxygenEquipmentSlotFromSystem(equipmentSlots_, oxygenSystem_);
     playerHazards_ = {};
     verticalVelocity_ = 0.0f;
     accumulatedFallDistance_ = 0.0f;
@@ -82,7 +79,7 @@ void Application::beginSingleplayerLoad()
     autoJumpCooldownSeconds_ = 0.0f;
     footstepDistanceAccumulator_ = 0.0f;
     heldItemSwing_ = 0.0f;
-    respawnNotice_ = "Starter Oxygen Generators ready in slot 9.";
+    respawnNotice_.clear();
     dayNightCycle_.setElapsedSeconds(150.0f);
     weatherSystem_.setElapsedSeconds(0.0f);
 
@@ -135,27 +132,15 @@ void Application::beginSingleplayerLoad()
         camera_.setPosition(
             playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
         playerVitals_.setHealthAndAir(playerState->health, playerState->air);
-        oxygenSystem_.setState(playerState->oxygenState);
         creativeModeEnabled_ = playerState->creativeModeEnabled;
         selectedHotbarIndex_ = std::min<std::size_t>(playerState->selectedHotbarIndex, hotbarSlots_.size() - 1);
         dayNightCycle_.setElapsedSeconds(playerState->dayNightElapsedSeconds);
         weatherSystem_.setElapsedSeconds(playerState->weatherElapsedSeconds);
         hotbarSlots_ = playerState->hotbarSlots;
         bagSlots_ = playerState->bagSlots;
-        if (ensureStarterRelayAvailable(hotbarSlots_, bagSlots_, selectedHotbarIndex_))
-        {
-            respawnNotice_ = "Starter Oxygen Generator added to your inventory.";
-        }
         equipmentSlots_ = playerState->equipmentSlots;
-        if (equipmentSlots_[equipmentSlotIndex(EquipmentSlotKind::OxygenTank)].count == 0)
-        {
-            syncOxygenEquipmentSlotFromSystem(equipmentSlots_, oxygenSystem_);
-        }
-        else
-        {
-            syncOxygenSystemFromEquipmentSlot(equipmentSlots_, oxygenSystem_, false);
-        }
         chestSlotsByPosition_ = playerState->chestSlotsByPosition;
+        furnaceStatesByPosition_ = playerState->furnaceStatesByPosition;
         droppedItems_.clear();
         droppedItems_.reserve(playerState->droppedItems.size());
         for (const SavedDroppedItem& droppedItem : playerState->droppedItems)
@@ -170,12 +155,6 @@ void Application::beginSingleplayerLoad()
                 .spinRadians = droppedItem.spinRadians,
             });
         }
-        playerOxygenEnvironment_ = refreshPlayerOxygenEnvironment(
-            world_,
-            terrainGenerator_,
-            playerFeetPosition_,
-            playerHazards_,
-            creativeModeEnabled_);
         singleplayerLoadState_.playerStateLoaded = true;
         mainMenuNotice_ = fmt::format("Continuing {}.", activeSingleplayerWorldDisplayName_);
     }

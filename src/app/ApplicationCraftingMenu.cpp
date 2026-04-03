@@ -10,7 +10,7 @@ namespace vibecraft::app
 {
 namespace
 {
-[[nodiscard]] std::int64_t chestStorageKey(const glm::ivec3& blockPosition)
+[[nodiscard]] std::int64_t blockStorageKey(const glm::ivec3& blockPosition)
 {
     constexpr std::int64_t offset = 1LL << 20;
     constexpr std::int64_t mask = (1LL << 21) - 1LL;
@@ -30,9 +30,34 @@ namespace
     const InventorySlot& carriedSlot,
     const InventorySlot& outputSlot)
 {
+    const std::uint32_t stackLimit = isInventorySlotEmpty(carriedSlot)
+        ? inventorySlotStackLimit(outputSlot)
+        : inventorySlotStackLimit(carriedSlot);
     return isInventorySlotEmpty(carriedSlot)
         || (canMergeInventorySlots(carriedSlot, outputSlot)
-            && carriedSlot.count + outputSlot.count <= kMaxStackSize);
+            && carriedSlot.count + outputSlot.count <= stackLimit);
+}
+
+[[nodiscard]] bool isFurnaceGridSlotIndex(const std::size_t slotIndex)
+{
+    return slotIndex == kFurnaceInputSlotIndex || slotIndex == kFurnaceFuelSlotIndex;
+}
+
+[[nodiscard]] bool canPlaceIntoFurnaceGridSlot(const InventorySlot& slot, const std::size_t slotIndex)
+{
+    if (isInventorySlotEmpty(slot))
+    {
+        return true;
+    }
+    if (slotIndex == kFurnaceInputSlotIndex)
+    {
+        return canAcceptFurnaceInput(slot);
+    }
+    if (slotIndex == kFurnaceFuelSlotIndex)
+    {
+        return canAcceptFurnaceFuel(slot);
+    }
+    return false;
 }
 
 void mergeOrSwapInventorySlot(
@@ -60,9 +85,10 @@ void mergeOrSwapInventorySlot(
         return;
     }
 
-    if (canMergeInventorySlots(carriedSlot, targetSlot) && targetSlot.count < kMaxStackSize)
+    const std::uint32_t stackLimit = inventorySlotStackLimit(targetSlot);
+    if (canMergeInventorySlots(carriedSlot, targetSlot) && targetSlot.count < stackLimit)
     {
-        const std::uint32_t space = kMaxStackSize - targetSlot.count;
+        const std::uint32_t space = stackLimit - targetSlot.count;
         const std::uint32_t transfer = std::min(space, carriedSlot.count);
         targetSlot.count += transfer;
         carriedSlot.count -= transfer;
@@ -121,7 +147,8 @@ void rightClickInventorySlot(
         return;
     }
 
-    if (!canMergeInventorySlots(carriedSlot, targetSlot) || targetSlot.count >= kMaxStackSize)
+    if (!canMergeInventorySlots(carriedSlot, targetSlot)
+        || targetSlot.count >= inventorySlotStackLimit(targetSlot))
     {
         return;
     }
@@ -170,7 +197,10 @@ void Application::openCraftingMenu(
     craftingMenuState_.usesWorkbench = useWorkbench;
     craftingMenuState_.workbenchBlockPosition = workbenchBlockPosition;
     craftingMenuState_.chestBlockPosition = glm::ivec3(0);
+    craftingMenuState_.furnaceBlockPosition = glm::ivec3(0);
     craftingMenuState_.bagStartRow = 0;
+    craftingDragActive_ = false;
+    craftingDragLastHit_ = -1;
     craftingMenuState_.hint = useWorkbench
         ? "3x3 workbench crafting: left-click move, right-click split/place one."
         : "2x2 inventory crafting: logs -> planks, planks -> sticks/table. Gear slots are on the left.";
@@ -189,14 +219,95 @@ void Application::openChestMenu(const glm::ivec3& chestBlockPosition)
     craftingMenuState_.usesWorkbench = true;
     craftingMenuState_.workbenchBlockPosition = glm::ivec3(0);
     craftingMenuState_.chestBlockPosition = chestBlockPosition;
+    craftingMenuState_.furnaceBlockPosition = glm::ivec3(0);
     craftingMenuState_.bagStartRow = 0;
+    craftingDragActive_ = false;
+    craftingDragLastHit_ = -1;
     craftingMenuState_.hint = "Chest storage: move stacks between chest and inventory.";
-    craftingMenuState_.gridSlots = chestSlotsByPosition_[chestStorageKey(chestBlockPosition)];
+    craftingMenuState_.gridSlots = chestSlotsByPosition_[blockStorageKey(chestBlockPosition)];
     soundEffects_.playChestOpen();
     releaseMouseForMenu(mouseCaptured_, window_, inputState_);
 }
 
-void Application::returnCraftingSlotsToInventory()
+void Application::openFurnaceMenu(const glm::ivec3& furnaceBlockPosition)
+{
+    if (!craftingMenuState_.active)
+    {
+        craftingMenuState_ = CraftingMenuState{};
+    }
+    craftingMenuState_.active = true;
+    craftingMenuState_.mode = CraftingMenuState::Mode::Furnace;
+    craftingMenuState_.usesWorkbench = true;
+    craftingMenuState_.workbenchBlockPosition = glm::ivec3(0);
+    craftingMenuState_.chestBlockPosition = glm::ivec3(0);
+    craftingMenuState_.furnaceBlockPosition = furnaceBlockPosition;
+    craftingMenuState_.bagStartRow = 0;
+    craftingDragActive_ = false;
+    craftingDragLastHit_ = -1;
+    craftingMenuState_.hint = "Furnace: top slot smelts, bottom slot burns fuel. Coal and wood both work.";
+    craftingMenuState_.gridSlots.fill({});
+    syncFurnaceStateToOpenMenu();
+    soundEffects_.playUiClick();
+    releaseMouseForMenu(mouseCaptured_, window_, inputState_);
+}
+
+void Application::syncOpenFurnaceMenuToState()
+{
+    if (!craftingMenuState_.active || craftingMenuState_.mode != CraftingMenuState::Mode::Furnace)
+    {
+        return;
+    }
+    FurnaceBlockState& furnaceState =
+        furnaceStatesByPosition_[blockStorageKey(craftingMenuState_.furnaceBlockPosition)];
+    furnaceState.inputSlot = craftingMenuState_.gridSlots[kFurnaceInputSlotIndex];
+    furnaceState.fuelSlot = craftingMenuState_.gridSlots[kFurnaceFuelSlotIndex];
+}
+
+void Application::syncFurnaceStateToOpenMenu()
+{
+    if (!craftingMenuState_.active || craftingMenuState_.mode != CraftingMenuState::Mode::Furnace)
+    {
+        return;
+    }
+    const auto furnaceIt = furnaceStatesByPosition_.find(blockStorageKey(craftingMenuState_.furnaceBlockPosition));
+    craftingMenuState_.gridSlots.fill({});
+    if (furnaceIt == furnaceStatesByPosition_.end())
+    {
+        return;
+    }
+    craftingMenuState_.gridSlots[kFurnaceInputSlotIndex] = furnaceIt->second.inputSlot;
+    craftingMenuState_.gridSlots[kFurnaceFuelSlotIndex] = furnaceIt->second.fuelSlot;
+}
+
+void Application::tickFurnaces(const float deltaTimeSeconds)
+{
+    if (deltaTimeSeconds <= 0.0f)
+    {
+        return;
+    }
+    if (craftingMenuState_.active && craftingMenuState_.mode == CraftingMenuState::Mode::Furnace)
+    {
+        syncOpenFurnaceMenuToState();
+    }
+    for (auto it = furnaceStatesByPosition_.begin(); it != furnaceStatesByPosition_.end();)
+    {
+        tickFurnaceBlockState(it->second, deltaTimeSeconds);
+        if (!furnaceStateHasAnyContents(it->second))
+        {
+            it = furnaceStatesByPosition_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    if (craftingMenuState_.active && craftingMenuState_.mode == CraftingMenuState::Mode::Furnace)
+    {
+        syncFurnaceStateToOpenMenu();
+    }
+}
+
+void Application::returnCraftingSlotsToInventory(const bool includeGridSlots)
 {
     const auto tryInsertSlot = [&](InventorySlot& slot)
     {
@@ -209,9 +320,10 @@ void Application::returnCraftingSlotsToInventory()
         {
             for (InventorySlot& existingSlot : slots)
             {
-                if (canMergeInventorySlots(existingSlot, slot) && existingSlot.count < kMaxStackSize)
+                const std::uint32_t stackLimit = inventorySlotStackLimit(existingSlot);
+                if (canMergeInventorySlots(existingSlot, slot) && existingSlot.count < stackLimit)
                 {
-                    const std::uint32_t transfer = std::min(kMaxStackSize - existingSlot.count, slot.count);
+                    const std::uint32_t transfer = std::min(stackLimit - existingSlot.count, slot.count);
                     existingSlot.count += transfer;
                     slot.count -= transfer;
                     if (slot.count == 0)
@@ -243,31 +355,34 @@ void Application::returnCraftingSlotsToInventory()
         return isInventorySlotEmpty(slot);
     };
 
-    for (InventorySlot& slot : craftingMenuState_.gridSlots)
+    if (includeGridSlots)
     {
-        while (!isInventorySlotEmpty(slot))
+        for (InventorySlot& slot : craftingMenuState_.gridSlots)
         {
-            if (tryInsertSlot(slot))
+            while (!isInventorySlotEmpty(slot))
             {
-                break;
-            }
+                if (tryInsertSlot(slot))
+                {
+                    break;
+                }
 
-            if (slot.equippedItem != EquippedItem::None)
-            {
-                spawnDroppedItemAtPosition(
-                    slot.equippedItem,
-                    playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
-            }
-            else
-            {
-                spawnDroppedItemAtPosition(
-                    slot.blockType,
-                    playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
-            }
-            --slot.count;
-            if (slot.count == 0)
-            {
-                clearInventorySlot(slot);
+                if (slot.equippedItem != EquippedItem::None)
+                {
+                    spawnDroppedItemAtPosition(
+                        slot.equippedItem,
+                        playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
+                }
+                else
+                {
+                    spawnDroppedItemAtPosition(
+                        slot.blockType,
+                        playerFeetPosition_ + glm::vec3(0.0f, 1.0f, 0.0f));
+                }
+                --slot.count;
+                if (slot.count == 0)
+                {
+                    clearInventorySlot(slot);
+                }
             }
         }
     }
@@ -298,9 +413,10 @@ void Application::returnCraftingSlotsToInventory()
 void Application::closeCraftingMenu()
 {
     const bool closingChest = craftingMenuState_.active && craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage;
+    const bool closingFurnace = craftingMenuState_.active && craftingMenuState_.mode == CraftingMenuState::Mode::Furnace;
     if (craftingMenuState_.active && craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage)
     {
-        const std::int64_t key = chestStorageKey(craftingMenuState_.chestBlockPosition);
+        const std::int64_t key = blockStorageKey(craftingMenuState_.chestBlockPosition);
         bool hasAnyItem = false;
         for (const InventorySlot& slot : craftingMenuState_.gridSlots)
         {
@@ -319,8 +435,20 @@ void Application::closeCraftingMenu()
             chestSlotsByPosition_.erase(key);
         }
     }
-    returnCraftingSlotsToInventory();
+    if (closingFurnace)
+    {
+        syncOpenFurnaceMenuToState();
+        const std::int64_t key = blockStorageKey(craftingMenuState_.furnaceBlockPosition);
+        const auto furnaceIt = furnaceStatesByPosition_.find(key);
+        if (furnaceIt != furnaceStatesByPosition_.end() && !furnaceStateHasAnyContents(furnaceIt->second))
+        {
+            furnaceStatesByPosition_.erase(furnaceIt);
+        }
+    }
+    returnCraftingSlotsToInventory(!(closingChest || closingFurnace));
     craftingMenuState_ = CraftingMenuState{};
+    craftingDragActive_ = false;
+    craftingDragLastHit_ = -1;
     if (closingChest)
     {
         soundEffects_.playChestClose();
@@ -335,11 +463,18 @@ void Application::closeCraftingMenu()
 void Application::handleCraftingMenuClick()
 {
     const bool chestMode = craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage;
+    const bool furnaceMode = craftingMenuState_.mode == CraftingMenuState::Mode::Furnace;
+    const render::CraftingUiMode renderMode =
+        furnaceMode ? render::CraftingUiMode::Furnace
+        : chestMode ? render::CraftingUiMode::Chest
+        : craftingMenuState_.usesWorkbench ? render::CraftingUiMode::Workbench
+                                           : render::CraftingUiMode::Inventory;
     const int hit = render::Renderer::hitTestCraftingMenu(
         inputState_.mouseWindowX,
         inputState_.mouseWindowY,
         window_.width(),
         window_.height(),
+        renderMode,
         craftingMenuState_.usesWorkbench,
         craftingMenuState_.bagStartRow);
     if (hit < 0)
@@ -348,7 +483,29 @@ void Application::handleCraftingMenuClick()
     }
     soundEffects_.playUiClick();
 
-    if (!chestMode && hit == render::Renderer::kCraftingResultHit)
+    if (furnaceMode && hit == render::Renderer::kCraftingResultHit)
+    {
+        syncOpenFurnaceMenuToState();
+        FurnaceBlockState& furnaceState =
+            furnaceStatesByPosition_[blockStorageKey(craftingMenuState_.furnaceBlockPosition)];
+        if (!canReceiveCraftingOutput(craftingMenuState_.carriedSlot, furnaceState.outputSlot))
+        {
+            return;
+        }
+        if (isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+        {
+            craftingMenuState_.carriedSlot = furnaceState.outputSlot;
+        }
+        else
+        {
+            craftingMenuState_.carriedSlot.count += furnaceState.outputSlot.count;
+        }
+        clearInventorySlot(furnaceState.outputSlot);
+        syncFurnaceStateToOpenMenu();
+        soundEffects_.playUiClick();
+        return;
+    }
+    if (!chestMode && !furnaceMode && hit == render::Renderer::kCraftingResultHit)
     {
         const std::optional<CraftingMatch> craftingMatch = evaluateCraftingGrid(
             craftingMenuState_.gridSlots,
@@ -369,7 +526,7 @@ void Application::handleCraftingMenuClick()
         soundEffects_.playBlockPlace(craftingMatch->output.blockType);
         return;
     }
-    if (chestMode && hit == render::Renderer::kCraftingResultHit)
+    if ((chestMode || furnaceMode) && hit == render::Renderer::kCraftingResultHit)
     {
         return;
     }
@@ -388,10 +545,6 @@ void Application::handleCraftingMenuClick()
             equipmentSlotKindForIndex(static_cast<std::size_t>(hit - render::Renderer::kCraftingEquipmentHitBase));
         InventorySlot& equipmentSlot = equipmentSlots_[equipmentSlotIndex(slotKind)];
         mergeOrSwapEquipmentSlot(craftingMenuState_.carriedSlot, equipmentSlot, slotKind);
-        if (slotKind == EquipmentSlotKind::OxygenTank)
-        {
-            syncOxygenSystemFromEquipmentSlot(equipmentSlots_, oxygenSystem_, false);
-        }
         return;
     }
     else if (hit >= render::Renderer::kCraftingHotbarHitBase
@@ -410,7 +563,18 @@ void Application::handleCraftingMenuClick()
         return;
     }
 
-    if (!chestMode && isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
+    if (furnaceMode && isCraftingGridSlot)
+    {
+        const std::size_t furnaceSlotIndex = static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase);
+        if (!isFurnaceGridSlotIndex(furnaceSlotIndex)
+            || (!isInventorySlotEmpty(craftingMenuState_.carriedSlot)
+                && !canPlaceIntoFurnaceGridSlot(craftingMenuState_.carriedSlot, furnaceSlotIndex)))
+        {
+            return;
+        }
+    }
+
+    if (!chestMode && !furnaceMode && isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
         && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
     {
         return;
@@ -420,19 +584,69 @@ void Application::handleCraftingMenuClick()
         craftingMenuState_.carriedSlot,
         *targetSlot,
         true);
+    if (furnaceMode)
+    {
+        syncOpenFurnaceMenuToState();
+    }
 }
 
 void Application::handleCraftingMenuRightClick()
 {
     const bool chestMode = craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage;
+    const bool furnaceMode = craftingMenuState_.mode == CraftingMenuState::Mode::Furnace;
+    const render::CraftingUiMode renderMode =
+        furnaceMode ? render::CraftingUiMode::Furnace
+        : chestMode ? render::CraftingUiMode::Chest
+        : craftingMenuState_.usesWorkbench ? render::CraftingUiMode::Workbench
+                                           : render::CraftingUiMode::Inventory;
     const int hit = render::Renderer::hitTestCraftingMenu(
         inputState_.mouseWindowX,
         inputState_.mouseWindowY,
         window_.width(),
         window_.height(),
+        renderMode,
         craftingMenuState_.usesWorkbench,
         craftingMenuState_.bagStartRow);
-    if (hit < 0 || hit == render::Renderer::kCraftingResultHit)
+    if (hit < 0)
+    {
+        return;
+    }
+    if (furnaceMode && hit == render::Renderer::kCraftingResultHit)
+    {
+        syncOpenFurnaceMenuToState();
+        FurnaceBlockState& furnaceState =
+            furnaceStatesByPosition_[blockStorageKey(craftingMenuState_.furnaceBlockPosition)];
+        if (isInventorySlotEmpty(furnaceState.outputSlot))
+        {
+            return;
+        }
+        const InventorySlot oneItemOutput{
+            .blockType = furnaceState.outputSlot.blockType,
+            .count = 1,
+            .equippedItem = furnaceState.outputSlot.equippedItem,
+        };
+        if (!canReceiveCraftingOutput(craftingMenuState_.carriedSlot, oneItemOutput))
+        {
+            return;
+        }
+        if (isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+        {
+            craftingMenuState_.carriedSlot = oneItemOutput;
+        }
+        else
+        {
+            ++craftingMenuState_.carriedSlot.count;
+        }
+        --furnaceState.outputSlot.count;
+        if (furnaceState.outputSlot.count == 0)
+        {
+            clearInventorySlot(furnaceState.outputSlot);
+        }
+        syncFurnaceStateToOpenMenu();
+        soundEffects_.playUiClick();
+        return;
+    }
+    if (hit == render::Renderer::kCraftingResultHit)
     {
         return;
     }
@@ -452,10 +666,6 @@ void Application::handleCraftingMenuRightClick()
             equipmentSlotKindForIndex(static_cast<std::size_t>(hit - render::Renderer::kCraftingEquipmentHitBase));
         InventorySlot& equipmentSlot = equipmentSlots_[equipmentSlotIndex(slotKind)];
         rightClickEquipmentSlot(craftingMenuState_.carriedSlot, equipmentSlot, slotKind);
-        if (slotKind == EquipmentSlotKind::OxygenTank)
-        {
-            syncOxygenSystemFromEquipmentSlot(equipmentSlots_, oxygenSystem_, false);
-        }
         return;
     }
     else if (hit >= render::Renderer::kCraftingHotbarHitBase
@@ -474,7 +684,18 @@ void Application::handleCraftingMenuRightClick()
         return;
     }
 
-    if (!chestMode && isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
+    if (furnaceMode && isCraftingGridSlot)
+    {
+        const std::size_t furnaceSlotIndex = static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase);
+        if (!isFurnaceGridSlotIndex(furnaceSlotIndex)
+            || (!isInventorySlotEmpty(craftingMenuState_.carriedSlot)
+                && !canPlaceIntoFurnaceGridSlot(craftingMenuState_.carriedSlot, furnaceSlotIndex)))
+        {
+            return;
+        }
+    }
+
+    if (!chestMode && !furnaceMode && isCraftingGridSlot && !canPlaceIntoCraftingGrid(craftingMenuState_.carriedSlot)
         && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
     {
         return;
@@ -484,5 +705,9 @@ void Application::handleCraftingMenuRightClick()
         craftingMenuState_.carriedSlot,
         *targetSlot,
         true);
+    if (furnaceMode)
+    {
+        syncOpenFurnaceMenuToState();
+    }
 }
 }  // namespace vibecraft::app

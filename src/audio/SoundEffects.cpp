@@ -210,7 +210,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 [[nodiscard]] std::vector<std::string> blockBreakOptions(const vibecraft::world::BlockType blockType)
 {
     using vibecraft::world::BlockType;
-    switch (blockType)
+    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:
@@ -284,7 +284,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 [[nodiscard]] std::vector<std::string> blockHitOptions(const vibecraft::world::BlockType blockType)
 {
     using vibecraft::world::BlockType;
-    switch (blockType)
+    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:
@@ -359,7 +359,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 {
     using vibecraft::world::BlockType;
     std::vector<std::string> step;
-    switch (blockType)
+    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:
@@ -445,7 +445,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 [[nodiscard]] std::vector<std::string> blockPlaceOptions(const vibecraft::world::BlockType blockType)
 {
     using vibecraft::world::BlockType;
-    switch (blockType)
+    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:
@@ -593,7 +593,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     using vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MobKind::VoidStrider:
+    case MobKind::Zombie:
         return concatClipLists({numberedClipRange("mob/zombie/hurt", 1, 2), numberedClipRange("mob/zombie/say", 1, 3)});
     case MobKind::Player:
         return playerHurtOptions();
@@ -614,7 +614,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     using vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MobKind::VoidStrider:
+    case MobKind::Zombie:
         return numberedClipRange("mob/zombie/say", 1, 3);
     case MobKind::Player:
         return {};
@@ -635,7 +635,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     using vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MobKind::VoidStrider:
+    case MobKind::Zombie:
         return numberedClipRange("mob/zombie/step", 1, 5);
     case MobKind::Player:
         return {};
@@ -656,7 +656,7 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     using vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MobKind::VoidStrider:
+    case MobKind::Zombie:
         return {"mob/zombie/death.ogg"};
     case MobKind::Player:
         return playerDeathOptions();
@@ -713,22 +713,22 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     append(itemConsumeOptions());
 
     using MK = vibecraft::game::MobKind;
-    append(mobAmbientOptions(MK::VoidStrider));
+    append(mobAmbientOptions(MK::Zombie));
     append(mobAmbientOptions(MK::Cow));
     append(mobAmbientOptions(MK::Pig));
     append(mobAmbientOptions(MK::Sheep));
     append(mobAmbientOptions(MK::Chicken));
-    append(mobStepOptions(MK::VoidStrider));
+    append(mobStepOptions(MK::Zombie));
     append(mobStepOptions(MK::Cow));
     append(mobStepOptions(MK::Pig));
     append(mobStepOptions(MK::Sheep));
     append(mobStepOptions(MK::Chicken));
-    append(mobHitOptions(MK::VoidStrider));
+    append(mobHitOptions(MK::Zombie));
     append(mobHitOptions(MK::Cow));
     append(mobHitOptions(MK::Pig));
     append(mobHitOptions(MK::Sheep));
     append(mobHitOptions(MK::Chicken));
-    append(mobDefeatOptions(MK::VoidStrider));
+    append(mobDefeatOptions(MK::Zombie));
     append(mobDefeatOptions(MK::Cow));
     append(mobDefeatOptions(MK::Pig));
     append(mobDefeatOptions(MK::Sheep));

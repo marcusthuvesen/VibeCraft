@@ -90,6 +90,9 @@ TEST_CASE("forest-first biome pass discovers each woodland biome across a large 
     bool foundTaiga = false;
     bool foundSnowyTaiga = false;
     bool foundPlains = false;
+    bool foundSunflowerPlains = false;
+    bool foundSwamp = false;
+    bool foundSavanna = false;
     bool foundDesert = false;
     bool foundJungle = false;
 
@@ -102,20 +105,43 @@ TEST_CASE("forest-first biome pass discovers each woodland biome across a large 
             case vibecraft::world::SurfaceBiome::Forest:
                 foundForest = true;
                 break;
+            case vibecraft::world::SurfaceBiome::OldGrowthBirchForest:
+                foundBirchForest = true;
+                break;
             case vibecraft::world::SurfaceBiome::BirchForest:
                 foundBirchForest = true;
                 break;
             case vibecraft::world::SurfaceBiome::DarkForest:
+            case vibecraft::world::SurfaceBiome::FlowerForest:
                 foundDarkForest = true;
                 break;
             case vibecraft::world::SurfaceBiome::Taiga:
+            case vibecraft::world::SurfaceBiome::OldGrowthSpruceTaiga:
+            case vibecraft::world::SurfaceBiome::OldGrowthPineTaiga:
                 foundTaiga = true;
                 break;
             case vibecraft::world::SurfaceBiome::SnowyTaiga:
+            case vibecraft::world::SurfaceBiome::SnowySlopes:
                 foundSnowyTaiga = true;
                 break;
             case vibecraft::world::SurfaceBiome::Plains:
+            case vibecraft::world::SurfaceBiome::WindsweptHills:
+            case vibecraft::world::SurfaceBiome::StonyPeaks:
+            case vibecraft::world::SurfaceBiome::SavannaPlateau:
+            case vibecraft::world::SurfaceBiome::WindsweptSavanna:
                 foundPlains = true;
+                break;
+            case vibecraft::world::SurfaceBiome::SunflowerPlains:
+                foundSunflowerPlains = true;
+                break;
+            case vibecraft::world::SurfaceBiome::Meadow:
+                break;
+            case vibecraft::world::SurfaceBiome::Swamp:
+            case vibecraft::world::SurfaceBiome::MushroomField:
+                foundSwamp = true;
+                break;
+            case vibecraft::world::SurfaceBiome::Savanna:
+                foundSavanna = true;
                 break;
             case vibecraft::world::SurfaceBiome::Desert:
                 foundDesert = true;
@@ -126,6 +152,10 @@ TEST_CASE("forest-first biome pass discovers each woodland biome across a large 
                 foundJungle = true;
                 break;
             case vibecraft::world::SurfaceBiome::SnowyPlains:
+            case vibecraft::world::SurfaceBiome::IcePlains:
+            case vibecraft::world::SurfaceBiome::IceSpikePlains:
+            case vibecraft::world::SurfaceBiome::FrozenPeaks:
+            case vibecraft::world::SurfaceBiome::JaggedPeaks:
                 break;
             }
         }
@@ -137,6 +167,9 @@ TEST_CASE("forest-first biome pass discovers each woodland biome across a large 
     CHECK(foundTaiga);
     CHECK(foundSnowyTaiga);
     CHECK(foundPlains);
+    CHECK(foundSunflowerPlains);
+    CHECK(foundSwamp);
+    CHECK(foundSavanna);
     CHECK(foundDesert);
     CHECK(foundJungle);
 }

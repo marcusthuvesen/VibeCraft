@@ -29,11 +29,11 @@ constexpr int kBotanySearchRadiusBlocks = 56;
 }
 
 [[nodiscard]] bool isPositionInsideAnySafeZone(
-    const std::vector<OxygenSafeZone>& safeZones,
+    const std::vector<GreenhouseZone>& safeZones,
     const glm::vec3& worldCenter,
-    OxygenSafeZone* matchedZone = nullptr)
+    GreenhouseZone* matchedZone = nullptr)
 {
-    for (const OxygenSafeZone& safeZone : safeZones)
+    for (const GreenhouseZone& safeZone : safeZones)
     {
         const glm::vec3 delta = worldCenter - safeZone.center;
         if (glm::dot(delta, delta) <= safeZone.radius * safeZone.radius)
@@ -91,7 +91,7 @@ constexpr int kBotanySearchRadiusBlocks = 56;
     return score;
 }
 
-[[nodiscard]] float growthSpeedMultiplier(const OxygenSafeZone& safeZone, const int structureScore)
+[[nodiscard]] float growthSpeedMultiplier(const GreenhouseZone& safeZone, const int structureScore)
 {
     float multiplier = safeZone.generatorCount >= 2 ? 1.35f : 1.0f;
     if (structureScore >= 12)
@@ -176,7 +176,7 @@ constexpr int kBotanySearchRadiusBlocks = 56;
 [[nodiscard]] bool growTreeFromSapling(
     vibecraft::world::World& world,
     const glm::ivec3& saplingPosition,
-    const OxygenSafeZone& safeZone,
+    const GreenhouseZone& safeZone,
     const int structureScore)
 {
     const bool lushTree = safeZone.generatorCount >= 2 || structureScore >= 10;
@@ -250,13 +250,7 @@ BotanyPlacementResult validateBotanyBlockPlacement(
         return {.allowed = true};
     }
 
-    const std::vector<OxygenSafeZone> safeZones = collectOxygenSafeZones(world, playerFeetPosition, 48, 24);
-    const glm::vec3 worldCenter = glm::vec3(targetPosition) + glm::vec3(0.5f);
-    if (!isPositionInsideAnySafeZone(safeZones, worldCenter))
-    {
-        return {.allowed = false, .failureReason = "Fiber saplings need oxygen to take root."};
-    }
-
+    static_cast<void>(playerFeetPosition);
     return {.allowed = true};
 }
 
@@ -283,8 +277,8 @@ BotanyTickResult tickLocalBotany(
     const float pulseSeconds = runtimeState.pulseAccumulatorSeconds;
     runtimeState.pulseAccumulatorSeconds = 0.0f;
 
-    const std::vector<OxygenSafeZone> safeZones =
-        collectOxygenSafeZones(world, referencePosition, kBotanySearchRadiusBlocks, 24);
+    const std::vector<GreenhouseZone> safeZones =
+        collectGreenhouseZones(world, referencePosition, kBotanySearchRadiusBlocks, 24);
     const glm::vec2 referenceXZ(referencePosition.x, referencePosition.z);
     std::unordered_map<std::int64_t, bool> seenSaplings;
 
@@ -317,19 +311,22 @@ BotanyTickResult tickLocalBotany(
                     const std::int64_t key = packBlockKey(worldX, y, worldZ);
                     seenSaplings[key] = true;
                     ++result.saplingsTracked;
-                    OxygenSafeZone matchedZone{};
-                    const bool insideSafeZone = isPositionInsideAnySafeZone(
-                        safeZones,
-                        glm::vec3(static_cast<float>(worldX) + 0.5f, static_cast<float>(y) + 0.5f, static_cast<float>(worldZ) + 0.5f),
-                        &matchedZone);
-                    if (!insideSafeZone
-                        || world.blockAt(worldX, y - 1, worldZ) != vibecraft::world::BlockType::PlanterTray)
+                    if (world.blockAt(worldX, y - 1, worldZ) != vibecraft::world::BlockType::PlanterTray)
                     {
                         runtimeState.saplingGrowthSeconds.erase(key);
                         continue;
                     }
 
                     const int structureScore = greenhouseStructureScore(world, {worldX, y, worldZ});
+                    GreenhouseZone matchedZone{};
+                    static_cast<void>(isPositionInsideAnySafeZone(
+                        safeZones,
+                        glm::vec3(static_cast<float>(worldX) + 0.5f, static_cast<float>(y) + 0.5f, static_cast<float>(worldZ) + 0.5f),
+                        &matchedZone));
+                    if (matchedZone.generatorCount == 0)
+                    {
+                        matchedZone.generatorCount = static_cast<std::size_t>(std::clamp(structureScore / 8, 1, 4));
+                    }
                     const float newGrowthSeconds =
                         runtimeState.saplingGrowthSeconds[key] + pulseSeconds * growthSpeedMultiplier(matchedZone, structureScore);
                     if (growthBlock == vibecraft::world::BlockType::FiberSapling

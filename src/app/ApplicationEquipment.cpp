@@ -16,10 +16,8 @@ EquipmentSlotKind equipmentSlotKindForIndex(const std::size_t index)
     case 2:
         return EquipmentSlotKind::Leggings;
     case 3:
-        return EquipmentSlotKind::Boots;
-    case 4:
     default:
-        return EquipmentSlotKind::OxygenTank;
+        return EquipmentSlotKind::Boots;
     }
 }
 
@@ -40,37 +38,6 @@ float equippedArmorProtectionFraction(const EquipmentSlots& equipmentSlots)
     totalProtection += armorProtectionFractionForEquippedItem(
         equipmentSlots[equipmentSlotIndex(EquipmentSlotKind::Boots)].equippedItem);
     return std::clamp(totalProtection, 0.0f, 0.8f);
-}
-
-void syncOxygenEquipmentSlotFromSystem(
-    EquipmentSlots& equipmentSlots,
-    const vibecraft::game::OxygenSystem& oxygenSystem)
-{
-    InventorySlot& oxygenSlot = equipmentSlots[equipmentSlotIndex(EquipmentSlotKind::OxygenTank)];
-    const EquippedItem oxygenTankItem = equippedItemForOxygenTankTier(oxygenSystem.state().tankTier);
-    if (oxygenTankItem == EquippedItem::None)
-    {
-        clearInventorySlot(oxygenSlot);
-        return;
-    }
-
-    oxygenSlot.blockType = vibecraft::world::BlockType::Air;
-    oxygenSlot.equippedItem = oxygenTankItem;
-    oxygenSlot.count = 1;
-}
-
-void syncOxygenSystemFromEquipmentSlot(
-    const EquipmentSlots& equipmentSlots,
-    vibecraft::game::OxygenSystem& oxygenSystem,
-    const bool refillToCapacity)
-{
-    const InventorySlot& oxygenSlot = equipmentSlots[equipmentSlotIndex(EquipmentSlotKind::OxygenTank)];
-    vibecraft::game::OxygenTankTier tankTier = oxygenTankTierForUpgradeItem(oxygenSlot.equippedItem);
-    if (tankTier == vibecraft::game::OxygenTankTier::None)
-    {
-        tankTier = vibecraft::game::OxygenTankTier::Starter;
-    }
-    oxygenSystem.setTankTier(tankTier, refillToCapacity);
 }
 
 void mergeOrSwapEquipmentSlot(

@@ -95,7 +95,7 @@ struct ModelPartSpec
     using MK = vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MK::VoidStrider:
+    case MK::Zombie:
     case MK::Player:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 8.0f, 12.0f, 4.0f),
@@ -143,7 +143,7 @@ struct ModelPartSpec
     using MK = vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MK::VoidStrider:
+    case MK::Zombie:
     case MK::Player:
         return 32.0f;
     case MK::Cow:
@@ -163,7 +163,7 @@ struct ModelPartSpec
     using MK = vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MK::VoidStrider:
+    case MK::Zombie:
     case MK::Player:
         return 6.0f;
     case MK::Cow:
@@ -708,7 +708,11 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     bgfx::setViewTransform(detail::kUiView, view, proj);
 
     const detail::CraftingOverlayLayoutPx layout =
-        detail::computeCraftingOverlayLayoutPx(width_, height_, frameDebugData.craftingUsesWorkbench);
+        detail::computeCraftingOverlayLayoutPx(
+            width_,
+            height_,
+            frameDebugData.craftingUiMode,
+            frameDebugData.craftingUsesWorkbench);
     if (layout.slotSize <= 0.0f)
     {
         return;
@@ -720,6 +724,10 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     const std::uint16_t textHeight = stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
     const float charWidthPx = static_cast<float>(width_) / static_cast<float>(std::max<std::uint16_t>(1, textWidth));
     const float charHeightPx = static_cast<float>(height_) / static_cast<float>(std::max<std::uint16_t>(1, textHeight));
+    const bool inventoryMode = frameDebugData.craftingUiMode == CraftingUiMode::Inventory;
+    const bool workbenchMode = frameDebugData.craftingUiMode == CraftingUiMode::Workbench;
+    const bool chestMode = frameDebugData.craftingUiMode == CraftingUiMode::Chest;
+    const bool furnaceMode = frameDebugData.craftingUiMode == CraftingUiMode::Furnace;
     const auto drawUiTextureRectUv = [&](const float x0,
                                          const float y0,
                                          const float x1,
@@ -860,28 +868,31 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         }
     };
 
-    constexpr std::array<const char*, 5> kEquipmentLabels{"HELM", "CHEST", "LEGS", "BOOTS", "O2"};
-    for (std::size_t slotIndex = 0; slotIndex < frameDebugData.equipmentSlots.size(); ++slotIndex)
+    constexpr std::array<const char*, 4> kEquipmentLabels{"HELM", "CHEST", "LEGS", "BOOTS"};
+    if (inventoryMode)
     {
-        const float slotX = layout.equipmentOriginX;
-        const float slotY = layout.equipmentOriginY + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-        drawSlotFrame(slotX, slotY, false);
-        drawSlotContents(frameDebugData.equipmentSlots[slotIndex], slotX, slotY);
+        for (std::size_t slotIndex = 0; slotIndex < frameDebugData.equipmentSlots.size(); ++slotIndex)
+        {
+            const float slotX = layout.equipmentOriginX;
+            const float slotY = layout.equipmentOriginY + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
+            drawSlotFrame(slotX, slotY, false);
+            drawSlotContents(frameDebugData.equipmentSlots[slotIndex], slotX, slotY);
 
-        const int labelCol = std::clamp(
-            static_cast<int>(std::floor((slotX + layout.slotSize + layout.slotGap * 0.7f) / charWidthPx)),
-            0,
-            static_cast<int>(textWidth) - 1);
-        const int labelRow = std::clamp(
-            static_cast<int>(std::floor((slotY + layout.slotSize * 0.38f) / charHeightPx)),
-            0,
-            static_cast<int>(textHeight) - 1);
-        bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(labelCol),
-            static_cast<std::uint16_t>(labelRow),
-            0x0e,
-            "%s",
-            kEquipmentLabels[slotIndex]);
+            const int labelCol = std::clamp(
+                static_cast<int>(std::floor((slotX + layout.slotSize + layout.slotGap * 0.7f) / charWidthPx)),
+                0,
+                static_cast<int>(textWidth) - 1);
+            const int labelRow = std::clamp(
+                static_cast<int>(std::floor((slotY + layout.slotSize * 0.38f) / charHeightPx)),
+                0,
+                static_cast<int>(textHeight) - 1);
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(labelCol),
+                static_cast<std::uint16_t>(labelRow),
+                0x0e,
+                "%s",
+                kEquipmentLabels[slotIndex]);
+        }
     }
 
     const auto drawInventoryPlayerPreview = [&](const float previewCenterX, const float previewTop) -> void
@@ -938,21 +949,33 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         drawPart(legRight, 8.0f, 20.0f, 4.0f, 12.0f);
     };
 
-    const int craftingColumns = frameDebugData.craftingUsesWorkbench ? 3 : 2;
-    const int craftingRows = frameDebugData.craftingUsesWorkbench ? 3 : 2;
-    for (int row = 0; row < craftingRows; ++row)
+    const int craftingColumns = workbenchMode || chestMode ? 3 : 2;
+    const int craftingRows = workbenchMode || chestMode ? 3 : 2;
+    if (furnaceMode)
     {
-        for (int col = 0; col < craftingColumns; ++col)
+        constexpr std::size_t kFurnaceInputGridIndex = 1;
+        constexpr std::size_t kFurnaceFuelGridIndex = 7;
+        drawSlotFrame(layout.craftingOriginX, layout.craftingOriginY, false);
+        drawSlotContents(frameDebugData.craftingGridSlots[kFurnaceInputGridIndex], layout.craftingOriginX, layout.craftingOriginY);
+        drawSlotFrame(layout.furnaceFuelSlotX, layout.furnaceFuelSlotY, false);
+        drawSlotContents(frameDebugData.craftingGridSlots[kFurnaceFuelGridIndex], layout.furnaceFuelSlotX, layout.furnaceFuelSlotY);
+    }
+    else
+    {
+        for (int row = 0; row < craftingRows; ++row)
         {
-            const std::size_t slotIndex = static_cast<std::size_t>(row * 3 + col);
-            const float slotX = layout.craftingOriginX + static_cast<float>(col) * (layout.slotSize + layout.slotGap);
-            const float slotY = layout.craftingOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
-            drawSlotFrame(slotX, slotY, false);
-            drawSlotContents(frameDebugData.craftingGridSlots[slotIndex], slotX, slotY);
+            for (int col = 0; col < craftingColumns; ++col)
+            {
+                const std::size_t slotIndex = static_cast<std::size_t>(row * 3 + col);
+                const float slotX = layout.craftingOriginX + static_cast<float>(col) * (layout.slotSize + layout.slotGap);
+                const float slotY = layout.craftingOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
+                drawSlotFrame(slotX, slotY, false);
+                drawSlotContents(frameDebugData.craftingGridSlots[slotIndex], slotX, slotY);
+            }
         }
     }
 
-    if (frameDebugData.craftingMenuActive && playerMobTextureHandle_ != UINT16_MAX)
+    if (frameDebugData.craftingMenuActive && inventoryMode && playerMobTextureHandle_ != UINT16_MAX)
     {
         float previewTop = layout.equipmentOriginY - layout.slotSize * 1.25f;
         const float minPreviewTop = layout.panelTop + layout.slotSize * 0.35f;
@@ -964,19 +987,54 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         drawInventoryPlayerPreview(previewCenterX, previewTop);
     }
 
-    const float arrowY = layout.resultSlotY + layout.slotSize * 0.5f;
-    const float arrowX0 = layout.craftingOriginX
-        + static_cast<float>(craftingColumns) * layout.slotSize
-        + static_cast<float>(craftingColumns - 1) * layout.slotGap
-        + layout.slotGap * 0.9f;
-    const float arrowX1 = layout.resultSlotX - layout.slotGap * 0.9f;
-    const float arrowMidX = arrowX1 - layout.slotSize * 0.18f;
-    drawUiSolidRect(arrowX0, arrowY - 2.0f, arrowMidX, arrowY + 2.0f, cursorOutlineAbgr);
-    drawUiSolidRect(arrowMidX, arrowY - layout.slotSize * 0.16f, arrowX1, arrowY, cursorOutlineAbgr);
-    drawUiSolidRect(arrowMidX, arrowY, arrowX1, arrowY + layout.slotSize * 0.16f, cursorOutlineAbgr);
+    if (furnaceMode)
+    {
+        const float progressBarX = layout.craftingOriginX + layout.slotSize + layout.slotGap * 0.9f;
+        const float progressBarY = layout.resultSlotY + layout.slotSize * 0.42f;
+        const float progressBarWidth = std::max(10.0f, layout.resultSlotX - progressBarX - layout.slotGap * 0.9f);
+        const float progressBarHeight = std::max(6.0f, std::round(layout.slotSize * 0.16f));
+        const float fuelBarX = layout.craftingOriginX + layout.slotSize * 0.38f;
+        const float fuelBarY = layout.craftingOriginY + layout.slotSize + layout.slotGap * 0.18f;
+        const float fuelBarWidth = std::max(6.0f, std::round(layout.slotSize * 0.24f));
+        const float fuelBarHeight = std::max(10.0f, layout.furnaceFuelSlotY - fuelBarY - layout.slotGap * 0.18f);
+        const std::uint32_t progressBackAbgr = detail::packAbgr8(glm::vec3(0.14f, 0.16f, 0.20f), 0.98f);
+        const std::uint32_t progressFillAbgr = detail::packAbgr8(glm::vec3(0.86f, 0.86f, 0.84f), 0.98f);
+        const std::uint32_t fuelFillAbgr = detail::packAbgr8(glm::vec3(0.95f, 0.58f, 0.17f), 0.98f);
+        drawUiSolidRect(progressBarX, progressBarY, progressBarX + progressBarWidth, progressBarY + progressBarHeight, progressBackAbgr);
+        drawUiSolidRect(
+            progressBarX + 1.0f,
+            progressBarY + 1.0f,
+            progressBarX + 1.0f + std::max(0.0f, (progressBarWidth - 2.0f) * std::clamp(frameDebugData.craftingProgressFraction, 0.0f, 1.0f)),
+            progressBarY + progressBarHeight - 1.0f,
+            progressFillAbgr);
+        drawUiSolidRect(fuelBarX, fuelBarY, fuelBarX + fuelBarWidth, fuelBarY + fuelBarHeight, progressBackAbgr);
+        const float clampedFuel = std::clamp(frameDebugData.craftingFuelFraction, 0.0f, 1.0f);
+        const float fuelFillTop = fuelBarY + 1.0f + (fuelBarHeight - 2.0f) * (1.0f - clampedFuel);
+        drawUiSolidRect(
+            fuelBarX + 1.0f,
+            fuelFillTop,
+            fuelBarX + fuelBarWidth - 1.0f,
+            fuelBarY + fuelBarHeight - 1.0f,
+            fuelFillAbgr);
+        drawSlotFrame(layout.resultSlotX, layout.resultSlotY, frameDebugData.craftingResultSlot.count > 0);
+        drawSlotContents(frameDebugData.craftingResultSlot, layout.resultSlotX, layout.resultSlotY);
+    }
+    else if (!chestMode)
+    {
+        const float arrowY = layout.resultSlotY + layout.slotSize * 0.5f;
+        const float arrowX0 = layout.craftingOriginX
+            + static_cast<float>(craftingColumns) * layout.slotSize
+            + static_cast<float>(craftingColumns - 1) * layout.slotGap
+            + layout.slotGap * 0.9f;
+        const float arrowX1 = layout.resultSlotX - layout.slotGap * 0.9f;
+        const float arrowMidX = arrowX1 - layout.slotSize * 0.18f;
+        drawUiSolidRect(arrowX0, arrowY - 2.0f, arrowMidX, arrowY + 2.0f, cursorOutlineAbgr);
+        drawUiSolidRect(arrowMidX, arrowY - layout.slotSize * 0.16f, arrowX1, arrowY, cursorOutlineAbgr);
+        drawUiSolidRect(arrowMidX, arrowY, arrowX1, arrowY + layout.slotSize * 0.16f, cursorOutlineAbgr);
 
-    drawSlotFrame(layout.resultSlotX, layout.resultSlotY, frameDebugData.craftingResultSlot.count > 0);
-    drawSlotContents(frameDebugData.craftingResultSlot, layout.resultSlotX, layout.resultSlotY);
+        drawSlotFrame(layout.resultSlotX, layout.resultSlotY, frameDebugData.craftingResultSlot.count > 0);
+        drawSlotContents(frameDebugData.craftingResultSlot, layout.resultSlotX, layout.resultSlotY);
+    }
 
     constexpr int kVisibleBagRows = 3;
     constexpr std::size_t kBagColumns = 9;
@@ -1678,24 +1736,32 @@ void Renderer::drawWorldMobSprites(
             }
             break;
         }
-        case MK::VoidStrider:
+        case MK::Zombie:
         {
-            // The alien hunter gets a taller silhouette and crest so it reads as something native to this world.
+            // Zombie keeps classic humanoid proportions, close to the player silhouette.
             constexpr float kPi = 3.14159265358979323846f;
             const float gaitPhase = cameraFrameData.weatherTimeSeconds * 3.2f
                 + mob.feetPosition.x * 0.37f
                 + mob.feetPosition.z * 0.29f;
             const float armSwing = std::sin(gaitPhase) * 1.25f;
             const float legSwing = std::sin(gaitPhase + kPi) * 1.05f;
-            const float bodyBob = std::abs(std::sin(gaitPhase * 2.0f)) * 0.35f;
+            const float bodyBob = std::abs(std::sin(gaitPhase * 2.0f)) * 0.2f;
 
-            if (!submitCuboid(glm::vec3(0.0f, 18.8f + bodyBob, -0.55f), glm::vec3(3.7f, 6.4f, 2.1f), uv.body)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 28.2f + bodyBob, 1.15f), glm::vec3(3.7f, 4.0f, 4.5f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 31.2f + bodyBob, -0.7f), glm::vec3(0.9f, 3.6f, 0.9f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(-5.8f, 18.1f + bodyBob, 0.45f + armSwing), glm::vec3(1.9f, 5.8f, 1.9f), uv.arm)) break;
-            if (!submitCuboid(glm::vec3(5.8f, 18.1f + bodyBob, 0.45f - armSwing), glm::vec3(1.9f, 5.8f, 1.9f), uv.arm)) break;
-            if (!submitCuboid(glm::vec3(-2.0f, 6.0f, 0.2f + legSwing), glm::vec3(1.95f, 6.0f, 1.95f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(2.0f, 6.0f, 0.2f - legSwing), glm::vec3(1.95f, 6.0f, 1.95f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 18.0f + bodyBob, 0.0f), glm::vec3(4.0f, 6.0f, 2.0f), uv.body)) break;
+            if (!submitOrientedCuboid(
+                    glm::vec3(0.0f, 28.0f + bodyBob, 0.0f),
+                    glm::vec3(4.0f * sx, 4.0f * sy, 4.0f * sz),
+                    right,
+                    headUp,
+                    headForward,
+                    uv.head))
+            {
+                break;
+            }
+            if (!submitCuboid(glm::vec3(-6.0f, 18.0f + bodyBob, armSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(6.0f, 18.0f + bodyBob, -armSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(-2.0f, 6.0f, legSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.0f, 6.0f, -legSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
             break;
         }
         case MK::Cow:

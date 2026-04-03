@@ -12,7 +12,7 @@ enum class BiomeOreProfile : std::uint8_t
     RegolithPlains = 0,
     DustFlats = 1,
     IceShelf = 2,
-    OxygenGrove = 3,
+    VerdantGrove = 3,
 };
 
 /// Host block is plain stone or deepslate (no ore overlay on regolith or surface strata).

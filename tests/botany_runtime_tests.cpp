@@ -5,7 +5,7 @@
 #include "vibecraft/world/TerrainGenerator.hpp"
 #include "vibecraft/world/World.hpp"
 
-TEST_CASE("fiber saplings require planter trays and oxygen")
+TEST_CASE("fiber saplings require planter trays")
 {
     vibecraft::world::World world;
 
@@ -22,26 +22,13 @@ TEST_CASE("fiber saplings require planter trays and oxygen")
         .position = {0, 10, 0},
         .blockType = vibecraft::world::BlockType::PlanterTray,
     }));
-    const auto noOxygen = vibecraft::app::validateBotanyBlockPlacement(
+    const auto withTray = vibecraft::app::validateBotanyBlockPlacement(
         world,
         {0, 11, 0},
         vibecraft::world::BlockType::FiberSapling,
         glm::vec3(0.0f, 10.0f, 0.0f),
         false);
-    CHECK_FALSE(noOxygen.allowed);
-
-    CHECK(world.applyEditCommand({
-        .action = vibecraft::world::WorldEditAction::Place,
-        .position = {0, 10, 1},
-        .blockType = vibecraft::world::BlockType::OxygenGenerator,
-    }));
-    const auto valid = vibecraft::app::validateBotanyBlockPlacement(
-        world,
-        {0, 11, 0},
-        vibecraft::world::BlockType::FiberSapling,
-        glm::vec3(0.0f, 10.0f, 0.0f),
-        false);
-    CHECK(valid.allowed);
+    CHECK(withTray.allowed);
 }
 
 TEST_CASE("fiber saplings grow into trees inside relay zones")

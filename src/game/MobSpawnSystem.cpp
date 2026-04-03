@@ -11,6 +11,7 @@
 #include <glm/geometric.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -130,6 +131,47 @@ struct LivingPlayerTarget
     return false;
 }
 
+[[nodiscard]] bool hostileSpawnBlockedByTorch(
+    const world::World& worldState,
+    const glm::vec3& candidateFeet,
+    const float exclusionRadius)
+{
+    if (exclusionRadius <= 0.0f)
+    {
+        return false;
+    }
+
+    const int centerX = static_cast<int>(std::floor(candidateFeet.x));
+    const int centerZ = static_cast<int>(std::floor(candidateFeet.z));
+    const int radiusBlocks = static_cast<int>(std::ceil(exclusionRadius));
+    const float radiusSq = exclusionRadius * exclusionRadius;
+    const int minY = static_cast<int>(std::floor(candidateFeet.y)) - 2;
+    const int maxY = static_cast<int>(std::floor(candidateFeet.y)) + 3;
+
+    for (int z = centerZ - radiusBlocks; z <= centerZ + radiusBlocks; ++z)
+    {
+        const float dz = static_cast<float>(z - centerZ);
+        for (int x = centerX - radiusBlocks; x <= centerX + radiusBlocks; ++x)
+        {
+            const float dx = static_cast<float>(x - centerX);
+            if (dx * dx + dz * dz > radiusSq)
+            {
+                continue;
+            }
+
+            for (int y = minY; y <= maxY; ++y)
+            {
+                if (worldState.blockAt(x, y, z) == world::BlockType::Torch)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 [[nodiscard]] bool mobBodyTouchesFluid(const world::World& worldState, const Aabb& aabb)
 {
     const int minX = static_cast<int>(std::floor(aabb.min.x));
@@ -155,6 +197,81 @@ struct LivingPlayerTarget
     return false;
 }
 
+[[nodiscard]] bool hasSolidSupportBelowAabb(const world::World& worldState, const Aabb& aabb)
+{
+    const int minX = static_cast<int>(std::floor(aabb.min.x + kAabbEpsilon));
+    const int maxX = static_cast<int>(std::floor(aabb.max.x - kAabbEpsilon));
+    const int minZ = static_cast<int>(std::floor(aabb.min.z + kAabbEpsilon));
+    const int maxZ = static_cast<int>(std::floor(aabb.max.z - kAabbEpsilon));
+    const int supportY = static_cast<int>(std::floor(aabb.min.y - kAabbEpsilon));
+
+    for (int z = minZ; z <= maxZ; ++z)
+    {
+        for (int x = minX; x <= maxX; ++x)
+        {
+            if (world::isSolid(worldState.blockAt(x, supportY, z)))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool tryStepOrJumpOverLedge(
+    const world::World& worldState,
+    const MobSpawnSettings& settings,
+    const MobInstance& mob,
+    const glm::vec3& basePosition,
+    const int axisIndex,
+    const float step,
+    glm::vec3& outFeetPosition)
+{
+    if (axisIndex == 1 || settings.mobStepHeight <= kAabbEpsilon)
+    {
+        return false;
+    }
+
+    const std::array<float, 3> liftCandidates{
+        settings.mobStepHeight * 0.45f,
+        settings.mobStepHeight * 0.75f,
+        settings.mobStepHeight,
+    };
+
+    for (const float lift : liftCandidates)
+    {
+        if (lift <= kAabbEpsilon)
+        {
+            continue;
+        }
+
+        glm::vec3 lifted = basePosition;
+        lifted.y += lift;
+        const Aabb liftedAabb = aabbAtFeet(lifted, mob.halfWidth, mob.height);
+        if (collidesWithSolidBlock(worldState, liftedAabb) || mobBodyTouchesFluid(worldState, liftedAabb))
+        {
+            continue;
+        }
+
+        glm::vec3 moved = lifted;
+        moved[axisIndex] += step;
+        const Aabb movedAabb = aabbAtFeet(moved, mob.halfWidth, mob.height);
+        if (collidesWithSolidBlock(worldState, movedAabb) || mobBodyTouchesFluid(worldState, movedAabb))
+        {
+            continue;
+        }
+        if (!hasSolidSupportBelowAabb(worldState, movedAabb))
+        {
+            continue;
+        }
+
+        outFeetPosition = moved;
+        return true;
+    }
+
+    return false;
+}
+
 [[nodiscard]] bool isHostileSpawnPeriod(const TimeOfDayPeriod period)
 {
     return period == TimeOfDayPeriod::Night || period == TimeOfDayPeriod::Dusk;
@@ -175,7 +292,7 @@ struct MobDimensionsForKind
 {
     switch (kind)
     {
-    case MobKind::VoidStrider:
+    case MobKind::Zombie:
         return {.halfWidth = 0.28f, .height = 1.75f};
     case MobKind::Player:
         return {.halfWidth = 0.30f, .height = 2.0f};
@@ -473,33 +590,16 @@ void MobSpawnSystem::moveMobAxis(
             continue;
         }
 
-        // Horizontal movement can step up one block when blocked, instead of clipping into terrain.
-        if (axisIndex != 1 && settings_.mobStepHeight > kAabbEpsilon)
+        // Horizontal movement can hop/step over one-block ledges when blocked.
+        glm::vec3 steppedFeet{0.0f};
+        if (tryStepOrJumpOverLedge(world, settings_, mob, basePosition, axisIndex, step, steppedFeet))
         {
-            glm::vec3 stepUpPosition = basePosition;
-            stepUpPosition.y += settings_.mobStepHeight;
-            const Aabb stepUpAabb = aabbAtFeet(stepUpPosition, mob.halfWidth, mob.height);
-            if (!collidesWithSolidBlock(world, stepUpAabb) && !mobBodyTouchesFluid(world, stepUpAabb))
-            {
-                glm::vec3 steppedCandidate = stepUpPosition;
-                steppedCandidate[axisIndex] += step;
-                const Aabb steppedAabb = aabbAtFeet(steppedCandidate, mob.halfWidth, mob.height);
-                if (!collidesWithSolidBlock(world, steppedAabb) && !mobBodyTouchesFluid(world, steppedAabb))
-                {
-                    const int supportX = static_cast<int>(std::floor(steppedCandidate.x));
-                    const int supportY = static_cast<int>(std::floor(steppedCandidate.y - kAabbEpsilon));
-                    const int supportZ = static_cast<int>(std::floor(steppedCandidate.z));
-                    if (world::isSolid(world.blockAt(supportX, supportY, supportZ)))
-                    {
-                        feet = steppedCandidate;
-                        mob.feetX = feet.x;
-                        mob.feetY = feet.y;
-                        mob.feetZ = feet.z;
-                        remaining -= step;
-                        continue;
-                    }
-                }
-            }
+            feet = steppedFeet;
+            mob.feetX = feet.x;
+            mob.feetY = feet.y;
+            mob.feetZ = feet.z;
+            remaining -= step;
+            continue;
         }
 
         float low = 0.0f;
@@ -606,7 +706,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
         return false;
     }
 
-    const MobDimensionsForKind dims = dimensionsForKind(MobKind::VoidStrider);
+    const MobDimensionsForKind dims = dimensionsForKind(MobKind::Zombie);
 
     std::uniform_real_distribution<float> angleDist(0.0f, 6.28318530718f);
     std::uniform_real_distribution<float> radiusDist(
@@ -653,6 +753,10 @@ bool MobSpawnSystem::trySpawnOneHostile(
         {
             continue;
         }
+        if (hostileSpawnBlockedByTorch(world, candidateFeet, settings_.hostileTorchExclusionRadius))
+        {
+            continue;
+        }
 
         bool tooCloseToMob = false;
         for (const MobInstance& other : mobs_)
@@ -694,7 +798,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
         const glm::vec3 faceToward = nearestPlayerFeetForFacing(candidateFeet, playerFeet, remotePlayerFeet);
         mobs_.push_back(MobInstance{
             .id = nextId_++,
-            .kind = MobKind::VoidStrider,
+            .kind = MobKind::Zombie,
             .feetX = feetX,
             .feetY = feetY,
             .feetZ = feetZ,
@@ -702,7 +806,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
             .attackCooldownSeconds = 0.0f,
             .wanderTimerSeconds = 0.0f,
             .wanderYawRadians = 0.0f,
-            .health = mobKindDefaultMaxHealth(MobKind::VoidStrider),
+            .health = mobKindDefaultMaxHealth(MobKind::Zombie),
             .halfWidth = dims.halfWidth,
             .height = dims.height,
         });

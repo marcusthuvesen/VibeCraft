@@ -19,7 +19,7 @@ TEST_CASE("server snapshots preserve dropped equipped item identity")
         .droppedItems =
             {{
                 .blockType = BlockType::Air,
-                .equippedItem = EquippedItem::FieldTank,
+                .equippedItem = EquippedItem::IronPickaxe,
                 .posX = 1.0f,
                 .posY = 2.0f,
                 .posZ = 3.0f,
@@ -46,7 +46,7 @@ TEST_CASE("server snapshots preserve dropped equipped item identity")
 
     const DroppedItemSnapshotMessage& droppedItem = payload->droppedItems.front();
     CHECK(droppedItem.blockType == BlockType::Air);
-    CHECK(droppedItem.equippedItem == EquippedItem::FieldTank);
+    CHECK(droppedItem.equippedItem == EquippedItem::IronPickaxe);
     CHECK(droppedItem.posX == doctest::Approx(1.0f));
     CHECK(droppedItem.spinRadians == doctest::Approx(1.25f));
 }
@@ -108,7 +108,7 @@ TEST_CASE("server snapshots round-trip mob poses for protocol v4+")
             {
                 MobSnapshotMessage{
                     .id = 7,
-                    .kind = MobKind::VoidStrider,
+                    .kind = MobKind::Zombie,
                     .feetX = 10.0f,
                     .feetY = 64.0f,
                     .feetZ = -3.0f,
@@ -128,7 +128,7 @@ TEST_CASE("server snapshots round-trip mob poses for protocol v4+")
     REQUIRE(payload != nullptr);
     REQUIRE(payload->mobs.size() == 1);
     CHECK(payload->mobs[0].id == 7);
-    CHECK(payload->mobs[0].kind == MobKind::VoidStrider);
+    CHECK(payload->mobs[0].kind == MobKind::Zombie);
     CHECK(payload->mobs[0].feetX == doctest::Approx(10.0f));
     CHECK(payload->mobs[0].yawRadians == doctest::Approx(1.25f));
     CHECK(payload->mobs[0].health == doctest::Approx(12.5f));

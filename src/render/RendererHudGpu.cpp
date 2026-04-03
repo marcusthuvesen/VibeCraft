@@ -129,29 +129,24 @@ void Renderer::drawSurvivalStatusHud(const FrameDebugData& frameDebugData)
     const float panelX = std::floor((static_cast<float>(width_) - panelWidth) * 0.5f);
     const float panelY = std::max(12.0f, std::floor(heartsY - panelHeight - std::max(10.0f, heartSize * 0.4f)));
 
+    const bool airLow =
+        frameDebugData.maxAir > 0.0f && frameDebugData.air <= frameDebugData.maxAir * 0.2f + 1e-3f;
     const std::uint32_t outerAbgr = detail::packAbgr8(
-        frameDebugData.oxygenLowWarning ? glm::vec3(0.44f, 0.12f, 0.12f) : glm::vec3(0.05f, 0.08f, 0.12f),
+        airLow ? glm::vec3(0.44f, 0.12f, 0.12f) : glm::vec3(0.05f, 0.08f, 0.12f),
         0.94f);
     const std::uint32_t innerAbgr = detail::packAbgr8(
-        frameDebugData.oxygenLowWarning ? glm::vec3(0.20f, 0.07f, 0.07f) : glm::vec3(0.10f, 0.16f, 0.22f),
+        airLow ? glm::vec3(0.20f, 0.07f, 0.07f) : glm::vec3(0.10f, 0.16f, 0.22f),
         0.96f);
     const std::uint32_t iconFrameAbgr = detail::packAbgr8(glm::vec3(0.20f, 0.30f, 0.40f), 0.98f);
     const std::uint32_t iconFillAbgr = detail::packAbgr8(glm::vec3(0.07f, 0.11f, 0.15f), 0.98f);
     const std::uint32_t trackAbgr = detail::packAbgr8(glm::vec3(0.03f, 0.05f, 0.08f), 0.98f);
     const std::uint32_t fillAbgr = detail::packAbgr8(
-        frameDebugData.oxygenLowWarning
-            ? glm::vec3(0.92f, 0.40f, 0.24f)
-            : (frameDebugData.oxygenInsideSafeZone ? glm::vec3(0.30f, 0.87f, 0.88f) : glm::vec3(0.22f, 0.67f, 0.96f)),
+        airLow ? glm::vec3(0.92f, 0.40f, 0.24f) : glm::vec3(0.22f, 0.67f, 0.96f),
         0.99f);
     const std::uint32_t markerAbgr = detail::packAbgr8(glm::vec3(0.80f, 0.90f, 1.0f), 0.18f);
-    const std::uint32_t statusAbgr = detail::packAbgr8(
-        frameDebugData.oxygenInsideSafeZone ? glm::vec3(0.55f, 0.98f, 0.72f) : glm::vec3(0.70f, 0.82f, 0.96f),
-        0.98f);
-    const std::uint32_t zoneAccentAbgr = detail::packAbgr8(
-        frameDebugData.oxygenLowWarning
-            ? glm::vec3(0.92f, 0.42f, 0.20f)
-            : (frameDebugData.oxygenInsideSafeZone ? glm::vec3(0.34f, 0.92f, 0.66f) : glm::vec3(0.44f, 0.66f, 0.92f)),
-        0.98f);
+    const std::uint32_t statusAbgr = detail::packAbgr8(glm::vec3(0.70f, 0.82f, 0.96f), 0.98f);
+    const std::uint32_t zoneAccentAbgr =
+        detail::packAbgr8(airLow ? glm::vec3(0.92f, 0.42f, 0.20f) : glm::vec3(0.44f, 0.66f, 0.92f), 0.98f);
 
     drawUiSolidRect(panelX, panelY, panelX + panelWidth, panelY + panelHeight, outerAbgr);
     drawUiSolidRect(panelX + 1.0f, panelY + 1.0f, panelX + panelWidth - 1.0f, panelY + panelHeight - 1.0f, innerAbgr);
@@ -163,17 +158,6 @@ void Renderer::drawSurvivalStatusHud(const FrameDebugData& frameDebugData)
     drawUiSolidRect(iconX0, iconY0, iconX0 + iconSize, iconY0 + iconSize, iconFrameAbgr);
     drawUiSolidRect(iconX0 + 1.0f, iconY0 + 1.0f, iconX0 + iconSize - 1.0f, iconY0 + iconSize - 1.0f, iconFillAbgr);
 
-    const std::uint16_t tankTextureHandle = hudItemKindTextureHandle(frameDebugData.oxygenTankItemKind);
-    if (tankTextureHandle != UINT16_MAX)
-    {
-        drawTextureIcon(
-            iconX0 + iconSize * 0.5f,
-            iconY0 + iconSize * 0.5f,
-            std::max(8.0f, iconSize * 0.76f),
-            tankTextureHandle,
-            hudItemKindTextureUv(frameDebugData.oxygenTankItemKind));
-    }
-
     const float statusSize = std::max(8.0f, std::round(panelHeight * 0.22f));
     const float trackX0 = iconX0 + iconSize + inset;
     const float trackX1 = panelX + panelWidth - inset - statusSize - inset * 0.6f;
@@ -182,9 +166,9 @@ void Renderer::drawSurvivalStatusHud(const FrameDebugData& frameDebugData)
     drawUiSolidRect(trackX0, panelY + 2.0f, trackX1, panelY + 4.0f, zoneAccentAbgr);
     drawUiSolidRect(trackX0, trackY0, trackX1, trackY1, trackAbgr);
 
-    const float clampedMaxOxygen = std::max(0.0f, frameDebugData.maxOxygen);
-    const float clampedOxygen = std::clamp(frameDebugData.oxygen, 0.0f, clampedMaxOxygen);
-    const float fillRatio = clampedMaxOxygen > 0.0f ? clampedOxygen / clampedMaxOxygen : 0.0f;
+    const float clampedMaxAir = std::max(0.0f, frameDebugData.maxAir);
+    const float clampedAir = std::clamp(frameDebugData.air, 0.0f, clampedMaxAir);
+    const float fillRatio = clampedMaxAir > 0.0f ? clampedAir / clampedMaxAir : 0.0f;
     if (fillRatio > 0.001f)
     {
         drawUiSolidRect(trackX0, trackY0, trackX0 + (trackX1 - trackX0) * fillRatio, trackY1, fillAbgr);

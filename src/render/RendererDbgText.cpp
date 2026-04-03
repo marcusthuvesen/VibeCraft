@@ -131,6 +131,7 @@ void dbgTextPrintfCenteredRow(
 [[nodiscard]] CraftingOverlayLayoutPx computeCraftingOverlayLayoutPx(
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
+    const vibecraft::render::CraftingUiMode mode,
     const bool useWorkbench)
 {
     CraftingOverlayLayoutPx layout{};
@@ -138,11 +139,16 @@ void dbgTextPrintfCenteredRow(
     {
         return layout;
     }
+    (void)useWorkbench;
 
     const float maxWidth = static_cast<float>(windowWidth) * 0.98f;
     const float maxHeight = static_cast<float>(windowHeight) * 0.98f;
-    const int craftingColumns = useWorkbench ? 3 : 2;
-    const int craftingRows = useWorkbench ? 3 : 2;
+    const bool inventoryMode = mode == vibecraft::render::CraftingUiMode::Inventory;
+    const bool workbenchMode = mode == vibecraft::render::CraftingUiMode::Workbench;
+    const bool chestMode = mode == vibecraft::render::CraftingUiMode::Chest;
+    const bool furnaceMode = mode == vibecraft::render::CraftingUiMode::Furnace;
+    const int craftingColumns = workbenchMode || chestMode ? 3 : 2;
+    const int craftingRows = furnaceMode ? 2 : (workbenchMode || chestMode ? 3 : 2);
     constexpr int kVisibleInventoryRows = 3;
     constexpr int kVisibleHotbarRows = 1;
 
@@ -155,12 +161,17 @@ void dbgTextPrintfCenteredRow(
         const float resultGap = std::max(18.0f, std::round(candidateSlotSize * 1.1f));
         const float equipmentSectionGap = std::max(14.0f, std::round(candidateSlotSize * 0.65f));
         const float equipmentSectionWidth = candidateSlotSize * 1.7f;
-        const float topSectionWidth =
-            equipmentSectionWidth + equipmentSectionGap + craftWidth + resultGap + candidateSlotSize;
+        const float topSectionWidth = furnaceMode
+            ? candidateSlotSize + resultGap + candidateSlotSize
+            : inventoryMode
+                ? equipmentSectionWidth + equipmentSectionGap + craftWidth + resultGap + candidateSlotSize
+                : craftWidth + resultGap + candidateSlotSize;
         const float panelWidth = std::max(inventoryWidth, topSectionWidth) + candidateSlotSize * 1.8f;
         const float craftingSectionHeight = static_cast<float>(craftingRows) * candidateSlotSize
             + static_cast<float>(craftingRows - 1) * candidateGap;
-        const float equipmentSectionHeight = 5.0f * candidateSlotSize + 4.0f * candidateGap;
+        const float equipmentSectionHeight = inventoryMode
+            ? 5.0f * candidateSlotSize + 4.0f * candidateGap
+            : 0.0f;
         const float topSectionHeight = std::max(craftingSectionHeight, equipmentSectionHeight);
         const float inventoryHeight =
             static_cast<float>(kVisibleInventoryRows + kVisibleHotbarRows) * candidateSlotSize
@@ -194,7 +205,7 @@ void dbgTextPrintfCenteredRow(
     const float panelHeight = metrics[5];
     const float craftingSectionHeight = static_cast<float>(craftingRows) * slotSize
         + static_cast<float>(craftingRows - 1) * slotGap;
-    const float equipmentSectionHeight = 5.0f * slotSize + 4.0f * slotGap;
+    const float equipmentSectionHeight = inventoryMode ? 5.0f * slotSize + 4.0f * slotGap : 0.0f;
     const float topSectionHeight = std::max(craftingSectionHeight, equipmentSectionHeight);
     const float panelLeft = std::floor((static_cast<float>(windowWidth) - panelWidth) * 0.5f);
     const float panelTop = std::floor((static_cast<float>(windowHeight) - panelHeight) * 0.5f);
@@ -203,10 +214,16 @@ void dbgTextPrintfCenteredRow(
     const float equipmentSectionWidth = slotSize * 1.7f;
     const float topSectionOriginX = panelInnerX + std::floor((panelWidth - slotSize * 1.8f - topSectionWidth) * 0.5f);
     const float equipmentOriginX = topSectionOriginX;
-    const float craftingOriginX = equipmentOriginX + equipmentSectionWidth + equipmentSectionGap;
+    const float craftingOriginX = inventoryMode
+        ? equipmentOriginX + equipmentSectionWidth + equipmentSectionGap
+        : topSectionOriginX;
     const float craftingOriginY = panelTop + slotSize * 1.5f;
-    const float resultSlotX = craftingOriginX + craftWidth + resultGap;
-    const float resultSlotY = craftingOriginY + (craftingSectionHeight - slotSize) * 0.5f;
+    const float resultSlotX = furnaceMode
+        ? craftingOriginX + slotSize + resultGap
+        : craftingOriginX + craftWidth + resultGap;
+    const float resultSlotY = furnaceMode
+        ? craftingOriginY + (slotSize + slotGap) * 0.5f
+        : craftingOriginY + (craftingSectionHeight - slotSize) * 0.5f;
     const float inventoryOriginX = panelInnerX;
     const float inventoryOriginY = craftingOriginY + topSectionHeight + slotSize * 1.55f;
 
@@ -220,6 +237,8 @@ void dbgTextPrintfCenteredRow(
     layout.equipmentOriginY = craftingOriginY;
     layout.craftingOriginX = craftingOriginX;
     layout.craftingOriginY = craftingOriginY;
+    layout.furnaceFuelSlotX = craftingOriginX;
+    layout.furnaceFuelSlotY = craftingOriginY + slotSize + slotGap;
     layout.resultSlotX = resultSlotX;
     layout.resultSlotY = resultSlotY;
     layout.inventoryOriginX = inventoryOriginX;

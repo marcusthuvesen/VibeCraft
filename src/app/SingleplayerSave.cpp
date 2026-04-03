@@ -15,7 +15,7 @@ namespace vibecraft::app
 namespace
 {
 constexpr std::uint32_t kPlayerStateMagic = 0x56424350;  // VBCP
-constexpr std::uint32_t kPlayerStateVersion = 3;
+constexpr std::uint32_t kPlayerStateVersion = 6;
 
 template<typename T>
 bool writeBinary(std::ofstream& output, const T& value)
@@ -37,10 +37,11 @@ bool writeInventorySlot(std::ofstream& output, const InventorySlot& slot)
     const std::uint8_t equippedItem = static_cast<std::uint8_t>(slot.equippedItem);
     return writeBinary(output, blockType)
         && writeBinary(output, slot.count)
-        && writeBinary(output, equippedItem);
+        && writeBinary(output, equippedItem)
+        && writeBinary(output, slot.durabilityRemaining);
 }
 
-bool readInventorySlot(std::ifstream& input, InventorySlot& slot)
+bool readInventorySlot(std::ifstream& input, InventorySlot& slot, const std::uint32_t version)
 {
     std::uint8_t blockType = 0;
     std::uint8_t equippedItem = 0;
@@ -50,30 +51,17 @@ bool readInventorySlot(std::ifstream& input, InventorySlot& slot)
     }
     slot.blockType = static_cast<vibecraft::world::BlockType>(blockType);
     slot.equippedItem = static_cast<EquippedItem>(equippedItem);
-    return true;
-}
-
-bool writeOxygenState(std::ofstream& output, const vibecraft::game::OxygenState& oxygenState)
-{
-    const std::uint8_t tankTier = static_cast<std::uint8_t>(oxygenState.tankTier);
-    return writeBinary(output, tankTier)
-        && writeBinary(output, oxygenState.oxygen)
-        && writeBinary(output, oxygenState.capacity);
-}
-
-bool readOxygenState(std::ifstream& input, vibecraft::game::OxygenState& oxygenState)
-{
-    std::uint8_t tankTier = 0;
-    if (!readBinary(input, tankTier)
-        || !readBinary(input, oxygenState.oxygen)
-        || !readBinary(input, oxygenState.capacity))
+    if (version >= 6)
     {
-        return false;
+        if (!readBinary(input, slot.durabilityRemaining))
+        {
+            return false;
+        }
     }
-
-    oxygenState.tankTier = static_cast<vibecraft::game::OxygenTankTier>(tankTier);
-    oxygenState.capacity = std::max(0.0f, oxygenState.capacity);
-    oxygenState.oxygen = std::clamp(oxygenState.oxygen, 0.0f, oxygenState.capacity);
+    else
+    {
+        slot.durabilityRemaining = 0;
+    }
     return true;
 }
 
@@ -245,8 +233,7 @@ bool SingleplayerSaveSerializer::savePlayerState(
         || !writeBinary(output, state.cameraYawDegrees)
         || !writeBinary(output, state.cameraPitchDegrees)
         || !writeBinary(output, state.health)
-        || !writeBinary(output, state.air)
-        || !writeOxygenState(output, state.oxygenState))
+        || !writeBinary(output, state.air))
     {
         return false;
     }
@@ -327,6 +314,25 @@ bool SingleplayerSaveSerializer::savePlayerState(
         }
     }
 
+    const std::uint32_t furnaceCount = static_cast<std::uint32_t>(state.furnaceStatesByPosition.size());
+    if (!writeBinary(output, furnaceCount))
+    {
+        return false;
+    }
+    for (const auto& [storageKey, state] : state.furnaceStatesByPosition)
+    {
+        if (!writeBinary(output, storageKey)
+            || !writeInventorySlot(output, state.inputSlot)
+            || !writeInventorySlot(output, state.fuelSlot)
+            || !writeInventorySlot(output, state.outputSlot)
+            || !writeBinary(output, state.fuelSecondsRemaining)
+            || !writeBinary(output, state.fuelSecondsCapacity)
+            || !writeBinary(output, state.smeltProgressSeconds))
+        {
+            return false;
+        }
+    }
+
     return output.good();
 }
 
@@ -341,8 +347,8 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
 
     std::uint32_t magic = 0;
     std::uint32_t version = 0;
-    if (!readBinary(input, magic) || !readBinary(input, version)
-        || magic != kPlayerStateMagic || (version < 1 || version > kPlayerStateVersion))
+    if (!readBinary(input, magic) || !readBinary(input, version) || magic != kPlayerStateMagic
+        || version < 4 || version > kPlayerStateVersion)
     {
         return std::nullopt;
     }
@@ -363,14 +369,6 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
         return std::nullopt;
     }
 
-    if (version >= 2)
-    {
-        if (!readOxygenState(input, state.oxygenState))
-        {
-            return std::nullopt;
-        }
-    }
-
     if (!readBinary(input, creativeModeEnabled)
         || !readBinary(input, state.selectedHotbarIndex)
         || !readBinary(input, state.dayNightElapsedSeconds)
@@ -382,26 +380,23 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
 
     for (InventorySlot& slot : state.hotbarSlots)
     {
-        if (!readInventorySlot(input, slot))
+        if (!readInventorySlot(input, slot, version))
         {
             return std::nullopt;
         }
     }
     for (InventorySlot& slot : state.bagSlots)
     {
-        if (!readInventorySlot(input, slot))
+        if (!readInventorySlot(input, slot, version))
         {
             return std::nullopt;
         }
     }
-    if (version >= 3)
+    for (InventorySlot& slot : state.equipmentSlots)
     {
-        for (InventorySlot& slot : state.equipmentSlots)
+        if (!readInventorySlot(input, slot, version))
         {
-            if (!readInventorySlot(input, slot))
-            {
-                return std::nullopt;
-            }
+            return std::nullopt;
         }
     }
 
@@ -450,12 +445,37 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
         CraftingGridSlots slots{};
         for (InventorySlot& slot : slots)
         {
-            if (!readInventorySlot(input, slot))
+            if (!readInventorySlot(input, slot, version))
             {
                 return std::nullopt;
             }
         }
         state.chestSlotsByPosition.emplace(storageKey, slots);
+    }
+
+    if (version >= 5)
+    {
+        std::uint32_t furnaceCount = 0;
+        if (!readBinary(input, furnaceCount))
+        {
+            return std::nullopt;
+        }
+        for (std::uint32_t furnaceIndex = 0; furnaceIndex < furnaceCount; ++furnaceIndex)
+        {
+            std::int64_t storageKey = 0;
+            FurnaceBlockState furnaceState;
+            if (!readBinary(input, storageKey)
+                || !readInventorySlot(input, furnaceState.inputSlot, version)
+                || !readInventorySlot(input, furnaceState.fuelSlot, version)
+                || !readInventorySlot(input, furnaceState.outputSlot, version)
+                || !readBinary(input, furnaceState.fuelSecondsRemaining)
+                || !readBinary(input, furnaceState.fuelSecondsCapacity)
+                || !readBinary(input, furnaceState.smeltProgressSeconds))
+            {
+                return std::nullopt;
+            }
+            state.furnaceStatesByPosition.emplace(storageKey, furnaceState);
+        }
     }
 
     return state;

@@ -6,7 +6,7 @@ namespace vibecraft::game
 {
 enum class MobKind : std::uint8_t
 {
-    VoidStrider = 0,
+    Zombie = 0,
     Player,
     Cow,
     Pig,
@@ -16,7 +16,7 @@ enum class MobKind : std::uint8_t
 
 [[nodiscard]] constexpr bool isHostileMob(const MobKind kind)
 {
-    return kind == MobKind::VoidStrider;
+    return kind == MobKind::Zombie;
 }
 
 [[nodiscard]] constexpr bool isPassiveMob(const MobKind kind)
@@ -29,7 +29,7 @@ enum class MobKind : std::uint8_t
 {
     switch (kind)
     {
-    case MobKind::VoidStrider:
+    case MobKind::Zombie:
         return 20.0f;
     case MobKind::Player:
         return 20.0f;
@@ -48,7 +48,7 @@ enum class MobKind : std::uint8_t
 struct MobInstance
 {
     std::uint32_t id = 0;
-    MobKind kind = MobKind::VoidStrider;
+    MobKind kind = MobKind::Zombie;
     float feetX = 0.0f;
     float feetY = 0.0f;
     float feetZ = 0.0f;

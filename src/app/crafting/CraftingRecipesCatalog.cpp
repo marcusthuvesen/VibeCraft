@@ -76,6 +76,50 @@ std::vector<RecipeDefinition> buildAllRecipes()
             },
         });
         r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::BirchLog)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::BirchLeaves)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::DarkOakLog)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 1,
+            .requiresWorkbench = false,
+            .pattern = {ingredientBlock(BlockType::DarkOakLeaves)},
+            .output = InventorySlot{
+                .blockType = BlockType::OakPlanks,
+                .count = 1,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
             .width = 2,
             .height = 2,
             .requiresWorkbench = false,
@@ -99,7 +143,7 @@ std::vector<RecipeDefinition> buildAllRecipes()
                 ingredientBlock(BlockType::HabitatPanel),
                 ingredientBlock(BlockType::Glass),
                 ingredientBlock(BlockType::HabitatFrame),
-                ingredientBlock(BlockType::IronOre),
+                ingredientItem(EquippedItem::IronIngot),
             },
             .output = InventorySlot{
                 .blockType = BlockType::AirlockPanel,
@@ -113,7 +157,7 @@ std::vector<RecipeDefinition> buildAllRecipes()
             .requiresWorkbench = false,
             .pattern = {
                 ingredientBlock(BlockType::Glowstone),
-                ingredientBlock(BlockType::IronOre),
+                ingredientItem(EquippedItem::IronIngot),
             },
             .output = InventorySlot{
                 .blockType = BlockType::PowerConduit,
@@ -188,6 +232,38 @@ std::vector<RecipeDefinition> buildAllRecipes()
             .pattern = {ingredientBlock(BlockType::Sandstone)},
             .output = InventorySlot{
                 .blockType = BlockType::Sand,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Dirt),
+                ingredientBlock(BlockType::Gravel),
+                ingredientBlock(BlockType::Gravel),
+                ingredientBlock(BlockType::Dirt),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::CoarseDirt,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 2,
+            .requiresWorkbench = false,
+            .pattern = {
+                ingredientBlock(BlockType::Gravel),
+                ingredientBlock(BlockType::Dirt),
+                ingredientBlock(BlockType::Dirt),
+                ingredientBlock(BlockType::Gravel),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::CoarseDirt,
                 .count = 4,
                 .equippedItem = EquippedItem::None,
             },
@@ -340,48 +416,6 @@ std::vector<RecipeDefinition> buildAllRecipes()
             .height = 3,
             .requiresWorkbench = true,
             .pattern = {
-                ingredientBlock(BlockType::Glass),
-                ingredientBlock(BlockType::Torch),
-                ingredientBlock(BlockType::Glass),
-                ingredientBlock(BlockType::IronOre),
-                ingredientBlock(BlockType::IronOre),
-                ingredientBlock(BlockType::IronOre),
-                ingredientBlock(BlockType::Cobblestone),
-                ingredientBlock(BlockType::Cobblestone),
-                ingredientBlock(BlockType::Cobblestone),
-            },
-            .output = InventorySlot{
-                .blockType = BlockType::OxygenGenerator,
-                .count = 1,
-                .equippedItem = EquippedItem::None,
-            },
-        });
-        r.push_back(RecipeDefinition{
-            .width = 3,
-            .height = 3,
-            .requiresWorkbench = true,
-            .pattern = {
-                ingredientBlock(BlockType::Glass),
-                ingredientBlock(BlockType::Glowstone),
-                ingredientBlock(BlockType::Glass),
-                ingredientBlock(BlockType::IronOre),
-                ingredientBlock(BlockType::MossBlock),
-                ingredientBlock(BlockType::IronOre),
-                ingredientBlock(BlockType::Cobblestone),
-                ingredientBlock(BlockType::Cobblestone),
-                ingredientBlock(BlockType::Cobblestone),
-            },
-            .output = InventorySlot{
-                .blockType = BlockType::OxygenGenerator,
-                .count = 1,
-                .equippedItem = EquippedItem::None,
-            },
-        });
-        r.push_back(RecipeDefinition{
-            .width = 3,
-            .height = 3,
-            .requiresWorkbench = true,
-            .pattern = {
                 ingredientBlock(BlockType::Cobblestone),
                 ingredientBlock(BlockType::Cobblestone),
                 ingredientBlock(BlockType::Cobblestone),
@@ -459,7 +493,7 @@ std::vector<RecipeDefinition> buildAllRecipes()
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
-                ingredientBlock(BlockType::Glowstone),
+                ingredientItem(EquippedItem::Charcoal),
                 ingredientItem(EquippedItem::Stick),
             },
             .output = InventorySlot{
@@ -473,50 +507,13 @@ std::vector<RecipeDefinition> buildAllRecipes()
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
-                ingredientBlock(BlockType::Glass),
                 ingredientBlock(BlockType::Glowstone),
+                ingredientItem(EquippedItem::Stick),
             },
             .output = InventorySlot{
-                .blockType = BlockType::Air,
-                .count = 2,
-                .equippedItem = EquippedItem::OxygenCanister,
-            },
-        });
-        r.push_back(RecipeDefinition{
-            .width = 2,
-            .height = 2,
-            .requiresWorkbench = false,
-            .pattern = {
-                ingredientBlock(BlockType::Glass),
-                ingredientBlock(BlockType::IronOre),
-                ingredientItem(EquippedItem::OxygenCanister),
-                ingredientBlock(BlockType::MossBlock),
-            },
-            .output = InventorySlot{
-                .blockType = BlockType::Air,
-                .count = 1,
-                .equippedItem = EquippedItem::FieldTank,
-            },
-        });
-        r.push_back(RecipeDefinition{
-            .width = 3,
-            .height = 3,
-            .requiresWorkbench = true,
-            .pattern = {
-                ingredientBlock(BlockType::Glass),
-                ingredientBlock(BlockType::DiamondOre),
-                ingredientBlock(BlockType::Glass),
-                ingredientBlock(BlockType::IronOre),
-                ingredientItem(EquippedItem::FieldTank),
-                ingredientBlock(BlockType::IronOre),
-                ingredientBlock(BlockType::Glowstone),
-                ingredientBlock(BlockType::MossBlock),
-                ingredientBlock(BlockType::Glowstone),
-            },
-            .output = InventorySlot{
-                .blockType = BlockType::Air,
-                .count = 1,
-                .equippedItem = EquippedItem::ExpeditionTank,
+                .blockType = BlockType::Torch,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
             },
         });
         r.push_back(RecipeDefinition{
@@ -561,7 +558,7 @@ std::vector<RecipeDefinition> buildAllRecipes()
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
-                ingredientBlock(BlockType::IronOre),
+                ingredientItem(EquippedItem::IronIngot),
                 ingredientBlock(BlockType::Glass),
                 ingredientBlock(BlockType::Cobblestone),
                 ingredientBlock(BlockType::Cobblestone),
@@ -593,7 +590,7 @@ std::vector<RecipeDefinition> buildAllRecipes()
             .height = 2,
             .requiresWorkbench = false,
             .pattern = {
-                ingredientBlock(BlockType::IronOre),
+                ingredientItem(EquippedItem::IronIngot),
                 ingredientBlock(BlockType::Cobblestone),
             },
             .output = InventorySlot{
@@ -610,7 +607,7 @@ std::vector<RecipeDefinition> buildAllRecipes()
                 ingredientBlock(BlockType::Glass),
                 ingredientBlock(BlockType::Glass),
                 ingredientBlock(BlockType::MossBlock),
-                ingredientBlock(BlockType::IronOre),
+                ingredientItem(EquippedItem::IronIngot),
             },
             .output = InventorySlot{
                 .blockType = BlockType::GreenhouseGlass,
@@ -653,12 +650,42 @@ std::vector<RecipeDefinition> buildAllRecipes()
         r.push_back(makeSwordRecipe(BlockType::OakLog, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::JungleLog, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::SpruceLog, EquippedItem::WoodSword, true));
+        r.push_back(makeSwordRecipe(BlockType::BirchLog, EquippedItem::WoodSword, true));
+        r.push_back(makeSwordRecipe(BlockType::DarkOakLog, EquippedItem::WoodSword, true));
         r.push_back(makeSwordRecipe(BlockType::Cobblestone, EquippedItem::StoneSword, true));
         // Let fractured basalt, basalt, or deep basalt all stand in for a rough stone tier.
         r.push_back(makeSwordRecipe(BlockType::Stone, EquippedItem::StoneSword, true));
         r.push_back(makeSwordRecipe(BlockType::Deepslate, EquippedItem::StoneSword, true));
-        r.push_back(makeSwordRecipe(BlockType::IronOre, EquippedItem::IronSword, true));
-        r.push_back(makeSwordRecipe(BlockType::GoldOre, EquippedItem::GoldSword, true));
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientItem(EquippedItem::IronIngot),
+                ingredientItem(EquippedItem::IronIngot),
+                ingredientItem(EquippedItem::Stick),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::IronSword,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 1,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientItem(EquippedItem::GoldIngot),
+                ingredientItem(EquippedItem::GoldIngot),
+                ingredientItem(EquippedItem::Stick),
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::GoldSword,
+            },
+        });
         r.push_back(makeSwordRecipe(BlockType::DiamondOre, EquippedItem::DiamondSword, true));
 
         r.push_back(makePickaxeRecipe(BlockType::OakPlanks, EquippedItem::WoodPickaxe));
@@ -666,11 +693,53 @@ std::vector<RecipeDefinition> buildAllRecipes()
         r.push_back(makePickaxeRecipe(BlockType::OakLog, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::JungleLog, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::SpruceLog, EquippedItem::WoodPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::BirchLog, EquippedItem::WoodPickaxe));
+        r.push_back(makePickaxeRecipe(BlockType::DarkOakLog, EquippedItem::WoodPickaxe));
         r.push_back(makePickaxeRecipe(BlockType::Cobblestone, EquippedItem::StonePickaxe));
         r.push_back(makePickaxeRecipe(BlockType::Stone, EquippedItem::StonePickaxe));
         r.push_back(makePickaxeRecipe(BlockType::Deepslate, EquippedItem::StonePickaxe));
-        r.push_back(makePickaxeRecipe(BlockType::IronOre, EquippedItem::IronPickaxe));
-        r.push_back(makePickaxeRecipe(BlockType::GoldOre, EquippedItem::GoldPickaxe));
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientItem(EquippedItem::IronIngot),
+                ingredientItem(EquippedItem::IronIngot),
+                ingredientItem(EquippedItem::IronIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::IronPickaxe,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientItem(EquippedItem::GoldIngot),
+                ingredientItem(EquippedItem::GoldIngot),
+                ingredientItem(EquippedItem::GoldIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::GoldPickaxe,
+            },
+        });
         r.push_back(makePickaxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondPickaxe));
 
         r.push_back(makeAxeRecipe(BlockType::OakPlanks, EquippedItem::WoodAxe, false));
@@ -683,16 +752,100 @@ std::vector<RecipeDefinition> buildAllRecipes()
         r.push_back(makeAxeRecipe(BlockType::JungleLog, EquippedItem::WoodAxe, true));
         r.push_back(makeAxeRecipe(BlockType::SpruceLog, EquippedItem::WoodAxe, false));
         r.push_back(makeAxeRecipe(BlockType::SpruceLog, EquippedItem::WoodAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::BirchLog, EquippedItem::WoodAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::BirchLog, EquippedItem::WoodAxe, true));
+        r.push_back(makeAxeRecipe(BlockType::DarkOakLog, EquippedItem::WoodAxe, false));
+        r.push_back(makeAxeRecipe(BlockType::DarkOakLog, EquippedItem::WoodAxe, true));
         r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe, false));
         r.push_back(makeAxeRecipe(BlockType::Cobblestone, EquippedItem::StoneAxe, true));
         r.push_back(makeAxeRecipe(BlockType::Stone, EquippedItem::StoneAxe, false));
         r.push_back(makeAxeRecipe(BlockType::Stone, EquippedItem::StoneAxe, true));
         r.push_back(makeAxeRecipe(BlockType::Deepslate, EquippedItem::StoneAxe, false));
         r.push_back(makeAxeRecipe(BlockType::Deepslate, EquippedItem::StoneAxe, true));
-        r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe, false));
-        r.push_back(makeAxeRecipe(BlockType::IronOre, EquippedItem::IronAxe, true));
-        r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe, false));
-        r.push_back(makeAxeRecipe(BlockType::GoldOre, EquippedItem::GoldAxe, true));
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientItem(EquippedItem::IronIngot),
+                ingredientItem(EquippedItem::IronIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::IronIngot),
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::IronAxe,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                InventorySlot{},
+                ingredientItem(EquippedItem::IronIngot),
+                ingredientItem(EquippedItem::IronIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                ingredientItem(EquippedItem::IronIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::IronAxe,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientItem(EquippedItem::GoldIngot),
+                ingredientItem(EquippedItem::GoldIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::GoldIngot),
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::GoldAxe,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                InventorySlot{},
+                ingredientItem(EquippedItem::GoldIngot),
+                ingredientItem(EquippedItem::GoldIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                ingredientItem(EquippedItem::GoldIngot),
+                InventorySlot{},
+                ingredientItem(EquippedItem::Stick),
+                InventorySlot{},
+            },
+            .output = InventorySlot{
+                .blockType = BlockType::Air,
+                .count = 1,
+                .equippedItem = EquippedItem::GoldAxe,
+            },
+        });
         r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe, false));
         r.push_back(makeAxeRecipe(BlockType::DiamondOre, EquippedItem::DiamondAxe, true));
         r.push_back(makeScoutArmorRecipe(

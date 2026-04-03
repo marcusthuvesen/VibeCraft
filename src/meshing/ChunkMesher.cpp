@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include "vibecraft/ChunkAtlasLayout.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
@@ -302,6 +303,84 @@ struct IntOffset
     return kAoByOccluderCount[static_cast<std::size_t>(std::clamp(occluders, 0, 3))];
 }
 
+struct TorchEmitter
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+[[nodiscard]] std::vector<TorchEmitter> collectNearbyTorchEmitters(
+    const vibecraft::world::World& world,
+    const vibecraft::world::ChunkCoord& center)
+{
+    constexpr int kTorchEmitterChunkRadius = 1;
+    std::vector<TorchEmitter> emitters;
+    for (const auto& [chunkCoord, chunk] : world.chunks())
+    {
+        if (std::abs(chunkCoord.x - center.x) > kTorchEmitterChunkRadius
+            || std::abs(chunkCoord.z - center.z) > kTorchEmitterChunkRadius)
+        {
+            continue;
+        }
+
+        const BlockStorage& storage = chunk.blockStorage();
+        const int chunkBaseX = chunkCoord.x * vibecraft::world::Chunk::kSize;
+        const int chunkBaseZ = chunkCoord.z * vibecraft::world::Chunk::kSize;
+        for (int localZ = 0; localZ < vibecraft::world::Chunk::kSize; ++localZ)
+        {
+            for (int localX = 0; localX < vibecraft::world::Chunk::kSize; ++localX)
+            {
+                for (int y = vibecraft::world::kWorldMinY; y <= vibecraft::world::kWorldMaxY; ++y)
+                {
+                    if (blockFromStorage(storage, localX, y, localZ) != BlockType::Torch)
+                    {
+                        continue;
+                    }
+
+                    emitters.push_back(TorchEmitter{
+                        .x = static_cast<float>(chunkBaseX + localX) + 0.5f,
+                        .y = static_cast<float>(y) + 0.7f,
+                        .z = static_cast<float>(chunkBaseZ + localZ) + 0.5f,
+                    });
+                }
+            }
+        }
+    }
+    return emitters;
+}
+
+[[nodiscard]] float torchLightMultiplierAt(
+    const float x,
+    const float y,
+    const float z,
+    const std::vector<TorchEmitter>& emitters)
+{
+    constexpr float kTorchLightRadius = 8.0f;
+    constexpr float kTorchLightStrength = 0.85f;
+    constexpr float kTorchLightRadiusSq = kTorchLightRadius * kTorchLightRadius;
+
+    float bestIntensity = 0.0f;
+    for (const TorchEmitter& emitter : emitters)
+    {
+        const float dx = x - emitter.x;
+        const float dy = y - emitter.y;
+        const float dz = z - emitter.z;
+        const float distanceSq = dx * dx + dy * dy + dz * dz;
+        if (distanceSq >= kTorchLightRadiusSq)
+        {
+            continue;
+        }
+
+        const float distance = std::sqrt(distanceSq);
+        const float linear = 1.0f - distance / kTorchLightRadius;
+        const float intensity = linear * linear * (3.0f - 2.0f * linear);
+        bestIntensity = std::max(bestIntensity, intensity);
+    }
+
+    return 1.0f + bestIntensity * kTorchLightStrength;
+}
+
 void appendCustomQuad(
     ChunkMeshData& meshData,
     const std::array<std::array<float, 3>, 4>& corners,
@@ -463,6 +542,7 @@ ChunkMeshData ChunkMesher::buildMesh(
         chunkAt(vibecraft::world::ChunkCoord{coord.x, coord.z - 1});
     const vibecraft::world::Chunk* const southChunk =
         chunkAt(vibecraft::world::ChunkCoord{coord.x, coord.z + 1});
+    const std::vector<TorchEmitter> torchEmitters = collectNearbyTorchEmitters(world, coord);
     const BlockStorage& currentStorage = currentChunkIt->second.blockStorage();
     constexpr int kNoRenderableBlock = std::numeric_limits<int>::min();
     std::array<int, vibecraft::world::Chunk::kSize * vibecraft::world::Chunk::kSize> columnMinY;
@@ -607,6 +687,11 @@ ChunkMeshData ChunkMesher::buildMesh(
                             const auto& corner = quad[vertexIndex];
                             const auto atlasUv = atlasUvForBlockType(tileIndex, kPlantUv[vertexIndex]);
                             const float tintNoise = denseFlora ? (0.98f + randomB * 0.04f) : 1.0f;
+                            const float torchLight = torchLightMultiplierAt(
+                                static_cast<float>(worldX) + corner[0],
+                                static_cast<float>(y) + corner[1],
+                                static_cast<float>(worldZ) + corner[2],
+                                torchEmitters);
                             meshData.vertices.push_back(DebugVertex{
                                 .x = static_cast<float>(worldX) + corner[0],
                                 .y = static_cast<float>(y) + corner[1],
@@ -616,7 +701,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                                 .nz = nz,
                                 .u = atlasUv[0],
                                 .v = atlasUv[1],
-                                .abgr = modulateAbgrRgb(metadata.debugColor, tintNoise),
+                                .abgr = modulateAbgrRgb(metadata.debugColor, tintNoise * torchLight),
                             });
                         }
 
@@ -665,7 +750,13 @@ ChunkMeshData ChunkMesher::buildMesh(
                             worldZ,
                             tileIndex,
                             metadata.textureTiles.top,
-                            metadata.debugColor);
+                            modulateAbgrRgb(
+                                metadata.debugColor,
+                                torchLightMultiplierAt(
+                                    static_cast<float>(worldX) + 0.5f,
+                                    static_cast<float>(y) + 0.5f,
+                                    static_cast<float>(worldZ) + 0.5f,
+                                    torchEmitters)));
                         continue;
                     }
                     for (std::size_t vertexIndex = 0; vertexIndex < face.corners.size(); ++vertexIndex)
@@ -683,6 +774,11 @@ ChunkMeshData ChunkMesher::buildMesh(
                             localZ,
                             face,
                             corner);
+                        const float torchLight = torchLightMultiplierAt(
+                            static_cast<float>(worldX) + corner[0],
+                            static_cast<float>(y) + corner[1],
+                            static_cast<float>(worldZ) + corner[2],
+                            torchEmitters);
                         meshData.vertices.push_back(DebugVertex{
                             .x = static_cast<float>(worldX) + corner[0],
                             .y = static_cast<float>(y) + corner[1],
@@ -692,7 +788,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                             .nz = static_cast<float>(face.offsetZ),
                             .u = atlasUv[0],
                             .v = atlasUv[1],
-                            .abgr = modulateAbgrRgb(metadata.debugColor, ao),
+                            .abgr = modulateAbgrRgb(metadata.debugColor, ao * torchLight),
                         });
                     }
 

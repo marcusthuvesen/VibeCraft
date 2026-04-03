@@ -36,6 +36,7 @@ void populateTerrainColumns(Chunk& chunk, const ChunkCoord& coord, const Terrain
 void populateChunkFromTerrain(Chunk& chunk, const ChunkCoord& coord, const TerrainGenerator& terrainGenerator)
 {
     populateTerrainColumns(chunk, coord, terrainGenerator);
+    detail::populateCaveDecorForChunk(chunk, coord, terrainGenerator);
     detail::populateTreesForChunk(chunk, coord, terrainGenerator);
     detail::populateSurfaceFloraForChunk(chunk, coord, terrainGenerator);
 }

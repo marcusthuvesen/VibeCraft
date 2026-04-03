@@ -87,10 +87,10 @@ TEST_CASE("singleplayer save serializer round-trips metadata and player state")
         .count = 12,
         .equippedItem = vibecraft::app::EquippedItem::None,
     };
-    playerState.equipmentSlots[static_cast<std::size_t>(vibecraft::app::EquipmentSlotKind::OxygenTank)] = {
+    playerState.equipmentSlots[static_cast<std::size_t>(vibecraft::app::EquipmentSlotKind::Helmet)] = {
         .blockType = vibecraft::world::BlockType::Air,
         .count = 1,
-        .equippedItem = vibecraft::app::EquippedItem::FieldTank,
+        .equippedItem = vibecraft::app::EquippedItem::ScoutHelmet,
     };
     playerState.droppedItems.push_back({
         .blockType = vibecraft::world::BlockType::Cobblestone,
@@ -125,9 +125,9 @@ TEST_CASE("singleplayer save serializer round-trips metadata and player state")
     CHECK(loadedPlayerState->hotbarSlots[1].equippedItem == vibecraft::app::EquippedItem::StonePickaxe);
     CHECK(loadedPlayerState->bagSlots[3].blockType == vibecraft::world::BlockType::Torch);
     CHECK(
-        loadedPlayerState->equipmentSlots[static_cast<std::size_t>(vibecraft::app::EquipmentSlotKind::OxygenTank)]
+        loadedPlayerState->equipmentSlots[static_cast<std::size_t>(vibecraft::app::EquipmentSlotKind::Helmet)]
             .equippedItem
-        == vibecraft::app::EquippedItem::FieldTank);
+        == vibecraft::app::EquippedItem::ScoutHelmet);
     REQUIRE(loadedPlayerState->droppedItems.size() == 1);
     CHECK(loadedPlayerState->droppedItems[0].blockType == vibecraft::world::BlockType::Cobblestone);
     CHECK(loadedPlayerState->droppedItems[0].pickupDelaySeconds == doctest::Approx(0.5f));

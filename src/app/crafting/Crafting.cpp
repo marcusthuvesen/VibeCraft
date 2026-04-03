@@ -46,6 +46,7 @@ void clearInventorySlot(InventorySlot& slot)
     slot.blockType = vibecraft::world::BlockType::Air;
     slot.count = 0;
     slot.equippedItem = EquippedItem::None;
+    slot.durabilityRemaining = 0;
 }
 
 bool canMergeInventorySlots(const InventorySlot& a, const InventorySlot& b)
@@ -55,7 +56,18 @@ bool canMergeInventorySlots(const InventorySlot& a, const InventorySlot& b)
         return false;
     }
 
-    return a.blockType == b.blockType && a.equippedItem == b.equippedItem;
+    if (a.blockType != b.blockType || a.equippedItem != b.equippedItem)
+    {
+        return false;
+    }
+    if (isDamageableEquippedItem(a.equippedItem))
+    {
+        const std::uint16_t maxDurability = maxDurabilityForEquippedItem(a.equippedItem);
+        const std::uint16_t aDurability = a.durabilityRemaining == 0 ? maxDurability : a.durabilityRemaining;
+        const std::uint16_t bDurability = b.durabilityRemaining == 0 ? maxDurability : b.durabilityRemaining;
+        return aDurability == bDurability;
+    }
+    return true;
 }
 
 bool isCraftingIngredientSlot(const InventorySlot& slot)

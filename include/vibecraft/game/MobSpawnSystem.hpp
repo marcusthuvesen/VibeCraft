@@ -44,12 +44,14 @@ struct MobSpawnSettings
     float mobStepHeight = 1.05f;
     float minSeparationFromPlayer = 2.5f;
     float minSeparationFromMob = 1.2f;
+    /// Hostiles cannot spawn within this horizontal radius of any torch block.
+    float hostileTorchExclusionRadius = 10.0f;
 };
 
 struct MobDamageResult
 {
     std::uint32_t mobId = 0;
-    MobKind mobKind = MobKind::VoidStrider;
+    MobKind mobKind = MobKind::Zombie;
     glm::vec3 feetPosition{0.0f};
     bool killed = false;
 };

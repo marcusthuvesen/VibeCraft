@@ -27,7 +27,7 @@ TEST_CASE("inventory labels present minecraft-style block names")
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Fern)) == "Fern");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Podzol)) == "Podzol");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::CoarseDirt)) == "Coarse Dirt");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::OxygenGenerator)) == "Oxygen Generator");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::OxygenGenerator)) == "Industrial Relay");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatPanel)) == "Habitat Panel");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatFloor)) == "Habitat Floor");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatFrame)) == "Habitat Frame");
@@ -46,16 +46,15 @@ TEST_CASE("inventory labels present minecraft-style block names")
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::CloverTuft)) == "Clover Tuft");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::SproutTuft)) == "Sprout Tuft");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Torch)) == "Torch");
-    CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::OxygenCanister)) == "Oxygen Canister");
-    CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::FieldTank)) == "Field Tank");
-    CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::ExpeditionTank)) == "Expedition Tank");
+    CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::ScoutHelmet)) == "Scout Helmet");
+    CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::Coal)) == "Coal");
     CHECK(
         vibecraft::app::inventorySlotLabel(InventorySlot{
             .blockType = BlockType::Air,
             .count = 1,
-            .equippedItem = EquippedItem::FieldTank,
+            .equippedItem = EquippedItem::IronPickaxe,
         })
-        == "Field Tank");
+        == "Iron Pickaxe");
 }
 
 TEST_CASE("surface biome labels reflect the minecraft-style biome map")
@@ -168,14 +167,28 @@ TEST_CASE("terrain generator still exposes all overworld biome families")
             switch (terrainGenerator.surfaceBiomeAt(worldX, worldZ))
             {
             case vibecraft::world::SurfaceBiome::Plains:
+            case vibecraft::world::SurfaceBiome::SunflowerPlains:
+            case vibecraft::world::SurfaceBiome::Meadow:
+            case vibecraft::world::SurfaceBiome::WindsweptHills:
+            case vibecraft::world::SurfaceBiome::Savanna:
+            case vibecraft::world::SurfaceBiome::SavannaPlateau:
+            case vibecraft::world::SurfaceBiome::WindsweptSavanna:
             case vibecraft::world::SurfaceBiome::Forest:
+            case vibecraft::world::SurfaceBiome::FlowerForest:
+            case vibecraft::world::SurfaceBiome::Swamp:
+            case vibecraft::world::SurfaceBiome::MushroomField:
                 foundPlains = true;
                 break;
             case vibecraft::world::SurfaceBiome::Desert:
                 foundDesert = true;
                 break;
             case vibecraft::world::SurfaceBiome::SnowyPlains:
+            case vibecraft::world::SurfaceBiome::IcePlains:
+            case vibecraft::world::SurfaceBiome::IceSpikePlains:
             case vibecraft::world::SurfaceBiome::SnowyTaiga:
+            case vibecraft::world::SurfaceBiome::SnowySlopes:
+            case vibecraft::world::SurfaceBiome::FrozenPeaks:
+            case vibecraft::world::SurfaceBiome::JaggedPeaks:
                 foundSnowyPlains = true;
                 break;
             case vibecraft::world::SurfaceBiome::Jungle:
@@ -184,8 +197,12 @@ TEST_CASE("terrain generator still exposes all overworld biome families")
                 foundJungle = true;
                 break;
             case vibecraft::world::SurfaceBiome::BirchForest:
+            case vibecraft::world::SurfaceBiome::OldGrowthBirchForest:
             case vibecraft::world::SurfaceBiome::DarkForest:
             case vibecraft::world::SurfaceBiome::Taiga:
+            case vibecraft::world::SurfaceBiome::OldGrowthSpruceTaiga:
+            case vibecraft::world::SurfaceBiome::OldGrowthPineTaiga:
+            case vibecraft::world::SurfaceBiome::StonyPeaks:
                 foundPlains = true;
                 break;
             }
@@ -414,4 +431,6 @@ TEST_CASE("starter habitat blocks use reserved atlas tail tiles")
     CHECK(vibecraft::world::textureTileIndex(BlockType::DarkOakLog, BlockFace::Top) == 99);
     CHECK(vibecraft::world::textureTileIndex(BlockType::DarkOakLog, BlockFace::Side) == 100);
     CHECK(vibecraft::world::textureTileIndex(BlockType::DarkOakLeaves, BlockFace::Side) == 101);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::SculkBlock, BlockFace::Side) == 104);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::DripstoneBlock, BlockFace::Side) == 105);
 }

@@ -23,6 +23,8 @@ constexpr std::uint32_t kSnowBasinNoiseSeed = 0xbc6816afU;
 constexpr std::uint32_t kForestRiseNoiseSeed = 0xcd7927baU;
 constexpr std::uint32_t kTaigaShelfNoiseSeed = 0xde8a38cbU;
 constexpr std::uint32_t kDarkForestNoiseSeed = 0xef9b49dcU;
+constexpr std::uint32_t kWindsweptRidgeNoiseSeed = 0xf0ac5aedU;
+constexpr std::uint32_t kSwampFlatNoiseSeed = 0xa1bd6bfeU;
 
 [[nodiscard]] constexpr std::uint32_t mixedSeed(const std::uint32_t baseSeed, const std::uint32_t worldSeed)
 {
@@ -157,11 +159,38 @@ double biomeTerrainContribution(
     {
     case SurfaceBiome::Desert:
         return desertContribution(worldXd, worldZd, continents, worldSeed);
+    case SurfaceBiome::Savanna:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.0, 0.22, 0.10)
+            + desertContribution(worldXd, worldZd, continents, worldSeed) * 0.22;
+    case SurfaceBiome::SavannaPlateau:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.05, 0.18, 0.36)
+            + desertContribution(worldXd, worldZd, continents, worldSeed) * 0.16;
+    case SurfaceBiome::WindsweptSavanna:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.08, 0.34, 0.68)
+            + std::max(0.0, ridges - 0.20) * 3.0;
     case SurfaceBiome::SnowyPlains:
         return snowyContribution(worldXd, worldZd, uplands, worldSeed, 1.6, 0.7);
+    case SurfaceBiome::IcePlains:
+        return snowyContribution(worldXd, worldZd, uplands, worldSeed, 2.2, 0.40)
+            + temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 0.7, 0.34, 0.05);
+    case SurfaceBiome::IceSpikePlains:
+        return snowyContribution(worldXd, worldZd, uplands, worldSeed, 1.4, 1.30)
+            + std::max(0.0, ridges - 0.08) * 2.8;
     case SurfaceBiome::SnowyTaiga:
         return snowyContribution(worldXd, worldZd, uplands, worldSeed, 0.9, 0.55)
             + temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.0, 0.08, 0.18);
+    case SurfaceBiome::SnowySlopes:
+        return snowyContribution(worldXd, worldZd, uplands, worldSeed, 1.8, 0.55)
+            + temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 0.8, 0.42, 0.26);
+    case SurfaceBiome::FrozenPeaks:
+        return snowyContribution(worldXd, worldZd, uplands, worldSeed, 1.6, 0.72)
+            + std::max(0.0, ridges - 0.18) * 2.6;
+    case SurfaceBiome::JaggedPeaks:
+        return snowyContribution(worldXd, worldZd, uplands, worldSeed, 1.0, 1.05)
+            + std::max(0.0, ridges - 0.12) * 4.2;
+    case SurfaceBiome::StonyPeaks:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 0.8, 0.44, 0.72)
+            + std::max(0.0, ridges - 0.10) * 2.1;
     case SurfaceBiome::Jungle:
         return jungleContribution(worldXd, worldZd, ridges, worldSeed, 2.6, 1.8);
     case SurfaceBiome::SparseJungle:
@@ -169,15 +198,20 @@ double biomeTerrainContribution(
     case SurfaceBiome::BambooJungle:
         return jungleContribution(worldXd, worldZd, ridges, worldSeed, 3.0, 1.1);
     case SurfaceBiome::Forest:
-        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.9, 0.18, 0.32)
+        // Slightly more knolls and fewer "perfect" clearings than before; reads closer to vanilla forest relief.
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 2.25, 0.11, 0.36)
             + std::max(
                    0.0,
                    noise::fbmNoise2d(worldXd - 39.0, worldZd + 81.0, 190.0, 3, mixedSeed(kForestRiseNoiseSeed, worldSeed))
                        * 2.0
                        - 1.0)
-                * 0.55;
+                * 0.62;
+    case SurfaceBiome::FlowerForest:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.9, 0.06, 0.22);
+    case SurfaceBiome::OldGrowthBirchForest:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 2.0, 0.09, 0.24);
     case SurfaceBiome::BirchForest:
-        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.45, 0.24, 0.20);
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.65, 0.18, 0.24);
     case SurfaceBiome::DarkForest:
         return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.55, 0.05, 0.16)
             + std::max(
@@ -193,6 +227,56 @@ double biomeTerrainContribution(
                        * 2.0
                        - 1.0)
                 * 0.45;
+    case SurfaceBiome::OldGrowthSpruceTaiga:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.8, 0.10, 0.30)
+            + std::max(
+                   0.0,
+                   noise::fbmNoise2d(worldXd + 91.0, worldZd - 71.0, 142.0, 3, mixedSeed(kTaigaShelfNoiseSeed + 7U, worldSeed))
+                       * 2.0
+                       - 1.0)
+                * 0.62;
+    case SurfaceBiome::OldGrowthPineTaiga:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.7, 0.12, 0.34)
+            + std::max(
+                   0.0,
+                   noise::fbmNoise2d(worldXd - 113.0, worldZd + 39.0, 154.0, 3, mixedSeed(kTaigaShelfNoiseSeed + 11U, worldSeed))
+                       * 2.0
+                       - 1.0)
+                * 0.54;
+    case SurfaceBiome::WindsweptHills:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.4, 0.42, 0.64)
+            + std::max(
+                   0.0,
+                   noise::ridgeNoise2d(worldXd - 23.0, worldZd + 51.0, 86.0, mixedSeed(kWindsweptRidgeNoiseSeed, worldSeed))
+                       - 0.22)
+                * 4.4;
+    case SurfaceBiome::Swamp:
+        return -std::clamp(
+                   (noise::fbmNoise2d(worldXd + 61.0, worldZd - 49.0, 224.0, 2, mixedSeed(kSwampFlatNoiseSeed, worldSeed))
+                        * 0.5
+                        + 0.5)
+                       * 2.5,
+                   0.0,
+                   2.5)
+            + std::max(
+                   0.0,
+                   noise::fbmNoise2d(worldXd - 39.0, worldZd + 27.0, 108.0, 2, mixedSeed(kSwampFlatNoiseSeed + 19U, worldSeed))
+                       * 2.0
+                       - 1.0)
+                * 0.65;
+    case SurfaceBiome::MushroomField:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 0.55, 0.28, 0.06)
+            - std::clamp(
+                  (noise::fbmNoise2d(worldXd + 21.0, worldZd + 57.0, 188.0, 2, mixedSeed(kSwampFlatNoiseSeed + 37U, worldSeed))
+                       * 0.5
+                       + 0.5)
+                      * 1.35,
+                  0.0,
+                  1.35);
+    case SurfaceBiome::Meadow:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 0.95, 0.26, 0.12);
+    case SurfaceBiome::SunflowerPlains:
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.15, 0.30, 0.16);
     case SurfaceBiome::Plains:
     default:
         return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.2, 0.38, 0.18);

@@ -36,4 +36,33 @@ namespace vibecraft::render::detail
     const glm::vec3 offset = cameraPosition - closest;
     return glm::dot(offset, offset);
 }
+
+[[nodiscard]] float distanceSqCameraToAabbXZ(
+    const glm::vec3& cameraPosition,
+    const glm::vec3& aabbMin,
+    const glm::vec3& aabbMax)
+{
+    const float closestX = std::clamp(cameraPosition.x, aabbMin.x, aabbMax.x);
+    const float closestZ = std::clamp(cameraPosition.z, aabbMin.z, aabbMax.z);
+    const float dx = cameraPosition.x - closestX;
+    const float dz = cameraPosition.z - closestZ;
+    return dx * dx + dz * dz;
+}
+
+[[nodiscard]] float distanceSqCameraToAabbDownWeighted(
+    const glm::vec3& cameraPosition,
+    const glm::vec3& aabbMin,
+    const glm::vec3& aabbMax,
+    const float belowCameraWeight,
+    const float aboveCameraWeight)
+{
+    const glm::vec3 closest{
+        std::clamp(cameraPosition.x, aabbMin.x, aabbMax.x),
+        std::clamp(cameraPosition.y, aabbMin.y, aabbMax.y),
+        std::clamp(cameraPosition.z, aabbMin.z, aabbMax.z)};
+    const glm::vec3 offset = cameraPosition - closest;
+    const float verticalWeight = offset.y > 0.0f ? belowCameraWeight : aboveCameraWeight;
+    const float weightedDy = offset.y * verticalWeight;
+    return offset.x * offset.x + weightedDy * weightedDy + offset.z * offset.z;
+}
 }  // namespace vibecraft::render::detail

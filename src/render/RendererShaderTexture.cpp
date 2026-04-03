@@ -814,7 +814,7 @@ void stripWhiteEdgeMatteAlpha(
     using MK = vibecraft::game::MobKind;
     switch (mobKind)
     {
-    case MK::VoidStrider:
+    case MK::Zombie:
         top = {.r = 68, .g = 34, .b = 110, .a = 255};
         bottom = {.r = 15, .g = 12, .b = 34, .a = 255};
         accent = {.r = 81, .g = 228, .b = 206, .a = 255};
@@ -876,7 +876,7 @@ void stripWhiteEdgeMatteAlpha(
             {
                 color = lerpColor(color, accent, 0.36f);
             }
-            if (glowBand && mobKind == MK::VoidStrider)
+            if (glowBand && mobKind == MK::Zombie)
             {
                 color = lerpColor(color, accent, 0.55f);
             }

@@ -22,16 +22,24 @@ enum class TreeGenerationFamily : std::uint8_t
 enum class FloraGenerationFamily : std::uint8_t
 {
     Plains,
+    SunflowerPlains,
+    Meadow,
+    Savanna,
     Forest,
+    FlowerForest,
     BirchForest,
     DarkForest,
     Taiga,
+    WindsweptHills,
+    MushroomField,
     SnowyPlains,
+    IcePlains,
     SnowyTaiga,
     Desert,
     Jungle,
     SparseJungle,
     BambooJungle,
+    Swamp,
 };
 
 struct BiomeProfile

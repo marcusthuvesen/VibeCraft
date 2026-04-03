@@ -132,7 +132,7 @@ struct DroppedItemSnapshotMessage
 struct MobSnapshotMessage
 {
     std::uint32_t id = 0;
-    game::MobKind kind = game::MobKind::VoidStrider;
+    game::MobKind kind = game::MobKind::Zombie;
     float feetX = 0.0f;
     float feetY = 0.0f;
     float feetZ = 0.0f;

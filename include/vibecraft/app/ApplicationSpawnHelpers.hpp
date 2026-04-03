@@ -33,8 +33,4 @@ enum class SpawnBiomeTarget : std::uint8_t;
     float colliderHeight,
     float eyeHeight);
 void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHotbarIndex);
-[[nodiscard]] bool ensureStarterRelayAvailable(
-    HotbarSlots& hotbarSlots,
-    BagSlots& bagSlots,
-    std::size_t selectedHotbarIndex);
 }  // namespace vibecraft::app

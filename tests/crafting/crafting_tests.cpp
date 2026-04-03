@@ -30,6 +30,26 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     CHECK(junglePlanksMatch->output.blockType == BlockType::JunglePlanks);
     CHECK(junglePlanksMatch->output.count == 4);
 
+    CraftingGridSlots birchPlanksGrid{};
+    birchPlanksGrid[0].blockType = BlockType::BirchLog;
+    birchPlanksGrid[0].count = 1;
+    const auto birchPlanksMatch = vibecraft::app::evaluateCraftingGrid(
+        birchPlanksGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(birchPlanksMatch.has_value());
+    CHECK(birchPlanksMatch->output.blockType == BlockType::OakPlanks);
+    CHECK(birchPlanksMatch->output.count == 4);
+
+    CraftingGridSlots darkOakPlanksGrid{};
+    darkOakPlanksGrid[0].blockType = BlockType::DarkOakLog;
+    darkOakPlanksGrid[0].count = 1;
+    const auto darkOakPlanksMatch = vibecraft::app::evaluateCraftingGrid(
+        darkOakPlanksGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(darkOakPlanksMatch.has_value());
+    CHECK(darkOakPlanksMatch->output.blockType == BlockType::OakPlanks);
+    CHECK(darkOakPlanksMatch->output.count == 4);
+
     CraftingGridSlots tableGrid{};
     tableGrid[0].blockType = BlockType::OakPlanks;
     tableGrid[0].count = 1;
@@ -45,6 +65,22 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     REQUIRE(tableMatch.has_value());
     CHECK(tableMatch->output.blockType == BlockType::CraftingTable);
     CHECK(tableMatch->output.count == 1);
+
+    CraftingGridSlots birchLeafTableGrid{};
+    birchLeafTableGrid[0].blockType = BlockType::BirchLeaves;
+    birchLeafTableGrid[0].count = 1;
+    birchLeafTableGrid[1].blockType = BlockType::BirchLeaves;
+    birchLeafTableGrid[1].count = 1;
+    birchLeafTableGrid[3].blockType = BlockType::BirchLeaves;
+    birchLeafTableGrid[3].count = 1;
+    birchLeafTableGrid[4].blockType = BlockType::BirchLeaves;
+    birchLeafTableGrid[4].count = 1;
+    const auto birchLeafTableMatch = vibecraft::app::evaluateCraftingGrid(
+        birchLeafTableGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(birchLeafTableMatch.has_value());
+    CHECK(birchLeafTableMatch->output.blockType == BlockType::CraftingTable);
+    CHECK(birchLeafTableMatch->output.count == 1);
 
     CraftingGridSlots stickGrid{};
     stickGrid[0].blockType = BlockType::OakPlanks;
@@ -96,6 +132,38 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     CHECK(sandstoneMatch->output.blockType == BlockType::Sandstone);
     CHECK(sandstoneMatch->output.count == 1);
 
+    CraftingGridSlots coarseDirtGrid{};
+    coarseDirtGrid[0].blockType = BlockType::Dirt;
+    coarseDirtGrid[0].count = 1;
+    coarseDirtGrid[1].blockType = BlockType::Gravel;
+    coarseDirtGrid[1].count = 1;
+    coarseDirtGrid[3].blockType = BlockType::Gravel;
+    coarseDirtGrid[3].count = 1;
+    coarseDirtGrid[4].blockType = BlockType::Dirt;
+    coarseDirtGrid[4].count = 1;
+    const auto coarseDirtMatch = vibecraft::app::evaluateCraftingGrid(
+        coarseDirtGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(coarseDirtMatch.has_value());
+    CHECK(coarseDirtMatch->output.blockType == BlockType::CoarseDirt);
+    CHECK(coarseDirtMatch->output.count == 4);
+
+    CraftingGridSlots coarseDirtMirroredGrid{};
+    coarseDirtMirroredGrid[0].blockType = BlockType::Gravel;
+    coarseDirtMirroredGrid[0].count = 1;
+    coarseDirtMirroredGrid[1].blockType = BlockType::Dirt;
+    coarseDirtMirroredGrid[1].count = 1;
+    coarseDirtMirroredGrid[3].blockType = BlockType::Dirt;
+    coarseDirtMirroredGrid[3].count = 1;
+    coarseDirtMirroredGrid[4].blockType = BlockType::Gravel;
+    coarseDirtMirroredGrid[4].count = 1;
+    const auto coarseDirtMirroredMatch = vibecraft::app::evaluateCraftingGrid(
+        coarseDirtMirroredGrid,
+        CraftingMode::Inventory2x2);
+    REQUIRE(coarseDirtMirroredMatch.has_value());
+    CHECK(coarseDirtMirroredMatch->output.blockType == BlockType::CoarseDirt);
+    CHECK(coarseDirtMirroredMatch->output.count == 4);
+
     CraftingGridSlots swordGrid{};
     swordGrid[1].blockType = BlockType::DiamondOre;
     swordGrid[1].count = 1;
@@ -138,6 +206,40 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     REQUIRE(woodPickaxeBench.has_value());
     CHECK(woodPickaxeBench->output.equippedItem == EquippedItem::WoodPickaxe);
     CHECK(woodPickaxeBench->output.count == 1);
+
+    CraftingGridSlots birchPickaxeGrid{};
+    birchPickaxeGrid[0].blockType = BlockType::BirchLog;
+    birchPickaxeGrid[0].count = 1;
+    birchPickaxeGrid[1].blockType = BlockType::BirchLog;
+    birchPickaxeGrid[1].count = 1;
+    birchPickaxeGrid[2].blockType = BlockType::BirchLog;
+    birchPickaxeGrid[2].count = 1;
+    birchPickaxeGrid[4].equippedItem = EquippedItem::Stick;
+    birchPickaxeGrid[4].count = 1;
+    birchPickaxeGrid[7].equippedItem = EquippedItem::Stick;
+    birchPickaxeGrid[7].count = 1;
+    const auto birchPickaxeMatch = vibecraft::app::evaluateCraftingGrid(
+        birchPickaxeGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(birchPickaxeMatch.has_value());
+    CHECK(birchPickaxeMatch->output.equippedItem == EquippedItem::WoodPickaxe);
+
+    CraftingGridSlots darkOakAxeGrid{};
+    darkOakAxeGrid[0].blockType = BlockType::DarkOakLog;
+    darkOakAxeGrid[0].count = 1;
+    darkOakAxeGrid[1].blockType = BlockType::DarkOakLog;
+    darkOakAxeGrid[1].count = 1;
+    darkOakAxeGrid[3].blockType = BlockType::DarkOakLog;
+    darkOakAxeGrid[3].count = 1;
+    darkOakAxeGrid[4].equippedItem = EquippedItem::Stick;
+    darkOakAxeGrid[4].count = 1;
+    darkOakAxeGrid[7].equippedItem = EquippedItem::Stick;
+    darkOakAxeGrid[7].count = 1;
+    const auto darkOakAxeMatch = vibecraft::app::evaluateCraftingGrid(
+        darkOakAxeGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(darkOakAxeMatch.has_value());
+    CHECK(darkOakAxeMatch->output.equippedItem == EquippedItem::WoodAxe);
 
     CraftingGridSlots stonePickaxeGrid{};
     stonePickaxeGrid[0].blockType = BlockType::Cobblestone;

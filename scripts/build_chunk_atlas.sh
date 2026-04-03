@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Packs selected materials into chunk_atlas.png (128x208, 16x16 tiles, 8x13 grid)
+# Packs selected materials into chunk_atlas.png (128x224, 16x16 tiles, 8x14 grid)
 # and chunk_atlas.bgra for the renderer. Tile order must match BlockMetadata tile indices in code.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -203,6 +203,8 @@ PODZOL_TOP_SRC="$(pick_first_existing "${MAT}/podzol_top.png" "${MAT}/dirt_podzo
 PODZOL_SIDE_SRC="$(pick_first_existing "${MAT}/podzol_side.png" "${MAT}/dirt_podzol_side.png")"
 COARSE_DIRT_SRC="${MAT}/coarse_dirt.png"
 DARK_OAK_LEAVES_SRC="${MAT}/dark_oak_leaves.png"
+SCULK_SRC="${MAT}/sculk.png"
+DRIPSTONE_BLOCK_SRC="${MAT}/dripstone_block.png"
 GRASS_COLORMAP_SRC="${ROOT}/assets/textures/colormap/grass.png"
 FOLIAGE_COLORMAP_SRC="${ROOT}/assets/textures/colormap/foliage.png"
 
@@ -348,6 +350,16 @@ preserve_alpha_tint_tile "${DARK_OAK_LEAVES_SRC}" "${TMP}/t101.png" "${TEMPERATE
 cutout_tint_tile "${SHORT_GRASS_SRC}" "${TMP}/t102.png" "${TEMPERATE_GRASS_DARK}" "${FOREST_GRASS_LIGHT}"
 cutout_tint_tile "${SHORT_GRASS_SRC}" "${TMP}/t103.png" "${DRY_GRASS_DARK}" "${DRY_GRASS_LIGHT}"
 
+# Row 14: cave-biome support and reserved tail tiles.
+resize_tile "${SCULK_SRC}" "${TMP}/t104.png"
+resize_tile "${DRIPSTONE_BLOCK_SRC}" "${TMP}/t105.png"
+resize_tile "${MOSS_BLOCK_SRC}" "${TMP}/t106.png"
+cutout_tint_tile "${VINE_SRC}" "${TMP}/t107.png" "${TEMPERATE_FOLIAGE_DARK}" "${TEMPERATE_FOLIAGE_LIGHT}"
+resize_tile "${MAT}/deepslate.png" "${TMP}/t108.png"
+resize_tile "${MAT}/stone.png" "${TMP}/t109.png"
+resize_tile "${MOSSY_COBBLE_SRC}" "${TMP}/t110.png"
+resize_tile "${COARSE_DIRT_SRC}" "${TMP}/t111.png"
+
 magick montage \
   "${TMP}/t00.png" "${TMP}/t01.png" "${TMP}/t02.png" "${TMP}/t03.png" "${TMP}/t04.png" "${TMP}/t05.png" \
   "${TMP}/t06.png" "${TMP}/t07.png" "${TMP}/t08.png" "${TMP}/t09.png" "${TMP}/t10.png" "${TMP}/t11.png" \
@@ -362,8 +374,9 @@ magick montage \
   "${TMP}/t72.png" "${TMP}/t73.png" "${TMP}/t74.png" "${TMP}/t75.png" "${TMP}/t76.png" "${TMP}/t77.png" "${TMP}/t78.png" "${TMP}/t79.png" "${TMP}/t80.png" "${TMP}/t81.png" "${TMP}/t82.png" "${TMP}/t83.png" "${TMP}/t84.png" "${TMP}/t85.png" "${TMP}/t86.png" "${TMP}/t87.png" \
   "${TMP}/t88.png" "${TMP}/t89.png" "${TMP}/t90.png" "${TMP}/t91.png" "${TMP}/t92.png" "${TMP}/t93.png" "${TMP}/t94.png" "${TMP}/t95.png" \
   "${TMP}/t96.png" "${TMP}/t97.png" "${TMP}/t98.png" "${TMP}/t99.png" "${TMP}/t100.png" "${TMP}/t101.png" "${TMP}/t102.png" "${TMP}/t103.png" \
-  -tile 8x13 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
+  "${TMP}/t104.png" "${TMP}/t105.png" "${TMP}/t106.png" "${TMP}/t107.png" "${TMP}/t108.png" "${TMP}/t109.png" "${TMP}/t110.png" "${TMP}/t111.png" \
+  -tile 8x14 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
 
 magick "${OUT}/chunk_atlas.png" -depth 8 "BGRA:${OUT}/chunk_atlas.bgra"
 rm -rf "${TMP}"
-echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*208*4)) bytes)"
+echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*224*4)) bytes)"

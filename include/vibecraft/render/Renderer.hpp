@@ -72,36 +72,43 @@ struct TextureUvRect
 enum class HudItemKind : std::uint8_t
 {
     None = 0,
-    DiamondSword,
-    Stick,
-    RottenFlesh,
-    Leather,
-    RawPorkchop,
-    Mutton,
-    Feather,
-    WoodSword,
-    StoneSword,
-    IronSword,
-    GoldSword,
-    WoodPickaxe,
-    StonePickaxe,
-    IronPickaxe,
-    GoldPickaxe,
-    DiamondPickaxe,
-    WoodAxe,
-    StoneAxe,
-    IronAxe,
-    GoldAxe,
-    DiamondAxe,
-    OxygenCanister,
-    FieldTank,
-    ExpeditionTank,
-    Coal,
-    StarterTank,
-    ScoutHelmet,
-    ScoutChestRig,
-    ScoutGreaves,
-    ScoutBoots,
+    DiamondSword = 1,
+    Stick = 2,
+    RottenFlesh = 3,
+    Leather = 4,
+    RawPorkchop = 5,
+    Mutton = 6,
+    Feather = 7,
+    WoodSword = 8,
+    StoneSword = 9,
+    IronSword = 10,
+    GoldSword = 11,
+    WoodPickaxe = 12,
+    StonePickaxe = 13,
+    IronPickaxe = 14,
+    GoldPickaxe = 15,
+    DiamondPickaxe = 16,
+    WoodAxe = 17,
+    StoneAxe = 18,
+    IronAxe = 19,
+    GoldAxe = 20,
+    DiamondAxe = 21,
+    Coal = 25,
+    Charcoal = 26,
+    ScoutHelmet = 27,
+    ScoutChestRig = 28,
+    ScoutGreaves = 29,
+    ScoutBoots = 30,
+    IronIngot = 31,
+    GoldIngot = 32,
+};
+
+enum class CraftingUiMode : std::uint8_t
+{
+    Inventory = 0,
+    Workbench,
+    Chest,
+    Furnace,
 };
 
 struct FrameDebugData
@@ -136,16 +143,9 @@ struct FrameDebugData
     std::uint16_t uiMenuTextHeight = 0;
     float health = 20.0f;
     float maxHealth = 20.0f;
-    float oxygen = 0.0f;
-    float maxOxygen = 0.0f;
-    HudItemKind oxygenTankItemKind = HudItemKind::None;
-    bool oxygenInsideSafeZone = false;
-    bool oxygenLowWarning = false;
-    std::string oxygenStatusLine;
-    std::string oxygenZoneLabel;
-    bool relayPlacementPreviewActive = false;
-    bool relayPlacementPreviewValid = false;
-    std::string relayPlacementPreviewLabel;
+    /// Underwater breath (PlayerVitals::air).
+    float air = 10.0f;
+    float maxAir = 10.0f;
     std::string selectedHotbarLabel;
     std::string selectedHotbarActionHint;
     /// Rotating early-session survival tips (empty when disabled or expired).
@@ -160,7 +160,7 @@ struct FrameDebugData
     std::array<HotbarSlotHud, 9> hotbarSlots{};
     std::array<HotbarSlotHud, kBagHudSlotCount> bagSlots{};
     std::array<HotbarSlotHud, 9> craftingGridSlots{};
-    std::array<HotbarSlotHud, 5> equipmentSlots{};
+    std::array<HotbarSlotHud, 4> equipmentSlots{};
     HotbarSlotHud craftingResultSlot{};
     HotbarSlotHud craftingCursorSlot{};
     std::uint8_t craftingBagStartRow = 0;
@@ -183,7 +183,7 @@ struct FrameDebugData
         float pitchRadians = 0.0f;
         float halfWidth = 0.28f;
         float height = 1.75f;
-        vibecraft::game::MobKind mobKind = vibecraft::game::MobKind::VoidStrider;
+        vibecraft::game::MobKind mobKind = vibecraft::game::MobKind::Zombie;
         vibecraft::world::BlockType heldBlockType = vibecraft::world::BlockType::Air;
         HudItemKind heldItemKind = HudItemKind::None;
         bool heldItemUsesSwordPose = false;
@@ -207,15 +207,6 @@ struct FrameDebugData
         float bankAngle = 0.0f;
     };
     std::vector<WorldBirdHud> worldBirds;
-
-    struct WorldSafeZoneHud
-    {
-        glm::vec3 worldCenter{0.0f};
-        float radius = 0.0f;
-        bool preview = false;
-        bool valid = true;
-    };
-    std::vector<WorldSafeZoneHud> worldSafeZones;
 
     /// When true, the 3D view and in-game HUD are hidden and the title menu is drawn instead.
     bool mainMenuActive = false;
@@ -272,8 +263,11 @@ struct FrameDebugData
     std::string pauseWeatherLabel;
     bool craftingMenuActive = false;
     bool craftingUsesWorkbench = false;
+    CraftingUiMode craftingUiMode = CraftingUiMode::Inventory;
     std::string craftingTitle;
     std::string craftingHint;
+    float craftingFuelFraction = 0.0f;
+    float craftingProgressFraction = 0.0f;
 
     /// World-origin grid + axis in the 3D view (heavy debug draw). Off by default; toggle with F3 in-game.
     bool showWorldOriginGuides = false;
@@ -403,6 +397,7 @@ class Renderer
         float mouseY,
         std::uint32_t windowWidth,
         std::uint32_t windowHeight,
+        CraftingUiMode mode,
         bool useWorkbench,
         std::size_t bagStartRow);
 
@@ -493,18 +488,13 @@ class Renderer
     std::uint16_t muttonTextureHandle_ = UINT16_MAX;
     std::uint16_t featherTextureHandle_ = UINT16_MAX;
     std::uint16_t coalTextureHandle_ = UINT16_MAX;
-    std::uint16_t oxygenCanisterTextureHandle_ = UINT16_MAX;
-    std::uint16_t starterTankTextureHandle_ = UINT16_MAX;
-    std::uint16_t fieldTankTextureHandle_ = UINT16_MAX;
-    std::uint16_t expeditionTankTextureHandle_ = UINT16_MAX;
+    std::uint16_t charcoalTextureHandle_ = UINT16_MAX;
+    std::uint16_t ironIngotTextureHandle_ = UINT16_MAX;
+    std::uint16_t goldIngotTextureHandle_ = UINT16_MAX;
     std::uint16_t scoutHelmetTextureHandle_ = UINT16_MAX;
     std::uint16_t scoutChestRigTextureHandle_ = UINT16_MAX;
     std::uint16_t scoutGreavesTextureHandle_ = UINT16_MAX;
     std::uint16_t scoutBootsTextureHandle_ = UINT16_MAX;
-    TextureUvRect oxygenCanisterTextureUv_{};
-    TextureUvRect starterTankTextureUv_{};
-    TextureUvRect fieldTankTextureUv_{};
-    TextureUvRect expeditionTankTextureUv_{};
     /// Optional textures for WoodSword..DiamondAxe (see HudItemKind); falls back in hudItemKindTextureHandle.
     std::array<std::uint16_t, 14> extendedToolTextureHandles_{};
     std::array<std::uint16_t, 10> blockBreakStageTextureHandles_{};
@@ -514,14 +504,14 @@ class Renderer
     std::uint16_t inventoryUiProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSolidProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSamplerHandle_ = UINT16_MAX;
-    std::uint16_t voidStriderTextureHandle_ = UINT16_MAX;
+    std::uint16_t zombieTextureHandle_ = UINT16_MAX;
     std::uint16_t playerMobTextureHandle_ = UINT16_MAX;
     std::uint16_t sporegrazerTextureHandle_ = UINT16_MAX;
     std::uint16_t burrowerTextureHandle_ = UINT16_MAX;
     std::uint16_t shardbackTextureHandle_ = UINT16_MAX;
     std::uint16_t skitterwingTextureHandle_ = UINT16_MAX;
     std::uint16_t ambientBirdTextureHandle_ = UINT16_MAX;
-    TextureUvRect voidStriderTextureUv_{};
+    TextureUvRect zombieTextureUv_{};
     TextureUvRect playerMobTextureUv_{};
     TextureUvRect sporegrazerTextureUv_{};
     TextureUvRect burrowerTextureUv_{};

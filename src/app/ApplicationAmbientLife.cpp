@@ -41,8 +41,14 @@ namespace
         return 1.0f;
     case world::biomes::FloraGenerationFamily::SparseJungle:
         return 0.76f;
+    case world::biomes::FloraGenerationFamily::Swamp:
+        return 0.74f;
+    case world::biomes::FloraGenerationFamily::FlowerForest:
+        return 0.70f;
     case world::biomes::FloraGenerationFamily::Forest:
         return 0.72f;
+    case world::biomes::FloraGenerationFamily::Meadow:
+        return 0.60f;
     case world::biomes::FloraGenerationFamily::BirchForest:
         return 0.62f;
     case world::biomes::FloraGenerationFamily::DarkForest:
@@ -50,10 +56,17 @@ namespace
     case world::biomes::FloraGenerationFamily::Taiga:
         return 0.50f;
     case world::biomes::FloraGenerationFamily::Plains:
+    case world::biomes::FloraGenerationFamily::SunflowerPlains:
+    case world::biomes::FloraGenerationFamily::Savanna:
         return 0.36f;
+    case world::biomes::FloraGenerationFamily::WindsweptHills:
+        return 0.24f;
+    case world::biomes::FloraGenerationFamily::MushroomField:
+        return 0.18f;
     case world::biomes::FloraGenerationFamily::SnowyTaiga:
         return 0.26f;
     case world::biomes::FloraGenerationFamily::SnowyPlains:
+    case world::biomes::FloraGenerationFamily::IcePlains:
         return 0.16f;
     case world::biomes::FloraGenerationFamily::Desert:
         // Sparse silhouettes over the wastes (heat / distance), without jungle-level density.
@@ -70,15 +83,25 @@ namespace
     case world::biomes::FloraGenerationFamily::Jungle:
     case world::biomes::FloraGenerationFamily::BambooJungle:
         return glm::vec3(0.52f, 0.98f, 0.92f);
+    case world::biomes::FloraGenerationFamily::Swamp:
+        return glm::vec3(0.60f, 0.94f, 0.84f);
     case world::biomes::FloraGenerationFamily::SparseJungle:
         return glm::vec3(0.68f, 0.96f, 0.86f);
+    case world::biomes::FloraGenerationFamily::FlowerForest:
+    case world::biomes::FloraGenerationFamily::Meadow:
+    case world::biomes::FloraGenerationFamily::SunflowerPlains:
+        return glm::vec3(1.0f, 0.90f, 0.74f);
     case world::biomes::FloraGenerationFamily::Forest:
     case world::biomes::FloraGenerationFamily::BirchForest:
     case world::biomes::FloraGenerationFamily::DarkForest:
     case world::biomes::FloraGenerationFamily::Taiga:
     case world::biomes::FloraGenerationFamily::Plains:
+    case world::biomes::FloraGenerationFamily::Savanna:
+    case world::biomes::FloraGenerationFamily::WindsweptHills:
+    case world::biomes::FloraGenerationFamily::MushroomField:
         return glm::vec3(0.98f, 0.94f, 0.82f);
     case world::biomes::FloraGenerationFamily::SnowyPlains:
+    case world::biomes::FloraGenerationFamily::IcePlains:
     case world::biomes::FloraGenerationFamily::SnowyTaiga:
         return glm::vec3(0.82f, 0.90f, 1.0f);
     case world::biomes::FloraGenerationFamily::Desert:

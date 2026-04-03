@@ -502,6 +502,7 @@ int Renderer::hitTestCraftingMenu(
     const float mouseY,
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
+    const CraftingUiMode mode,
     const bool useWorkbench,
     const std::size_t bagStartRow)
 {
@@ -518,7 +519,7 @@ int Renderer::hitTestCraftingMenu(
     const std::size_t clampedBagStartRow = std::min(bagStartRow, maxBagStartRow);
 
     const detail::CraftingOverlayLayoutPx layout =
-        detail::computeCraftingOverlayLayoutPx(windowWidth, windowHeight, useWorkbench);
+        detail::computeCraftingOverlayLayoutPx(windowWidth, windowHeight, mode, useWorkbench);
     if (layout.slotSize <= 0.0f)
     {
         return -1;
@@ -530,33 +531,50 @@ int Renderer::hitTestCraftingMenu(
             && mouseY >= y0 && mouseY <= y0 + layout.slotSize;
     };
 
-    const int craftingColumns = useWorkbench ? 3 : 2;
-    const int craftingRows = useWorkbench ? 3 : 2;
-    for (int row = 0; row < craftingRows; ++row)
+    if (mode == CraftingUiMode::Furnace)
     {
-        for (int col = 0; col < craftingColumns; ++col)
+        if (insideRect(layout.craftingOriginX, layout.craftingOriginY))
         {
-            const float slotX = layout.craftingOriginX + static_cast<float>(col) * (layout.slotSize + layout.slotGap);
-            const float slotY = layout.craftingOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
-            if (insideRect(slotX, slotY))
+            return kCraftingGridHitBase + 1;
+        }
+        if (insideRect(layout.furnaceFuelSlotX, layout.furnaceFuelSlotY))
+        {
+            return kCraftingGridHitBase + 7;
+        }
+    }
+    else
+    {
+        const int craftingColumns = (mode == CraftingUiMode::Workbench || mode == CraftingUiMode::Chest) ? 3 : 2;
+        const int craftingRows = (mode == CraftingUiMode::Workbench || mode == CraftingUiMode::Chest) ? 3 : 2;
+        for (int row = 0; row < craftingRows; ++row)
+        {
+            for (int col = 0; col < craftingColumns; ++col)
             {
-                return kCraftingGridHitBase + row * 3 + col;
+                const float slotX = layout.craftingOriginX + static_cast<float>(col) * (layout.slotSize + layout.slotGap);
+                const float slotY = layout.craftingOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
+                if (insideRect(slotX, slotY))
+                {
+                    return kCraftingGridHitBase + row * 3 + col;
+                }
             }
         }
     }
 
-    if (insideRect(layout.resultSlotX, layout.resultSlotY))
+    if (mode != CraftingUiMode::Chest && insideRect(layout.resultSlotX, layout.resultSlotY))
     {
         return kCraftingResultHit;
     }
 
-    for (int slotIndex = 0; slotIndex < 5; ++slotIndex)
+    if (mode == CraftingUiMode::Inventory)
     {
-        const float slotX = layout.equipmentOriginX;
-        const float slotY = layout.equipmentOriginY + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-        if (insideRect(slotX, slotY))
+        for (int slotIndex = 0; slotIndex < 5; ++slotIndex)
         {
-            return kCraftingEquipmentHitBase + slotIndex;
+            const float slotX = layout.equipmentOriginX;
+            const float slotY = layout.equipmentOriginY + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
+            if (insideRect(slotX, slotY))
+            {
+                return kCraftingEquipmentHitBase + slotIndex;
+            }
         }
     }
 

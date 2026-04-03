@@ -109,7 +109,7 @@ EquippedItem mobDropItemForKind(const game::MobKind mobKind)
     using MK = game::MobKind;
     switch (mobKind)
     {
-    case MK::VoidStrider:
+    case MK::Zombie:
         return EquippedItem::RottenFlesh;
     case MK::Player:
         return EquippedItem::None;

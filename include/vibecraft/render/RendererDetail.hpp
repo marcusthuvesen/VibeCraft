@@ -294,6 +294,8 @@ struct CraftingOverlayLayoutPx
     float equipmentOriginY = 0.0f;
     float craftingOriginX = 0.0f;
     float craftingOriginY = 0.0f;
+    float furnaceFuelSlotX = 0.0f;
+    float furnaceFuelSlotY = 0.0f;
     float resultSlotX = 0.0f;
     float resultSlotY = 0.0f;
     float inventoryOriginX = 0.0f;
@@ -311,6 +313,7 @@ struct CraftingOverlayLayoutPx
 [[nodiscard]] CraftingOverlayLayoutPx computeCraftingOverlayLayoutPx(
     std::uint32_t windowWidth,
     std::uint32_t windowHeight,
+    vibecraft::render::CraftingUiMode mode,
     bool useWorkbench);
 
 [[nodiscard]] int computeCenteredColumnStart(int totalChars);
@@ -324,6 +327,16 @@ struct CraftingOverlayLayoutPx
     const glm::vec3& cameraPosition,
     const glm::vec3& aabbMin,
     const glm::vec3& aabbMax);
+[[nodiscard]] float distanceSqCameraToAabbXZ(
+    const glm::vec3& cameraPosition,
+    const glm::vec3& aabbMin,
+    const glm::vec3& aabbMax);
+[[nodiscard]] float distanceSqCameraToAabbDownWeighted(
+    const glm::vec3& cameraPosition,
+    const glm::vec3& aabbMin,
+    const glm::vec3& aabbMax,
+    float belowCameraWeight,
+    float aboveCameraWeight);
 
 [[nodiscard]] std::filesystem::path runtimeAssetPath(const std::filesystem::path& relativePath);
 

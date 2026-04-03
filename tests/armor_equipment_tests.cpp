@@ -76,17 +76,17 @@ TEST_CASE("armor slots only accept their matching scout piece")
         .count = 1,
         .equippedItem = EquippedItem::ScoutChestRig,
     };
-    const InventorySlot tank{
+    const InventorySlot wrongForHelmet{
         .blockType = vibecraft::world::BlockType::Air,
         .count = 1,
-        .equippedItem = EquippedItem::StarterTank,
+        .equippedItem = EquippedItem::DiamondSword,
     };
 
     CHECK(vibecraft::app::canPlaceIntoEquipmentSlot(helmet, EquipmentSlotKind::Helmet));
     CHECK_FALSE(vibecraft::app::canPlaceIntoEquipmentSlot(helmet, EquipmentSlotKind::Chestplate));
     CHECK(vibecraft::app::canPlaceIntoEquipmentSlot(chest, EquipmentSlotKind::Chestplate));
     CHECK_FALSE(vibecraft::app::canPlaceIntoEquipmentSlot(chest, EquipmentSlotKind::Boots));
-    CHECK_FALSE(vibecraft::app::canPlaceIntoEquipmentSlot(tank, EquipmentSlotKind::Helmet));
+    CHECK_FALSE(vibecraft::app::canPlaceIntoEquipmentSlot(wrongForHelmet, EquipmentSlotKind::Helmet));
 }
 
 TEST_CASE("equipped scout armor reduces hostile damage")

@@ -31,9 +31,7 @@
 #include "vibecraft/app/ApplicationAmbientLife.hpp"
 #include "vibecraft/app/ApplicationBotanyRuntime.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
-#include "vibecraft/app/ApplicationOxygenRuntime.hpp"
 #include "vibecraft/app/ApplicationTerraformingRuntime.hpp"
-#include "vibecraft/app/OxygenItems.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
 #include "vibecraft/audio/RuntimeAudioRoot.hpp"
 #include "vibecraft/core/Logger.hpp"
@@ -89,14 +87,12 @@ struct BiomeVisualProfile
     float terrainHazeStrength = 0.18f;
     float terrainSaturation = 1.05f;
 };
-
 [[nodiscard]] BiomeVisualProfile biomeVisualProfile(const world::SurfaceBiome biome)
 {
     using B = world::SurfaceBiome;
     switch (biome)
     {
     case B::Desert:
-        // Vanilla-like desert: mostly normal blue sky with warmer bounce light.
         return {
             .skyTarget = {0.54f, 0.74f, 0.98f},
             .horizonTarget = {0.82f, 0.88f, 0.98f},
@@ -118,8 +114,12 @@ struct BiomeVisualProfile
             .terrainSaturation = 0.92f,
         };
     case B::SnowyPlains:
+    case B::IcePlains:
+    case B::IceSpikePlains:
     case B::SnowyTaiga:
-        // Snow stays bright, but the palette remains close to Minecraft's normal daytime.
+    case B::SnowySlopes:
+    case B::FrozenPeaks:
+    case B::JaggedPeaks:
         return {
             .skyTarget = {0.56f, 0.76f, 0.99f},
             .horizonTarget = {0.84f, 0.90f, 1.0f},
@@ -143,7 +143,7 @@ struct BiomeVisualProfile
     case B::Jungle:
     case B::SparseJungle:
     case B::BambooJungle:
-        // Jungle keeps a greener bounce light without drifting into stylized fog.
+    case B::Swamp:
         return {
             .skyTarget = {0.52f, 0.74f, 0.96f},
             .horizonTarget = {0.76f, 0.84f, 0.94f},
@@ -164,12 +164,14 @@ struct BiomeVisualProfile
             .terrainHazeStrength = 0.04f,
             .terrainSaturation = 0.90f,
         };
-    case B::Forest:
-    case B::BirchForest:
-    case B::DarkForest:
-    case B::Taiga:
     case B::Plains:
-        // Temperate plains/forest palette closer to Minecraft daytime.
+    case B::SunflowerPlains:
+    case B::Meadow:
+    case B::Savanna:
+    case B::SavannaPlateau:
+    case B::WindsweptSavanna:
+    case B::WindsweptHills:
+    case B::StonyPeaks:
         return {
             .skyTarget = {0.50f, 0.72f, 0.96f},
             .horizonTarget = {0.76f, 0.84f, 0.96f},
@@ -190,11 +192,79 @@ struct BiomeVisualProfile
             .terrainHazeStrength = 0.03f,
             .terrainSaturation = 0.76f,
         };
+    case B::Forest:
+    case B::FlowerForest:
+    case B::OldGrowthBirchForest:
+    case B::BirchForest:
+    case B::MushroomField:
+        return {
+            .skyTarget = {0.50f, 0.72f, 0.96f},
+            .horizonTarget = {0.76f, 0.84f, 0.96f},
+            .cloudTarget = {0.94f, 0.96f, 1.0f},
+            .sunTintTarget = {1.0f, 0.97f, 0.90f},
+            .moonTintTarget = {0.66f, 0.78f, 0.96f},
+            .terrainHazeTarget = {0.62f, 0.74f, 0.84f},
+            .terrainBounceTarget = {0.74f, 0.90f, 0.60f},
+            .skyBlend = 0.08f,
+            .horizonBlend = 0.10f,
+            .cloudBlend = 0.08f,
+            .sunBlend = 0.08f,
+            .moonBlend = 0.14f,
+            .skyBrightness = 1.02f,
+            .horizonBrightness = 1.01f,
+            .cloudBrightness = 1.01f,
+            .terrainHazeBlend = 0.085f,
+            .terrainHazeStrength = 0.050f,
+            .terrainSaturation = 0.90f,
+        };
+    case B::Taiga:
+    case B::OldGrowthSpruceTaiga:
+    case B::OldGrowthPineTaiga:
+        return {
+            .skyTarget = {0.52f, 0.73f, 0.97f},
+            .horizonTarget = {0.76f, 0.84f, 0.96f},
+            .cloudTarget = {0.94f, 0.96f, 1.0f},
+            .sunTintTarget = {0.99f, 0.97f, 0.92f},
+            .moonTintTarget = {0.68f, 0.78f, 0.96f},
+            .terrainHazeTarget = {0.70f, 0.78f, 0.88f},
+            .terrainBounceTarget = {0.72f, 0.82f, 0.68f},
+            .skyBlend = 0.07f,
+            .horizonBlend = 0.09f,
+            .cloudBlend = 0.07f,
+            .sunBlend = 0.07f,
+            .moonBlend = 0.13f,
+            .skyBrightness = 1.01f,
+            .horizonBrightness = 1.01f,
+            .cloudBrightness = 1.01f,
+            .terrainHazeBlend = 0.055f,
+            .terrainHazeStrength = 0.038f,
+            .terrainSaturation = 0.82f,
+        };
+    case B::DarkForest:
+        return {
+            .skyTarget = {0.48f, 0.70f, 0.95f},
+            .horizonTarget = {0.72f, 0.80f, 0.94f},
+            .cloudTarget = {0.92f, 0.94f, 0.98f},
+            .sunTintTarget = {0.98f, 0.96f, 0.88f},
+            .moonTintTarget = {0.64f, 0.76f, 0.96f},
+            .terrainHazeTarget = {0.62f, 0.72f, 0.82f},
+            .terrainBounceTarget = {0.68f, 0.78f, 0.62f},
+            .skyBlend = 0.10f,
+            .horizonBlend = 0.12f,
+            .cloudBlend = 0.10f,
+            .sunBlend = 0.10f,
+            .moonBlend = 0.16f,
+            .skyBrightness = 0.99f,
+            .horizonBrightness = 1.00f,
+            .cloudBrightness = 1.00f,
+            .terrainHazeBlend = 0.09f,
+            .terrainHazeStrength = 0.055f,
+            .terrainSaturation = 0.80f,
+        };
     default:
         return biomeVisualProfile(B::Forest);
     }
 }
-
 [[nodiscard]] glm::vec3 applyBiomeColorGrade(
     const glm::vec3& baseColor,
     const glm::vec3& targetColor,
@@ -437,6 +507,7 @@ void Application::update(const float deltaTimeSeconds)
                 terrainGenerator_,
                 playerFeetPosition_,
                 botanyRuntimeState_));
+            tickFurnaces(deltaTimeSeconds);
         }
         const float currentEyeHeight = std::max(0.0f, camera_.position().y - playerFeetPosition_.y);
         updateDroppedItems(deltaTimeSeconds, currentEyeHeight);
@@ -711,9 +782,39 @@ void Application::processInput(const float deltaTimeSeconds)
                     craftingMenuState_.bagStartRow + static_cast<std::size_t>(-scrollDelta));
             }
         }
-        if (inputState_.leftMouseClicked)
+        const std::uint32_t mouseButtons = SDL_GetMouseState(nullptr, nullptr);
+        const bool leftMouseHeld = (mouseButtons & SDL_BUTTON_LMASK) != 0U;
+        const render::CraftingUiMode renderMode =
+            craftingMenuState_.mode == CraftingMenuState::Mode::Furnace ? render::CraftingUiMode::Furnace
+            : craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage ? render::CraftingUiMode::Chest
+            : craftingMenuState_.usesWorkbench ? render::CraftingUiMode::Workbench
+                                               : render::CraftingUiMode::Inventory;
+        const int hoveredCraftingHit = render::Renderer::hitTestCraftingMenu(
+            inputState_.mouseWindowX,
+            inputState_.mouseWindowY,
+            window_.width(),
+            window_.height(),
+            renderMode,
+            craftingMenuState_.usesWorkbench,
+            craftingMenuState_.bagStartRow);
+        if (!leftMouseHeld)
+        {
+            craftingDragActive_ = false;
+            craftingDragLastHit_ = -1;
+        }
+        else if (!craftingDragActive_)
+        {
+            if (inputState_.leftMousePressed)
+            {
+                handleCraftingMenuClick();
+                craftingDragActive_ = true;
+                craftingDragLastHit_ = hoveredCraftingHit;
+            }
+        }
+        else if (hoveredCraftingHit != craftingDragLastHit_)
         {
             handleCraftingMenuClick();
+            craftingDragLastHit_ = hoveredCraftingHit;
         }
         if (inputState_.rightMousePressed)
         {

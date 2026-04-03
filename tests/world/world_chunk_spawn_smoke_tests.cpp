@@ -2,6 +2,8 @@
 
 #include <doctest/doctest.h>
 #include <glm/vec3.hpp>
+#include <algorithm>
+#include <cmath>
 
 #include "vibecraft/game/MobSpawnSystem.hpp"
 #include "vibecraft/game/PlayerVitals.hpp"
@@ -83,6 +85,140 @@ TEST_CASE("MobSpawnSystem does not spawn hostiles during daytime")
     }
 
     CHECK(sys.mobs().empty());
+}
+
+TEST_CASE("MobSpawnSystem blocks hostile spawns near torches")
+{
+    vibecraft::world::World world;
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    world.generateRadius(terrainGenerator, 3);
+
+    vibecraft::game::MobSpawnSettings settings;
+    settings.spawnAttemptIntervalSeconds = 0.01f;
+    settings.maxPassiveMobsNearPlayer = 0;
+    settings.spawnMinHorizontalDistance = 4.0f;
+    settings.spawnMaxHorizontalDistance = 6.0f;
+    settings.hostileTorchExclusionRadius = 9.0f;
+    vibecraft::game::MobSpawnSystem sys(settings);
+    sys.setRngSeedForTests(99'123u);
+
+    vibecraft::game::PlayerVitals vitals;
+    const int surfaceY = terrainGenerator.surfaceHeightAt(0, 0);
+    const glm::vec3 playerFeet{0.5f, static_cast<float>(surfaceY) + 1.0f, 0.5f};
+    REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
+        .action = vibecraft::world::WorldEditAction::Place,
+        .position = glm::ivec3{0, surfaceY + 1, 0},
+        .blockType = vibecraft::world::BlockType::Torch,
+    }));
+
+    for (int i = 0; i < 400; ++i)
+    {
+        sys.tick(
+            world,
+            terrainGenerator,
+            playerFeet,
+            0.3f,
+            0.02f,
+            vibecraft::game::TimeOfDayPeriod::Night,
+            true,
+            vitals);
+    }
+
+    CHECK(sys.mobs().empty());
+}
+
+TEST_CASE("MobSpawnSystem hostiles can climb a one-block ledge while chasing")
+{
+    vibecraft::world::World world;
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    world.generateRadius(terrainGenerator, 4);
+
+    vibecraft::game::MobSpawnSettings settings;
+    settings.spawnAttemptIntervalSeconds = 0.01f;
+    settings.maxPassiveMobsNearPlayer = 0;
+    settings.maxHostileMobsNearPlayer = 1;
+    settings.spawnMinHorizontalDistance = 6.0f;
+    settings.spawnMaxHorizontalDistance = 6.0f;
+    settings.mobMoveSpeed = 3.0f;
+    vibecraft::game::MobSpawnSystem sys(settings);
+    sys.setRngSeedForTests(4'242u);
+
+    vibecraft::game::PlayerVitals vitals;
+    const int surfaceY = terrainGenerator.surfaceHeightAt(0, 0);
+    const glm::vec3 playerFeet{0.5f, static_cast<float>(surfaceY) + 1.0f, 0.5f};
+
+    for (int i = 0; i < 600 && sys.mobs().empty(); ++i)
+    {
+        sys.tick(
+            world,
+            terrainGenerator,
+            playerFeet,
+            0.3f,
+            0.02f,
+            vibecraft::game::TimeOfDayPeriod::Night,
+            true,
+            vitals);
+    }
+    REQUIRE(!sys.mobs().empty());
+
+    const vibecraft::game::MobInstance spawned = sys.mobs().front();
+    const std::uint32_t targetId = spawned.id;
+    const float initialY = spawned.feetY;
+    const int mobBlockX = static_cast<int>(std::floor(spawned.feetX));
+    const int mobBlockZ = static_cast<int>(std::floor(spawned.feetZ));
+    const float dxToPlayer = playerFeet.x - spawned.feetX;
+    const float dzToPlayer = playerFeet.z - spawned.feetZ;
+    const bool alongX = std::abs(dxToPlayer) >= std::abs(dzToPlayer);
+    const int dirX = dxToPlayer >= 0.0f ? 1 : -1;
+    const int dirZ = dzToPlayer >= 0.0f ? 1 : -1;
+
+    const int wallBaseY = static_cast<int>(std::floor(spawned.feetY));
+    for (int lateral = -2; lateral <= 2; ++lateral)
+    {
+        const int wx = alongX ? (mobBlockX + dirX) : (mobBlockX + lateral);
+        const int wz = alongX ? (mobBlockZ + lateral) : (mobBlockZ + dirZ);
+        REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
+            .action = vibecraft::world::WorldEditAction::Place,
+            .position = glm::ivec3{wx, wallBaseY, wz},
+            .blockType = vibecraft::world::BlockType::Stone,
+        }));
+        REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
+            .action = vibecraft::world::WorldEditAction::Remove,
+            .position = glm::ivec3{wx, wallBaseY + 1, wz},
+            .blockType = vibecraft::world::BlockType::Air,
+        }));
+        REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
+            .action = vibecraft::world::WorldEditAction::Remove,
+            .position = glm::ivec3{wx, wallBaseY + 2, wz},
+            .blockType = vibecraft::world::BlockType::Air,
+        }));
+    }
+
+    float maxObservedY = initialY;
+    for (int i = 0; i < 180; ++i)
+    {
+        sys.tick(
+            world,
+            terrainGenerator,
+            playerFeet,
+            0.3f,
+            0.02f,
+            vibecraft::game::TimeOfDayPeriod::Night,
+            false,
+            vitals);
+
+        const auto it = std::find_if(
+            sys.mobs().begin(),
+            sys.mobs().end(),
+            [targetId](const vibecraft::game::MobInstance& mob)
+            {
+                return mob.id == targetId;
+            });
+        REQUIRE(it != sys.mobs().end());
+        maxObservedY = std::max(maxObservedY, it->feetY);
+    }
+
+    CHECK(maxObservedY >= initialY + 0.8f);
 }
 
 TEST_CASE("terrain generator biome override forces requested biome surface blocks")

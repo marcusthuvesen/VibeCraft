@@ -24,7 +24,7 @@ namespace
         return 0.82f;
     case MK::Chicken:
         return 0.42f;
-    case MK::VoidStrider:
+    case MK::Zombie:
         return 0.88f;
     case MK::Player:
         return 0.0f;
@@ -45,7 +45,7 @@ namespace
         return 8.5f;
     case MK::Chicken:
         return 5.5f;
-    case MK::VoidStrider:
+    case MK::Zombie:
         return 10.0f;
     case MK::Player:
         return 1000.0f;
@@ -66,7 +66,7 @@ namespace
         return 5.5f;
     case MK::Chicken:
         return 4.0f;
-    case MK::VoidStrider:
+    case MK::Zombie:
         return 6.0f;
     case MK::Player:
         return 0.0f;

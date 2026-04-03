@@ -564,42 +564,18 @@ game::EnvironmentalHazards samplePlayerHazards(
 void applyDefaultHotbarLoadout(HotbarSlots& hotbarSlots, std::size_t& selectedHotbarIndex)
 {
     hotbarSlots.fill({});
-    hotbarSlots[0].equippedItem = EquippedItem::DiamondSword;
+    hotbarSlots[0].equippedItem = EquippedItem::WoodPickaxe;
     hotbarSlots[0].count = 1;
     hotbarSlots[0].blockType = world::BlockType::Air;
-    hotbarSlots[7].equippedItem = EquippedItem::OxygenCanister;
-    hotbarSlots[7].count = 2;
-    hotbarSlots[7].blockType = world::BlockType::Air;
+    hotbarSlots[1].equippedItem = EquippedItem::None;
+    hotbarSlots[1].count = 1;
+    hotbarSlots[1].blockType = world::BlockType::CraftingTable;
+    hotbarSlots[7].equippedItem = EquippedItem::None;
+    hotbarSlots[7].count = 32;
+    hotbarSlots[7].blockType = world::BlockType::Cobblestone;
     hotbarSlots[8].equippedItem = EquippedItem::None;
-    hotbarSlots[8].count = 1;
-    hotbarSlots[8].blockType = world::BlockType::OxygenGenerator;
+    hotbarSlots[8].count = 16;
+    hotbarSlots[8].blockType = world::BlockType::Torch;
     selectedHotbarIndex = 0;
-}
-
-bool ensureStarterRelayAvailable(
-    HotbarSlots& hotbarSlots,
-    BagSlots& bagSlots,
-    const std::size_t selectedHotbarIndex)
-{
-    constexpr std::uint32_t kStarterRelayMinimumCount = 4;
-    std::uint32_t currentCount =
-        inventoryBlockCount(hotbarSlots, bagSlots, world::BlockType::OxygenGenerator);
-    if (currentCount >= kStarterRelayMinimumCount)
-    {
-        return false;
-    }
-
-    bool addedAny = false;
-    std::size_t preservedSelectedHotbarIndex = selectedHotbarIndex;
-    while (currentCount < kStarterRelayMinimumCount)
-    {
-        if (!addBlockToInventory(hotbarSlots, bagSlots, world::BlockType::OxygenGenerator, preservedSelectedHotbarIndex))
-        {
-            break;
-        }
-        ++currentCount;
-        addedAny = true;
-    }
-    return addedAny;
 }
 }  // namespace vibecraft::app

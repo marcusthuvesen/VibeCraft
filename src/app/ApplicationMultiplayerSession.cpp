@@ -11,7 +11,6 @@
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 
-#include "vibecraft/app/ApplicationSurvival.hpp"
 #include "vibecraft/app/ApplicationConfig.hpp"
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
 #include "vibecraft/app/ApplicationMultiplayerLog.hpp"
@@ -170,7 +169,7 @@ multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() 
         .yawDegrees = camera_.yawDegrees(),
         .pitchDegrees = camera_.pitchDegrees(),
         .health = playerVitals_.health(),
-        .air = encodeLegacyNetworkAir(oxygenSystem_.state()),
+        .air = playerVitals_.air(),
         .selectedEquippedItem = selectedSlot.equippedItem,
         .selectedBlockType = selectedSlot.blockType,
     });

@@ -273,6 +273,9 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     CHECK(vibecraft::world::textureTileIndex(BlockType::Chest, BlockFace::East) == 29);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Furnace, BlockFace::South) == 26);
     CHECK(vibecraft::world::textureTileIndex(BlockType::Furnace, BlockFace::East) == 25);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::FurnaceNorth, BlockFace::North) == 26);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::FurnaceEast, BlockFace::East) == 26);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::FurnaceWest, BlockFace::West) == 26);
     CHECK(vibecraft::world::textureTileIndex(BlockType::SnowGrass, BlockFace::Top) == 30);
     CHECK(vibecraft::world::textureTileIndex(BlockType::SnowGrass, BlockFace::Side) == 31);
     CHECK(vibecraft::world::textureTileIndex(BlockType::JungleGrass, BlockFace::Top) == 32);
@@ -472,4 +475,129 @@ TEST_CASE("taiga terrain generates spruce woods with podzol or coarse dirt patch
 
     CHECK(foundSpruce);
     CHECK(foundForestFloorPatch);
+}
+
+TEST_CASE("ore distribution favors minecraft-like underground depth bands")
+{
+    using vibecraft::world::BlockType;
+
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+
+    std::size_t highCoalCount = 0;
+    std::size_t deepCoalCount = 0;
+    std::size_t midIronCount = 0;
+    std::size_t deepIronCount = 0;
+    std::size_t shallowGoldCount = 0;
+    std::size_t deepGoldCount = 0;
+    std::size_t upperDiamondCount = 0;
+    std::size_t deepDiamondCount = 0;
+
+    for (int worldX = -96; worldX <= 96; worldX += 2)
+    {
+        for (int worldZ = -96; worldZ <= 96; worldZ += 2)
+        {
+            for (int y = -60; y <= 96; y += 2)
+            {
+                const BlockType blockType = terrainGenerator.blockTypeAt(worldX, y, worldZ);
+                switch (blockType)
+                {
+                case BlockType::CoalOre:
+                    if (y >= 32 && y <= 96)
+                    {
+                        ++highCoalCount;
+                    }
+                    if (y >= -60 && y <= -16)
+                    {
+                        ++deepCoalCount;
+                    }
+                    break;
+                case BlockType::IronOre:
+                    if (y >= -8 && y <= 40)
+                    {
+                        ++midIronCount;
+                    }
+                    if (y >= -60 && y <= -32)
+                    {
+                        ++deepIronCount;
+                    }
+                    break;
+                case BlockType::GoldOre:
+                    if (y >= 8 && y <= 32)
+                    {
+                        ++shallowGoldCount;
+                    }
+                    if (y >= -48 && y <= -8)
+                    {
+                        ++deepGoldCount;
+                    }
+                    break;
+                case BlockType::DiamondOre:
+                    if (y >= -16 && y <= 16)
+                    {
+                        ++upperDiamondCount;
+                    }
+                    if (y >= -60 && y <= -32)
+                    {
+                        ++deepDiamondCount;
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+    }
+
+    CHECK(highCoalCount > 0);
+    CHECK(midIronCount > 0);
+    CHECK(deepGoldCount > 0);
+    CHECK(deepDiamondCount > 0);
+    CHECK(highCoalCount > deepCoalCount);
+    CHECK(midIronCount > deepIronCount);
+    CHECK(deepGoldCount > shallowGoldCount);
+    CHECK(deepDiamondCount > upperDiamondCount);
+}
+
+TEST_CASE("world generation decorates caves into lush dripstone and deep dark regions")
+{
+    using vibecraft::world::BlockType;
+
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+
+    vibecraft::world::World world;
+    world.generateRadius(terrainGenerator, 10);
+
+    bool foundLushCave = false;
+    bool foundDripstoneCave = false;
+    bool foundDeepDark = false;
+
+    for (int worldX = -160; worldX <= 160 && (!foundLushCave || !foundDripstoneCave || !foundDeepDark); ++worldX)
+    {
+        for (int worldZ = -160; worldZ <= 160 && (!foundLushCave || !foundDripstoneCave || !foundDeepDark); ++worldZ)
+        {
+            const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            for (int y = -60; y <= surfaceY - 18 && (!foundLushCave || !foundDripstoneCave || !foundDeepDark); ++y)
+            {
+                const BlockType blockType = world.blockAt(worldX, y, worldZ);
+                if (blockType == BlockType::MossBlock && y <= surfaceY - 20)
+                {
+                    foundLushCave = true;
+                }
+                else if (blockType == BlockType::DripstoneBlock)
+                {
+                    foundDripstoneCave = true;
+                }
+                else if (blockType == BlockType::SculkBlock && y <= -24)
+                {
+                    foundDeepDark = true;
+                }
+            }
+        }
+    }
+
+    CHECK(foundLushCave);
+    CHECK(foundDripstoneCave);
+    CHECK(foundDeepDark);
 }

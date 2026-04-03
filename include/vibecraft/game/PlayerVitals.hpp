@@ -9,7 +9,6 @@ enum class DamageCause
     Fall,
     Lava,
     Drowning,
-    OxygenDepletion,
     EnemyAttack,
 };
 
