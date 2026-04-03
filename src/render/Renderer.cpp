@@ -210,12 +210,18 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     const bgfx::UniformHandle chunkMoonLightColor =
         bgfx::createUniform("u_moonLightColor", bgfx::UniformType::Vec4);
     const bgfx::UniformHandle chunkAmbientLight = bgfx::createUniform("u_ambientLight", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkAnim = bgfx::createUniform("u_chunkAnim", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkBiomeHaze = bgfx::createUniform("u_biomeHaze", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkBiomeGrade = bgfx::createUniform("u_biomeGrade", bgfx::UniformType::Vec4);
 
     if (!bgfx::isValid(chunkSunDirection)
         || !bgfx::isValid(chunkSunLightColor)
         || !bgfx::isValid(chunkMoonDirection)
         || !bgfx::isValid(chunkMoonLightColor)
-        || !bgfx::isValid(chunkAmbientLight))
+        || !bgfx::isValid(chunkAmbientLight)
+        || !bgfx::isValid(chunkAnim)
+        || !bgfx::isValid(chunkBiomeHaze)
+        || !bgfx::isValid(chunkBiomeGrade))
     {
         if (bgfx::isValid(chunkSunDirection))
         {
@@ -237,6 +243,18 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         {
             bgfx::destroy(chunkAmbientLight);
         }
+        if (bgfx::isValid(chunkAnim))
+        {
+            bgfx::destroy(chunkAnim);
+        }
+        if (bgfx::isValid(chunkBiomeHaze))
+        {
+            bgfx::destroy(chunkBiomeHaze);
+        }
+        if (bgfx::isValid(chunkBiomeGrade))
+        {
+            bgfx::destroy(chunkBiomeGrade);
+        }
         bgfx::destroy(chunkAtlasSampler);
         bgfx::destroy(chunkAtlasTexture);
         bgfx::destroy(chunkProgram);
@@ -254,6 +272,9 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     chunkMoonDirectionUniformHandle_ = chunkMoonDirection.idx;
     chunkMoonLightColorUniformHandle_ = chunkMoonLightColor.idx;
     chunkAmbientLightUniformHandle_ = chunkAmbientLight.idx;
+    chunkAnimUniformHandle_ = chunkAnim.idx;
+    chunkBiomeHazeUniformHandle_ = chunkBiomeHaze.idx;
+    chunkBiomeGradeUniformHandle_ = chunkBiomeGrade.idx;
 
     const bgfx::TextureHandle crosshairTexture = detail::createMinecraftStyleCrosshairTexture();
     if (bgfx::isValid(crosshairTexture))
@@ -281,6 +302,29 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
             bgfx::destroy(crosshairTexture);
             crosshairTextureHandle_ = UINT16_MAX;
         }
+    }
+
+    constexpr std::uint16_t kSkyTextureFlags =
+        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+    const bgfx::TextureHandle skySunTexture = detail::createTextureFromPng(
+        "textures/environment/sun.png",
+        kSkyTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(skySunTexture))
+    {
+        skySunTextureHandle_ = skySunTexture.idx;
+    }
+    const bgfx::TextureHandle skyMoonPhasesTexture = detail::createTextureFromPng(
+        "textures/environment/moon_phases.png",
+        kSkyTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(skyMoonPhasesTexture))
+    {
+        skyMoonPhasesTextureHandle_ = skyMoonPhasesTexture.idx;
     }
 
     constexpr std::uint16_t kUiItemTextureFlags =
@@ -414,6 +458,46 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         expeditionTankTextureHandle_ = expeditionTankTexture.idx;
         expeditionTankTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath("textures/item/expedition_tank.png"));
     }
+    const bgfx::TextureHandle scoutHelmetTexture = detail::createTextureFromPng(
+        "textures/item/scout_helmet.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(scoutHelmetTexture))
+    {
+        scoutHelmetTextureHandle_ = scoutHelmetTexture.idx;
+    }
+    const bgfx::TextureHandle scoutChestRigTexture = detail::createTextureFromPng(
+        "textures/item/scout_chest_rig.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(scoutChestRigTexture))
+    {
+        scoutChestRigTextureHandle_ = scoutChestRigTexture.idx;
+    }
+    const bgfx::TextureHandle scoutGreavesTexture = detail::createTextureFromPng(
+        "textures/item/scout_greaves.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(scoutGreavesTexture))
+    {
+        scoutGreavesTextureHandle_ = scoutGreavesTexture.idx;
+    }
+    const bgfx::TextureHandle scoutBootsTexture = detail::createTextureFromPng(
+        "textures/item/scout_boots.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(scoutBootsTexture))
+    {
+        scoutBootsTextureHandle_ = scoutBootsTexture.idx;
+    }
 
     extendedToolTextureHandles_.fill(UINT16_MAX);
     static constexpr const char* const kExtendedToolTexturePaths[14] = {
@@ -484,25 +568,25 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         playerMobTextureHandle_ = playerMobTexture.idx;
         playerMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(playerPath));
     }
-    const bgfx::TextureHandle sporegrazerTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Sporegrazer);
+    const bgfx::TextureHandle sporegrazerTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Cow);
     if (bgfx::isValid(sporegrazerTexture))
     {
         sporegrazerTextureHandle_ = sporegrazerTexture.idx;
         sporegrazerTextureUv_ = TextureUvRect{};
     }
-    const bgfx::TextureHandle burrowerTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Burrower);
+    const bgfx::TextureHandle burrowerTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Pig);
     if (bgfx::isValid(burrowerTexture))
     {
         burrowerTextureHandle_ = burrowerTexture.idx;
         burrowerTextureUv_ = TextureUvRect{};
     }
-    const bgfx::TextureHandle shardbackTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Shardback);
+    const bgfx::TextureHandle shardbackTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Sheep);
     if (bgfx::isValid(shardbackTexture))
     {
         shardbackTextureHandle_ = shardbackTexture.idx;
         shardbackTextureUv_ = TextureUvRect{};
     }
-    const bgfx::TextureHandle skitterwingTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Skitterwing);
+    const bgfx::TextureHandle skitterwingTexture = detail::createProceduralMobTexture(vibecraft::game::MobKind::Chicken);
     if (bgfx::isValid(skitterwingTexture))
     {
         skitterwingTextureHandle_ = skitterwingTexture.idx;
@@ -542,8 +626,8 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         std::uint16_t menuBgW = 0;
         std::uint16_t menuBgH = 0;
         const bgfx::TextureHandle menuBgTexture = detail::createTextureFromPng(
-            "textures/ui/main_menu_background.png",
-            BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+            "textures/ui/main_menu_background_lush.png",
+            BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
             &menuBgW,
             &menuBgH);
         if (bgfx::isValid(menuBgTexture))
@@ -628,6 +712,16 @@ void Renderer::shutdown()
         bgfx::destroy(detail::toUniformHandle(crosshairSamplerHandle_));
         crosshairSamplerHandle_ = UINT16_MAX;
     }
+    if (skySunTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(skySunTextureHandle_));
+        skySunTextureHandle_ = UINT16_MAX;
+    }
+    if (skyMoonPhasesTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(skyMoonPhasesTextureHandle_));
+        skyMoonPhasesTextureHandle_ = UINT16_MAX;
+    }
     if (diamondSwordTextureHandle_ != UINT16_MAX)
     {
         bgfx::destroy(detail::toTextureHandle(diamondSwordTextureHandle_));
@@ -687,6 +781,26 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toTextureHandle(expeditionTankTextureHandle_));
         expeditionTankTextureHandle_ = UINT16_MAX;
+    }
+    if (scoutHelmetTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(scoutHelmetTextureHandle_));
+        scoutHelmetTextureHandle_ = UINT16_MAX;
+    }
+    if (scoutChestRigTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(scoutChestRigTextureHandle_));
+        scoutChestRigTextureHandle_ = UINT16_MAX;
+    }
+    if (scoutGreavesTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(scoutGreavesTextureHandle_));
+        scoutGreavesTextureHandle_ = UINT16_MAX;
+    }
+    if (scoutBootsTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(scoutBootsTextureHandle_));
+        scoutBootsTextureHandle_ = UINT16_MAX;
     }
     {
         std::unordered_set<std::uint16_t> destroyedExtended;
@@ -822,6 +936,21 @@ void Renderer::shutdown()
         bgfx::destroy(detail::toUniformHandle(chunkAmbientLightUniformHandle_));
         chunkAmbientLightUniformHandle_ = UINT16_MAX;
     }
+    if (chunkAnimUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toUniformHandle(chunkAnimUniformHandle_));
+        chunkAnimUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkBiomeHazeUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toUniformHandle(chunkBiomeHazeUniformHandle_));
+        chunkBiomeHazeUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkBiomeGradeUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toUniformHandle(chunkBiomeGradeUniformHandle_));
+        chunkBiomeGradeUniformHandle_ = UINT16_MAX;
+    }
     ddShutdown();
     bgfx::shutdown();
     initialized_ = false;
@@ -939,13 +1068,13 @@ std::uint16_t Renderer::mobTextureHandleForKind(const vibecraft::game::MobKind k
         return voidStriderTextureHandle_;
     case MK::Player:
         return playerMobTextureHandle_;
-    case MK::Sporegrazer:
+    case MK::Cow:
         return sporegrazerTextureHandle_;
-    case MK::Burrower:
+    case MK::Pig:
         return burrowerTextureHandle_;
-    case MK::Shardback:
+    case MK::Sheep:
         return shardbackTextureHandle_;
-    case MK::Skitterwing:
+    case MK::Chicken:
         return skitterwingTextureHandle_;
     }
     return UINT16_MAX;
@@ -960,13 +1089,13 @@ TextureUvRect Renderer::mobTextureUvForKind(const vibecraft::game::MobKind kind)
         return voidStriderTextureUv_;
     case MK::Player:
         return playerMobTextureUv_;
-    case MK::Sporegrazer:
+    case MK::Cow:
         return sporegrazerTextureUv_;
-    case MK::Burrower:
+    case MK::Pig:
         return burrowerTextureUv_;
-    case MK::Shardback:
+    case MK::Sheep:
         return shardbackTextureUv_;
-    case MK::Skitterwing:
+    case MK::Chicken:
         return skitterwingTextureUv_;
     }
     return {};
@@ -1005,10 +1134,21 @@ std::uint16_t Renderer::hudItemKindTextureHandle(const HudItemKind kind) const
             ? starterTankTextureHandle_
             : (coalTextureHandle_ != UINT16_MAX ? coalTextureHandle_ : stickTextureHandle_);
     case HudItemKind::ScoutHelmet:
+        return scoutHelmetTextureHandle_ != UINT16_MAX
+            ? scoutHelmetTextureHandle_
+            : (leatherTextureHandle_ != UINT16_MAX ? leatherTextureHandle_ : stickTextureHandle_);
     case HudItemKind::ScoutChestRig:
+        return scoutChestRigTextureHandle_ != UINT16_MAX
+            ? scoutChestRigTextureHandle_
+            : (leatherTextureHandle_ != UINT16_MAX ? leatherTextureHandle_ : stickTextureHandle_);
     case HudItemKind::ScoutGreaves:
+        return scoutGreavesTextureHandle_ != UINT16_MAX
+            ? scoutGreavesTextureHandle_
+            : (leatherTextureHandle_ != UINT16_MAX ? leatherTextureHandle_ : stickTextureHandle_);
     case HudItemKind::ScoutBoots:
-        return leatherTextureHandle_ != UINT16_MAX ? leatherTextureHandle_ : stickTextureHandle_;
+        return scoutBootsTextureHandle_ != UINT16_MAX
+            ? scoutBootsTextureHandle_
+            : (leatherTextureHandle_ != UINT16_MAX ? leatherTextureHandle_ : stickTextureHandle_);
     case HudItemKind::ExpeditionTank:
         return expeditionTankTextureHandle_ != UINT16_MAX
             ? expeditionTankTextureHandle_

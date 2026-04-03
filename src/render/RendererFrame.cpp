@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 
 #include <cmath>
+#include <cstring>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <string>
@@ -149,45 +150,138 @@ void drawDirectionalQuad(
     drawCelestialQuad(debugDrawEncoder, cameraFrameData.position, center, size, color, alpha);
 }
 
-void drawThinAtmosphereRing(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
+[[nodiscard]] bool submitTexturedCelestialSprite(
+    const CameraFrameData& cameraFrameData,
+    const glm::vec3& direction,
+    const float distance,
+    const float size,
+    const TextureUvRect& uvRect,
+    const glm::vec3& tint,
+    const float alpha,
+    const std::uint16_t textureHandle,
+    const std::uint16_t samplerHandle,
+    const std::uint16_t programHandle)
 {
-    constexpr float kTwoPi = 6.28318530717958647692f;
-    constexpr int kPanelCount = 14;
-    constexpr float kRingDistance = 176.0f;
-    constexpr float kRingHeightOffset = -18.0f;
-    constexpr float kRingSize = 150.0f;
-
-    const glm::vec3 horizonBase = glm::mix(cameraFrameData.horizonTint, cameraFrameData.skyTint, 0.30f);
-    const glm::vec3 sunGlowTint = glm::mix(horizonBase, cameraFrameData.sunLightTint, 0.38f);
-    const glm::vec3 sunHorizDir = glm::normalize(glm::vec3(
-        cameraFrameData.sunDirection.x,
-        cameraFrameData.sunDirection.y * 0.28f,
-        cameraFrameData.sunDirection.z));
-
-    for (int panelIndex = 0; panelIndex < kPanelCount; ++panelIndex)
+    if (textureHandle == UINT16_MAX || samplerHandle == UINT16_MAX || programHandle == UINT16_MAX)
     {
-        const float angle = (static_cast<float>(panelIndex) / static_cast<float>(kPanelCount)) * kTwoPi;
-        const glm::vec3 ringDirection = glm::normalize(glm::vec3(std::cos(angle), 0.06f, std::sin(angle)));
-        const float sunAlignment =
-            std::clamp(glm::dot(ringDirection, sunHorizDir) * 0.5f + 0.5f, 0.0f, 1.0f);
-        const glm::vec3 tint = glm::mix(horizonBase, sunGlowTint, sunAlignment * 0.55f);
-        const float alpha = 0.08f + sunAlignment * 0.09f + cameraFrameData.sunVisibility * 0.06f;
-        const glm::vec3 center =
-            cameraFrameData.position + ringDirection * kRingDistance + glm::vec3(0.0f, kRingHeightOffset, 0.0f);
-        drawCelestialQuad(debugDrawEncoder, cameraFrameData.position, center, kRingSize, tint, alpha);
+        return false;
     }
+    if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4
+        || bgfx::getAvailTransientIndexBuffer(6) < 6)
+    {
+        return false;
+    }
+
+    const glm::vec3 center = cameraFrameData.position + glm::normalize(direction) * distance;
+    glm::vec3 toCamera = cameraFrameData.position - center;
+    if (glm::dot(toCamera, toCamera) <= 1.0e-6f)
+    {
+        toCamera = -cameraFrameData.forward;
+    }
+    toCamera = glm::normalize(toCamera);
+
+    glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), toCamera);
+    if (glm::dot(right, right) <= 1.0e-6f)
+    {
+        right = glm::cross(cameraFrameData.up, toCamera);
+    }
+    if (glm::dot(right, right) <= 1.0e-6f)
+    {
+        right = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+    right = glm::normalize(right) * (size * 0.5f);
+    glm::vec3 up = glm::cross(toCamera, right);
+    if (glm::dot(up, up) <= 1.0e-6f)
+    {
+        up = glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+    up = glm::normalize(up) * (size * 0.5f);
+
+    const std::uint32_t abgr = detail::packAbgr8(tint, alpha);
+    detail::ChunkVertex vertices[4] = {
+        detail::ChunkVertex{
+            .x = center.x - right.x - up.x,
+            .y = center.y - right.y - up.y,
+            .z = center.z - right.z - up.z,
+            .nx = 0.0f,
+            .ny = 1.0f,
+            .nz = 0.0f,
+            .u = uvRect.minU,
+            .v = uvRect.maxV,
+            .abgr = abgr},
+        detail::ChunkVertex{
+            .x = center.x + right.x - up.x,
+            .y = center.y + right.y - up.y,
+            .z = center.z + right.z - up.z,
+            .nx = 0.0f,
+            .ny = 1.0f,
+            .nz = 0.0f,
+            .u = uvRect.maxU,
+            .v = uvRect.maxV,
+            .abgr = abgr},
+        detail::ChunkVertex{
+            .x = center.x + right.x + up.x,
+            .y = center.y + right.y + up.y,
+            .z = center.z + right.z + up.z,
+            .nx = 0.0f,
+            .ny = 1.0f,
+            .nz = 0.0f,
+            .u = uvRect.maxU,
+            .v = uvRect.minV,
+            .abgr = abgr},
+        detail::ChunkVertex{
+            .x = center.x - right.x + up.x,
+            .y = center.y - right.y + up.y,
+            .z = center.z - right.z + up.z,
+            .nx = 0.0f,
+            .ny = 1.0f,
+            .nz = 0.0f,
+            .u = uvRect.minU,
+            .v = uvRect.minV,
+            .abgr = abgr},
+    };
+
+    bgfx::TransientVertexBuffer tvb{};
+    bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
+    std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+    bgfx::TransientIndexBuffer tib{};
+    bgfx::allocTransientIndexBuffer(&tib, 6);
+    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+    indices[3] = 0;
+    indices[4] = 2;
+    indices[5] = 3;
+
+    const float identity[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    bgfx::setTransform(identity);
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setIndexBuffer(&tib);
+    bgfx::setTexture(0, detail::toUniformHandle(samplerHandle), detail::toTextureHandle(textureHandle));
+    bgfx::setState(
+        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+        | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS);
+    bgfx::submit(detail::kMainView, detail::toProgramHandle(programHandle));
+    return true;
 }
 
 void drawStarField(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
 {
-    const float starVisibility = std::clamp(1.08f - cameraFrameData.sunVisibility * 1.55f, 0.0f, 1.0f);
+    const float starVisibility = std::clamp(1.02f - cameraFrameData.sunVisibility * 1.7f, 0.0f, 1.0f);
     if (starVisibility <= 0.01f)
     {
         return;
     }
 
     constexpr float kTwoPi = 6.28318530717958647692f;
-    constexpr int kStarCount = 220;
+    constexpr int kStarCount = 140;
     constexpr float kStarDistance = 230.0f;
 
     for (int starIndex = 0; starIndex < kStarCount; ++starIndex)
@@ -200,135 +294,135 @@ void drawStarField(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& ca
             std::cos(azimuth) * radial,
             elevation,
             std::sin(azimuth) * radial);
-        const glm::vec3 coolTint(0.64f, 0.76f, 1.0f);
-        const glm::vec3 warmTint(1.0f, 0.88f, 0.76f);
-        const glm::vec3 starTint = glm::mix(
-            coolTint,
-            warmTint,
-            hashUnitFloat(seed ^ 0x68bc21ebu) * 0.45f + hashUnitFloat(seed ^ 0x02e5be93u) * 0.25f);
+        const glm::vec3 starTint = glm::mix(glm::vec3(0.94f, 0.96f, 1.0f), glm::vec3(1.0f), hashUnitFloat(seed ^ 0x68bc21ebu) * 0.35f);
         const float prominence = hashUnitFloat(seed ^ 0x94d049bbu);
         const float twinkle =
-            0.72f
+            0.84f
             + 0.28f
                 * (0.5f
                    + 0.5f
                        * std::sin(
                            cameraFrameData.weatherTimeSeconds * (0.85f + prominence * 1.8f)
                            + static_cast<float>(starIndex) * 12.73f));
-        const float alpha = starVisibility * (0.22f + prominence * prominence * 0.78f) * twinkle;
-        const float size = 0.45f + prominence * prominence * 1.65f;
+        const float alpha = starVisibility * (0.14f + prominence * prominence * 0.52f) * twinkle;
+        const float size = 0.40f + prominence * prominence * 1.05f;
         drawDirectionalQuad(debugDrawEncoder, cameraFrameData, direction, kStarDistance, size, starTint, alpha);
     }
 }
 
-void drawSun(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
+void drawSun(
+    DebugDrawEncoder& debugDrawEncoder,
+    const CameraFrameData& cameraFrameData,
+    const std::uint16_t sunTextureHandle,
+    const std::uint16_t uiSamplerHandle,
+    const std::uint16_t uiProgramHandle)
 {
     if (cameraFrameData.sunVisibility <= 0.01f)
     {
         return;
     }
 
-    constexpr float kSunDistance = 240.0f;
-    constexpr float kSunRadius = 17.0f;
-    const glm::vec3 haloTint = glm::mix(cameraFrameData.sunLightTint, cameraFrameData.horizonTint, 0.26f);
-    const glm::vec3 outerHaloTint = glm::mix(haloTint, cameraFrameData.skyTint, 0.34f);
-    const glm::vec3 discTint = glm::mix(cameraFrameData.horizonTint, cameraFrameData.sunLightTint, 0.82f);
+    constexpr float kSunDistance = 236.0f;
+    constexpr float kSunRadius = 14.0f;
+    const glm::vec3 discTint = glm::mix(glm::vec3(1.0f, 0.95f, 0.62f), cameraFrameData.sunLightTint, 0.55f);
 
-    drawDirectionalQuad(
-        debugDrawEncoder,
-        cameraFrameData,
-        cameraFrameData.sunDirection,
-        kSunDistance,
-        kSunRadius * 5.8f,
-        outerHaloTint,
-        0.12f + cameraFrameData.sunVisibility * 0.10f);
-    drawDirectionalQuad(
-        debugDrawEncoder,
-        cameraFrameData,
-        cameraFrameData.sunDirection,
-        kSunDistance,
-        kSunRadius * 3.8f,
-        haloTint,
-        0.22f + cameraFrameData.sunVisibility * 0.16f);
-    drawDirectionalQuad(
-        debugDrawEncoder,
-        cameraFrameData,
-        cameraFrameData.sunDirection,
-        kSunDistance,
-        kSunRadius * 2.2f,
-        discTint);
+    if (submitTexturedCelestialSprite(
+            cameraFrameData,
+            cameraFrameData.sunDirection,
+            kSunDistance,
+            kSunRadius * 1.15f,
+            TextureUvRect{},
+            discTint,
+            glm::clamp(cameraFrameData.sunVisibility, 0.0f, 1.0f),
+            sunTextureHandle,
+            uiSamplerHandle,
+            uiProgramHandle))
+    {
+        return;
+    }
+
+    drawDirectionalQuad(debugDrawEncoder, cameraFrameData, cameraFrameData.sunDirection, kSunDistance, kSunRadius * 1.15f, discTint);
 }
 
-void drawDistantEarth(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
+void drawMoon(
+    DebugDrawEncoder& debugDrawEncoder,
+    const CameraFrameData& cameraFrameData,
+    const std::uint16_t moonPhasesTextureHandle,
+    const std::uint16_t uiSamplerHandle,
+    const std::uint16_t uiProgramHandle)
 {
     if (cameraFrameData.moonVisibility <= 0.01f)
     {
         return;
     }
 
-    constexpr float kEarthDistance = 232.0f;
-    constexpr float kEarthRadius = 12.0f;
-    const glm::vec3 earthDirection = glm::normalize(cameraFrameData.moonDirection);
-    const glm::vec3 earthCenter = cameraFrameData.position + earthDirection * kEarthDistance;
+    constexpr float kMoonDistance = 234.0f;
+    constexpr float kMoonRadius = 13.0f;
+    const glm::vec3 moonDirection = glm::normalize(cameraFrameData.moonDirection);
+    const glm::vec3 moonCenter = cameraFrameData.position + moonDirection * kMoonDistance;
     glm::vec3 lightAxis =
-        cameraFrameData.sunDirection - earthDirection * glm::dot(cameraFrameData.sunDirection, earthDirection);
+        cameraFrameData.sunDirection - moonDirection * glm::dot(cameraFrameData.sunDirection, moonDirection);
     if (glm::dot(lightAxis, lightAxis) <= 1.0e-6f)
     {
-        lightAxis = glm::cross(earthDirection, glm::vec3(0.0f, 1.0f, 0.0f));
+        lightAxis = glm::cross(moonDirection, glm::vec3(0.0f, 1.0f, 0.0f));
     }
     if (glm::dot(lightAxis, lightAxis) <= 1.0e-6f)
     {
         lightAxis = glm::vec3(1.0f, 0.0f, 0.0f);
     }
     lightAxis = glm::normalize(lightAxis);
-    glm::vec3 polarAxis = glm::cross(earthDirection, lightAxis);
-    if (glm::dot(polarAxis, polarAxis) <= 1.0e-6f)
-    {
-        polarAxis = glm::vec3(0.0f, 1.0f, 0.0f);
-    }
-    else
-    {
-        polarAxis = glm::normalize(polarAxis);
-    }
-
     const float phase = std::clamp(
-        glm::dot(-earthDirection, glm::normalize(cameraFrameData.sunDirection)) * 0.5f + 0.5f,
+        glm::dot(-moonDirection, glm::normalize(cameraFrameData.sunDirection)) * 0.5f + 0.5f,
         0.0f,
         1.0f);
-    const glm::vec3 oceanTint = glm::mix(glm::vec3(0.10f, 0.18f, 0.30f), glm::vec3(0.20f, 0.48f, 0.82f), phase);
-    const glm::vec3 cloudTint = glm::mix(glm::vec3(0.70f, 0.78f, 0.86f), glm::vec3(0.96f, 0.98f, 1.0f), phase);
-    const glm::vec3 atmosphereTint = glm::mix(oceanTint, cloudTint, 0.58f);
-    const glm::vec3 landTint = glm::mix(glm::vec3(0.16f, 0.28f, 0.12f), glm::vec3(0.30f, 0.44f, 0.18f), phase);
+    const glm::vec3 moonLitTint = glm::mix(glm::vec3(0.86f, 0.87f, 0.92f), cameraFrameData.moonLightTint, 0.30f);
+
+    // Minecraft moon phases are packed as a 4x2 texture grid.
+    const int phaseIndex = std::clamp(static_cast<int>(std::floor((1.0f - phase) * 8.0f)), 0, 7);
+    constexpr float kMoonPhaseUSize = 1.0f / 4.0f;
+    constexpr float kMoonPhaseVSize = 1.0f / 2.0f;
+    const float minU = static_cast<float>(phaseIndex % 4) * kMoonPhaseUSize;
+    const float minV = static_cast<float>(phaseIndex / 4) * kMoonPhaseVSize;
+    const TextureUvRect moonUv{
+        .minU = minU,
+        .maxU = minU + kMoonPhaseUSize,
+        .minV = minV,
+        .maxV = minV + kMoonPhaseVSize,
+    };
+    if (submitTexturedCelestialSprite(
+            cameraFrameData,
+            moonDirection,
+            kMoonDistance,
+            kMoonRadius * 1.06f,
+            moonUv,
+            moonLitTint,
+            glm::clamp(cameraFrameData.moonVisibility, 0.0f, 1.0f),
+            moonPhasesTextureHandle,
+            uiSamplerHandle,
+            uiProgramHandle))
+    {
+        return;
+    }
+
+    const glm::vec3 moonShadowTint(0.10f, 0.11f, 0.15f);
 
     drawCelestialQuad(
         debugDrawEncoder,
         cameraFrameData.position,
-        earthCenter,
-        kEarthRadius * 3.2f,
-        atmosphereTint,
-        0.18f + phase * 0.12f);
-    drawCelestialQuad(debugDrawEncoder, cameraFrameData.position, earthCenter, kEarthRadius * 2.15f, oceanTint);
+        moonCenter,
+        kMoonRadius * 1.06f,
+        moonLitTint,
+        0.96f);
+
+    // Fallback moon phase when textured moon assets are unavailable.
+    const float shadowOffset = (1.0f - phase) * (kMoonRadius * 1.1f);
     drawCelestialQuad(
         debugDrawEncoder,
         cameraFrameData.position,
-        earthCenter - lightAxis * (kEarthRadius * 0.18f) + polarAxis * (kEarthRadius * 0.08f),
-        kEarthRadius * 1.02f,
-        landTint,
-        0.62f);
-    drawCelestialQuad(
-        debugDrawEncoder,
-        cameraFrameData.position,
-        earthCenter + lightAxis * (kEarthRadius * 0.26f) + polarAxis * (kEarthRadius * 0.12f),
-        kEarthRadius * 1.24f,
-        cloudTint,
-        0.72f);
-    drawCelestialQuad(
-        debugDrawEncoder,
-        cameraFrameData.position,
-        earthCenter - lightAxis * (kEarthRadius * 0.44f),
-        kEarthRadius * 1.95f,
-        glm::vec3(0.01f, 0.02f, 0.04f),
-        0.22f + (1.0f - phase) * 0.48f);
+        moonCenter - lightAxis * shadowOffset,
+        kMoonRadius * 1.02f,
+        moonShadowTint,
+        0.90f);
 }
 }  // namespace
 
@@ -348,29 +442,26 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         bgfx::touch(detail::kMainView);
         bgfx::touch(detail::kUiView);
         drawMainMenuBackground();
-        drawMainMenuLogo();
         bgfx::dbgTextClear();
         const bgfx::Stats* const menuStats = bgfx::getStats();
         const std::uint16_t rawMenuTextHeight =
             menuStats != nullptr && menuStats->textHeight > 0 ? menuStats->textHeight : 30;
         const std::uint16_t rawMenuTextWidth =
             menuStats != nullptr && menuStats->textWidth > 0 ? menuStats->textWidth : 100;
-        const std::uint16_t menuTextWidth =
-            frameDebugData.uiMenuTextWidth > 0 ? frameDebugData.uiMenuTextWidth : rawMenuTextWidth;
-        const std::uint16_t menuTextHeight =
-            frameDebugData.uiMenuTextHeight > 0 ? frameDebugData.uiMenuTextHeight : rawMenuTextHeight;
-        const std::uint32_t menuWindowWidth =
-            frameDebugData.uiMenuWindowWidth > 0 ? frameDebugData.uiMenuWindowWidth : width_;
-        const std::uint32_t menuWindowHeight =
-            frameDebugData.uiMenuWindowHeight > 0 ? frameDebugData.uiMenuWindowHeight : height_;
+        // Keep main-menu dbg-text layout on the exact same grid returned by bgfx stats.
+        // Mixing app-scaled grid metrics with bgfx raw stats causes horizontal drift.
+        const std::uint16_t menuTextWidth = rawMenuTextWidth;
+        const std::uint16_t menuTextHeight = rawMenuTextHeight;
+        const std::uint32_t menuWindowWidth = width_;
+        const std::uint32_t menuWindowHeight = height_;
         const int titleMenuRowBias = detail::mainMenuLogoReservedDbgRows(
             menuWindowWidth, menuWindowHeight, menuTextHeight, logoWidthPx_, logoHeightPx_);
+        drawMainMenuChrome(frameDebugData, menuTextWidth, menuTextHeight, titleMenuRowBias);
+        drawMainMenuLogo();
         detail::drawMainMenuOverlay(frameDebugData, menuTextWidth, menuTextHeight, titleMenuRowBias);
         bgfx::frame();
         return;
     }
-
-    bgfx::setViewClear(detail::kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x263238ff, 1.0f, 0);
 
     const bx::Vec3 eye(cameraFrameData.position.x, cameraFrameData.position.y, cameraFrameData.position.z);
     const bx::Vec3 at(
@@ -399,12 +490,12 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     bgfx::touch(detail::kUiView);
 
     const glm::vec3 ambientLight = glm::clamp(
-        cameraFrameData.skyTint * 0.45f
-            + cameraFrameData.horizonTint * 0.15f
-            + cameraFrameData.sunLightTint * (0.08f * cameraFrameData.sunVisibility)
+        cameraFrameData.skyTint * 0.48f
+            + cameraFrameData.horizonTint * 0.18f
+            + cameraFrameData.sunLightTint * (0.10f * cameraFrameData.sunVisibility)
             + cameraFrameData.moonLightTint * (0.05f * cameraFrameData.moonVisibility),
-        glm::vec3(0.04f),
-        glm::vec3(0.72f));
+        glm::vec3(0.05f),
+        glm::vec3(0.78f));
     const glm::vec3 sunLightColor =
         cameraFrameData.sunLightTint * glm::max(cameraFrameData.sunVisibility, 0.0f);
     const glm::vec3 moonLightColor =
@@ -468,30 +559,53 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
                     detail::toTextureHandle(chunkAtlasTextureHandle_));
             }
             detail::setVec4Uniform(chunkSunDirectionUniformHandle_, cameraFrameData.sunDirection, 0.0f);
-            detail::setVec4Uniform(chunkSunLightColorUniformHandle_, sunLightColor, 0.0f);
+            // .w = raw visibility (rgb already includes tint * visibility) for sky bounce / night blend in fs_chunk.
+            detail::setVec4Uniform(
+                chunkSunLightColorUniformHandle_, sunLightColor, cameraFrameData.sunVisibility);
             detail::setVec4Uniform(chunkMoonDirectionUniformHandle_, cameraFrameData.moonDirection, 0.0f);
-            detail::setVec4Uniform(chunkMoonLightColorUniformHandle_, moonLightColor, 0.0f);
+            detail::setVec4Uniform(
+                chunkMoonLightColorUniformHandle_, moonLightColor, cameraFrameData.moonVisibility);
             detail::setVec4Uniform(chunkAmbientLightUniformHandle_, ambientLight, 0.0f);
+            detail::setVec4Uniform(
+                chunkAnimUniformHandle_,
+                glm::vec3(
+                    cameraFrameData.weatherTimeSeconds,
+                    cameraFrameData.rainIntensity,
+                    cameraFrameData.weatherWindSpeed),
+                0.0f);
+            detail::setVec4Uniform(
+                chunkBiomeHazeUniformHandle_,
+                cameraFrameData.terrainHazeColor,
+                cameraFrameData.terrainHazeStrength);
+            detail::setVec4Uniform(
+                chunkBiomeGradeUniformHandle_,
+                cameraFrameData.terrainBounceTint,
+                cameraFrameData.terrainSaturation);
             bgfx::setState(detail::kChunkRenderState);
             bgfx::submit(detail::kMainView, detail::toProgramHandle(chunkProgramHandle_));
         }
     }
 
-    drawWorldPickupSprites(frameDebugData);
+    drawWorldPickupSprites(frameDebugData, cameraFrameData);
 
     DebugDrawEncoder debugDrawEncoder;
     debugDrawEncoder.begin(detail::kMainView);
     detail::drawWeatherClouds(debugDrawEncoder, cameraFrameData);
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(false);
-    detail::drawSkyHorizonBloom(debugDrawEncoder, cameraFrameData);
-    detail::drawSkyAtmosphereVeils(debugDrawEncoder, cameraFrameData);
-    drawThinAtmosphereRing(debugDrawEncoder, cameraFrameData);
-    detail::drawSkyCirrusBands(debugDrawEncoder, cameraFrameData);
-    detail::drawSkyNebulaCanopy(debugDrawEncoder, cameraFrameData);
     drawStarField(debugDrawEncoder, cameraFrameData);
-    drawSun(debugDrawEncoder, cameraFrameData);
-    drawDistantEarth(debugDrawEncoder, cameraFrameData);
+    drawSun(
+        debugDrawEncoder,
+        cameraFrameData,
+        skySunTextureHandle_,
+        inventoryUiSamplerHandle_,
+        inventoryUiProgramHandle_);
+    drawMoon(
+        debugDrawEncoder,
+        cameraFrameData,
+        skyMoonPhasesTextureHandle_,
+        inventoryUiSamplerHandle_,
+        inventoryUiProgramHandle_);
     debugDrawEncoder.pop();
     detail::drawWeatherRain(debugDrawEncoder, cameraFrameData);
     // Celestial pass uses reversed depth-test for sky quads; restore normal depth for world overlays.
@@ -599,6 +713,7 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
 
     if (frameDebugData.pauseMenuActive)
     {
+        drawPauseMenuChrome(frameDebugData, menuTextWidth, menuTextHeight);
         detail::drawPauseMenuOverlay(frameDebugData, menuTextWidth, menuTextHeight);
         const std::uint16_t pauseHealthRow = menuTextHeight > 2 ? static_cast<std::uint16_t>(menuTextHeight - 3) : 0;
         detail::drawHealthHud(pauseHealthRow, frameDebugData);
