@@ -88,8 +88,8 @@ int Renderer::hitTestMainMenuSingleplayerPanel(
     constexpr int kButtonSpan = 5;
     constexpr int kPitch = 7;
     const int centerCol = std::max(0, (tw - kWide) / 2);
-    const int firstButtonRow = std::max(8, (th - 23) / 2 + 9);
-    for (int buttonIndex = 0; buttonIndex < 3; ++buttonIndex)
+    const int firstButtonRow = std::max(8, (th - 31) / 2 + 13);
+    for (int buttonIndex = 0; buttonIndex < 4; ++buttonIndex)
     {
         const int row0 = firstButtonRow + buttonIndex * kPitch;
         if (clampedRow >= row0 && clampedRow <= row0 + kButtonSpan - 1
@@ -166,6 +166,7 @@ int Renderer::hitTestPauseGameSettingsMenu(
     const int backRow = detail::PauseMenuLayout::pauseGameBackButtonRow(th);
     const int mobRow = detail::PauseMenuLayout::pauseGameMobButtonRow(th);
     const int biomeRow = detail::PauseMenuLayout::pauseGameBiomeButtonRow(th);
+    const int travelRow = detail::PauseMenuLayout::pauseGameTravelButtonRow(th);
     const int weatherRow = detail::PauseMenuLayout::pauseGameWeatherButtonRow(th);
 
     if (clampedRow >= backRow && clampedRow <= backRow + kSpan - 1 && clampedCol >= centerCol
@@ -183,10 +184,15 @@ int Renderer::hitTestPauseGameSettingsMenu(
     {
         return 2;
     }
-    if (clampedRow >= weatherRow && clampedRow <= weatherRow + kSpan - 1 && clampedCol >= centerCol
+    if (clampedRow >= travelRow && clampedRow <= travelRow + kSpan - 1 && clampedCol >= centerCol
         && clampedCol <= centerCol + kWide - 1)
     {
         return 3;
+    }
+    if (clampedRow >= weatherRow && clampedRow <= weatherRow + kSpan - 1 && clampedCol >= centerCol
+        && clampedCol <= centerCol + kWide - 1)
+    {
+        return 4;
     }
 
     return -1;
@@ -227,7 +233,7 @@ int Renderer::hitTestPauseSoundMenu(
     if (clampedRow >= musicRow && clampedRow <= musicRow + kSpan - 1 && clampedCol >= centerCol
         && clampedCol <= centerCol + kWide - 1)
     {
-        if (clampedRow == musicRow + 1)
+        if (clampedRow == musicRow + detail::PauseMenuLayout::kButtonLabelRowOffset)
         {
             const int relCol = clampedCol - centerCol;
             if (relCol >= kWide - 9 && relCol <= kWide - 7)
@@ -243,7 +249,7 @@ int Renderer::hitTestPauseSoundMenu(
     if (clampedRow >= sfxRow && clampedRow <= sfxRow + kSpan - 1 && clampedCol >= centerCol
         && clampedCol <= centerCol + kWide - 1)
     {
-        if (clampedRow == sfxRow + 1)
+        if (clampedRow == sfxRow + detail::PauseMenuLayout::kButtonLabelRowOffset)
         {
             const int relCol = clampedCol - centerCol;
             if (relCol >= kWide - 9 && relCol <= kWide - 7)
@@ -285,7 +291,7 @@ std::optional<float> Renderer::pauseSoundSliderValueFromMouse(
     const int centerCol = std::max(0, (tw - kWide) / 2);
     const int sliderRow = (musicSlider ? detail::PauseMenuLayout::pauseSoundMusicButtonRow(th)
                                        : detail::PauseMenuLayout::pauseSoundSfxButtonRow(th))
-        + 1;
+        + detail::PauseMenuLayout::kButtonLabelRowOffset;
     if (clampedRow != sliderRow)
     {
         return std::nullopt;

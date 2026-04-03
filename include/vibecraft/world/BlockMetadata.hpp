@@ -10,14 +10,24 @@ enum class BlockFace : std::uint8_t
 {
     Top = 0,
     Bottom,
-    Side
+    Side,
+    East,
+    West,
+    South,
+    North
 };
+
+constexpr std::uint8_t kUseSharedSideTile = 0xff;
 
 struct BlockTextureTiles
 {
     std::uint8_t top = 0;
     std::uint8_t bottom = 0;
     std::uint8_t side = 0;
+    std::uint8_t east = kUseSharedSideTile;
+    std::uint8_t west = kUseSharedSideTile;
+    std::uint8_t south = kUseSharedSideTile;
+    std::uint8_t north = kUseSharedSideTile;
 };
 
 struct BlockMetadata
@@ -28,33 +38,31 @@ struct BlockMetadata
     bool breakable = false;
 };
 
-// Vertex color multiplies the atlas sample; white shows materials as authored in assets/textures/materials.
+// Vertex color multiplies the atlas sample; white shows materials as authored in the source textures.
 // Tile indices follow scripts/build_chunk_atlas.sh row-major order on the chunk atlas grid.
-// Several tiles intentionally reuse placeholder art while the catalog is being reinterpreted for the alien-planet pivot.
+// Standard tiles are interpreted with Minecraft-style material semantics.
 [[nodiscard]] constexpr BlockMetadata blockMetadata(const BlockType blockType)
 {
     switch (blockType)
     {
     case BlockType::Grass:
-        // Glow forest fringe: luminous teal-green keeps the valley floor alien without losing readability.
+        // Grass block: standard grassy top with dirt fringe on the side, dirt on the bottom.
         return {
-            .debugColor = 0xffd7c86e,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 0, .bottom = 2, .side = 1},
             .hardness = 0.6f,
             .breakable = true,
         };
     case BlockType::Dirt:
-        // Richer mauve-brown subsoil keeps cliffs and cuts warm under the new biome palette.
         return {
-            .debugColor = 0xff7f5f93,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 2, .bottom = 2, .side = 2},
             .hardness = 0.5f,
             .breakable = true,
         };
     case BlockType::Stone:
-        // Cool violet-gray helps dramatic cliffs feel alien while keeping ridge contrast intact.
         return {
-            .debugColor = 0xffb69488,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 3, .bottom = 3, .side = 3},
             .hardness = 1.5f,
             .breakable = true,
@@ -62,7 +70,7 @@ struct BlockMetadata
     case BlockType::Deepslate:
         return {
             .debugColor = 0xffffffff,
-            .textureTiles = {.top = 4, .bottom = 4, .side = 4},
+            .textureTiles = {.top = 88, .bottom = 88, .side = 4},
             .hardness = 3.0f,
             .breakable = true,
         };
@@ -74,9 +82,8 @@ struct BlockMetadata
             .breakable = true,
         };
     case BlockType::Sand:
-        // Dry wastes lean warmer and dustier so ridges read sun-baked instead of desert-yellow.
         return {
-            .debugColor = 0xff4c92eb,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 7, .bottom = 7, .side = 7},
             .hardness = 0.5f,
             .breakable = true,
@@ -89,7 +96,7 @@ struct BlockMetadata
             .breakable = false,
         };
     case BlockType::Water:
-        // Tile 6 = first frame of assets/textures/materials/water_still.png (see build_chunk_atlas.sh).
+        // Tile 6 = first frame of the still-water strip (see build_chunk_atlas.sh).
         return {
             .debugColor = 0xb8ffcf7a,
             .textureTiles = {.top = 6, .bottom = 6, .side = 6},
@@ -131,47 +138,72 @@ struct BlockMetadata
             .hardness = 1000.0f,
             .breakable = false,
         };
-    case BlockType::TreeTrunk:
+    case BlockType::OakLog:
         return {
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 14, .bottom = 14, .side = 15},
             .hardness = 1.6f,
             .breakable = true,
         };
-    case BlockType::TreeCrown:
+    case BlockType::OakLeaves:
         return {
-            // Fringe canopies skew toward luminous mint rather than overworld oak green.
-            .debugColor = 0xc87edb74,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 16, .bottom = 16, .side = 16},
             .hardness = 0.2f,
             .breakable = true,
         };
-    case BlockType::JungleTreeTrunk:
+    case BlockType::BirchLog:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 92, .bottom = 92, .side = 93},
+            .hardness = 1.6f,
+            .breakable = true,
+        };
+    case BlockType::BirchLeaves:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 94, .bottom = 94, .side = 94},
+            .hardness = 0.2f,
+            .breakable = true,
+        };
+    case BlockType::DarkOakLog:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 99, .bottom = 99, .side = 100},
+            .hardness = 1.7f,
+            .breakable = true,
+        };
+    case BlockType::DarkOakLeaves:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 101, .bottom = 101, .side = 101},
+            .hardness = 0.2f,
+            .breakable = true,
+        };
+    case BlockType::JungleLog:
         return {
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 34, .bottom = 34, .side = 35},
             .hardness = 1.7f,
             .breakable = true,
         };
-    case BlockType::JungleTreeCrown:
+    case BlockType::JungleLeaves:
         return {
-            // Glow forest heart canopies push into cyan-teal to sell the Avatar-like alien canopy.
-            .debugColor = 0xc875db2f,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 60, .bottom = 60, .side = 60},
             .hardness = 0.2f,
             .breakable = true,
         };
-    case BlockType::SnowTreeTrunk:
+    case BlockType::SpruceLog:
         return {
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 61, .bottom = 61, .side = 62},
             .hardness = 1.7f,
             .breakable = true,
         };
-    case BlockType::SnowTreeCrown:
+    case BlockType::SpruceLeaves:
         return {
-            // Crystal expanse canopies stay cool and pale to read against blue-violet shelves.
-            .debugColor = 0xc88ca488,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 63, .bottom = 63, .side = 63},
             .hardness = 0.2f,
             .breakable = true,
@@ -186,7 +218,7 @@ struct BlockMetadata
     case BlockType::CraftingTable:
         return {
             .debugColor = 0xffffffff,
-            .textureTiles = {.top = 20, .bottom = 17, .side = 21},
+            .textureTiles = {.top = 20, .bottom = 23, .side = 21, .south = 22},
             .hardness = 2.5f,
             .breakable = true,
         };
@@ -200,46 +232,46 @@ struct BlockMetadata
     case BlockType::Sandstone:
         return {
             .debugColor = 0xffffffff,
-            .textureTiles = {.top = 19, .bottom = 19, .side = 19},
+            .textureTiles = {.top = 89, .bottom = 90, .side = 19},
             .hardness = 0.8f,
             .breakable = true,
         };
-    case BlockType::Oven:
-        // Tiles 24–26 from build_chunk_atlas.sh row 5 (furnace_*); bottom reuses cobblestone (18).
+    case BlockType::Furnace:
+        // Tiles 24-26 from build_chunk_atlas.sh row 5 (furnace_*); vanilla reuses the top texture on the bottom.
         return {
             .debugColor = 0xffffffff,
-            .textureTiles = {.top = 24, .bottom = 18, .side = 25},
+            .textureTiles = {.top = 24, .bottom = 24, .side = 25, .south = 26},
             .hardness = 3.5f,
             .breakable = true,
         };
     case BlockType::Chest:
-        // Tiles 27–29 from build_chunk_atlas.sh row 5 (chest_*).
+        // Tiles 27-29 from build_chunk_atlas.sh row 5 (chest_top/front/side).
         return {
             .debugColor = 0xffffffff,
-            .textureTiles = {.top = 27, .bottom = 27, .side = 28},
+            .textureTiles = {.top = 27, .bottom = 27, .side = 29, .south = 28},
             .hardness = 2.5f,
             .breakable = true,
         };
     case BlockType::OxygenGenerator:
-        // Relay decks glow with lumen (tile 43) and moss-lined piping (66) instead of recycled furnace art.
+        // Dedicated atlas tiles 77–79 (relay bottom / side / top); avoids clobbering bricks, glowstone, moss.
         return {
             .debugColor = 0xffb6ffe1,
-            .textureTiles = {.top = 43, .bottom = 41, .side = 66},
+            .textureTiles = {.top = 79, .bottom = 77, .side = 78},
             .hardness = 2.5f,
             .breakable = true,
         };
     case BlockType::SnowGrass:
-        // Crystal expanse surfaces read as frosted cyan shelves with a slight lilac cast.
+        // Snowy grass block: snowy top and frosted grass side over dirt.
         return {
-            .debugColor = 0xffffe0bc,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 30, .bottom = 2, .side = 31},
             .hardness = 0.65f,
             .breakable = true,
         };
     case BlockType::JungleGrass:
-        // Glow forest heart ground reads almost bioluminescent compared with the fringe biome.
+        // Mossy grass block: mossy top and overgrown grass side over dirt.
         return {
-            .debugColor = 0xffc7f02f,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 32, .bottom = 2, .side = 33},
             .hardness = 0.7f,
             .breakable = true,
@@ -323,14 +355,14 @@ struct BlockMetadata
         };
     case BlockType::BlueOrchid:
         return {
-            .debugColor = 0xffffe46a,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 51, .bottom = 51, .side = 51},
             .hardness = 0.0f,
             .breakable = true,
         };
     case BlockType::Allium:
         return {
-            .debugColor = 0xffffa8d8,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 52, .bottom = 52, .side = 52},
             .hardness = 0.0f,
             .breakable = true,
@@ -363,31 +395,51 @@ struct BlockMetadata
             .hardness = 0.0f,
             .breakable = true,
         };
+    case BlockType::Fern:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 95, .bottom = 95, .side = 95},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::Podzol:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 96, .bottom = 2, .side = 97},
+            .hardness = 0.6f,
+            .breakable = true,
+        };
+    case BlockType::CoarseDirt:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 98, .bottom = 98, .side = 98},
+            .hardness = 0.6f,
+            .breakable = true,
+        };
     case BlockType::Vines:
         return {
-            // Match glow forest heart canopy tint so hanging vines feel saturated and alive.
-            .debugColor = 0xc875db2f,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 57, .bottom = 57, .side = 57},
             .hardness = 0.0f,
             .breakable = true,
         };
     case BlockType::CocoaPod:
         return {
-            .debugColor = 0xffff9bf0,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 58, .bottom = 58, .side = 58},
             .hardness = 0.2f,
             .breakable = true,
         };
     case BlockType::Melon:
         return {
-            .debugColor = 0xff8ff5d0,
-            .textureTiles = {.top = 59, .bottom = 59, .side = 59},
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 91, .bottom = 91, .side = 59},
             .hardness = 1.0f,
             .breakable = true,
         };
     case BlockType::Bamboo:
         return {
-            .debugColor = 0xff7bffd8,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 64, .bottom = 64, .side = 64},
             .hardness = 0.2f,
             .breakable = true,
@@ -400,17 +452,15 @@ struct BlockMetadata
             .breakable = true,
         };
     case BlockType::MossBlock:
-        // Moss pads glow with a more saturated turquoise-green to support the new lush biome read.
         return {
-            .debugColor = 0xffa9f255,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 66, .bottom = 66, .side = 66},
             .hardness = 0.2f,
             .breakable = true,
         };
     case BlockType::MossyCobblestone:
-        // Mossy stone picks up the same luminous green family for cliff ruins and jungle outcrops.
         return {
-            .debugColor = 0xff8cdd63,
+            .debugColor = 0xffffffff,
             .textureTiles = {.top = 67, .bottom = 67, .side = 67},
             .hardness = 2.0f,
             .breakable = true,
@@ -478,6 +528,63 @@ struct BlockMetadata
             .hardness = 0.0f,
             .breakable = true,
         };
+    case BlockType::GrassTuft:
+        // Stylized grass tuft billboard for denser plains ground cover.
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 80, .bottom = 80, .side = 80},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::SparseTuft:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 81, .bottom = 81, .side = 81},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::FlowerTuft:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 82, .bottom = 82, .side = 82},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::DryTuft:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 83, .bottom = 83, .side = 83},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::LushTuft:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 84, .bottom = 84, .side = 84},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::FrostTuft:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 85, .bottom = 85, .side = 85},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::CloverTuft:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 86, .bottom = 86, .side = 86},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::SproutTuft:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 87, .bottom = 87, .side = 87},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
     case BlockType::Air:
     default:
         return {};
@@ -494,6 +601,14 @@ struct BlockMetadata
         return tiles.top;
     case BlockFace::Bottom:
         return tiles.bottom;
+    case BlockFace::East:
+        return tiles.east == kUseSharedSideTile ? tiles.side : tiles.east;
+    case BlockFace::West:
+        return tiles.west == kUseSharedSideTile ? tiles.side : tiles.west;
+    case BlockFace::South:
+        return tiles.south == kUseSharedSideTile ? tiles.side : tiles.south;
+    case BlockFace::North:
+        return tiles.north == kUseSharedSideTile ? tiles.side : tiles.north;
     case BlockFace::Side:
     default:
         return tiles.side;

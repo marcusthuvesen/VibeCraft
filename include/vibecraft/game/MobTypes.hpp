@@ -8,10 +8,10 @@ enum class MobKind : std::uint8_t
 {
     VoidStrider = 0,
     Player,
-    Sporegrazer,
-    Burrower,
-    Shardback,
-    Skitterwing,
+    Cow,
+    Pig,
+    Sheep,
+    Chicken,
 };
 
 [[nodiscard]] constexpr bool isHostileMob(const MobKind kind)
@@ -33,14 +33,14 @@ enum class MobKind : std::uint8_t
         return 20.0f;
     case MobKind::Player:
         return 20.0f;
-    case MobKind::Sporegrazer:
+    case MobKind::Cow:
         return 12.0f;
-    case MobKind::Burrower:
-        return 8.0f;
-    case MobKind::Shardback:
+    case MobKind::Pig:
         return 10.0f;
-    case MobKind::Skitterwing:
-        return 6.0f;
+    case MobKind::Sheep:
+        return 8.0f;
+    case MobKind::Chicken:
+        return 4.0f;
     }
     return 10.0f;
 }

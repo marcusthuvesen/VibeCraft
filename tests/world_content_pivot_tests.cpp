@@ -1,35 +1,51 @@
 #include <doctest/doctest.h>
 
+#include <array>
 #include <string>
 
-#include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/TerrainGenerator.hpp"
 #include "vibecraft/world/World.hpp"
 
-TEST_CASE("inventory labels present alien-world block names")
+TEST_CASE("inventory labels present minecraft-style block names")
 {
     using vibecraft::app::EquippedItem;
     using vibecraft::app::InventorySlot;
     using vibecraft::world::BlockType;
 
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Grass)) == "Regolith Turf");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::JungleGrass)) == "Oxygen Moss");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Sand)) == "Red Dust");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::DiamondOre)) == "Azure Crystal");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Glowstone)) == "Lumen Crystal");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::OxygenGenerator)) == "Atmos Relay");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatPanel)) == "Hab Panel");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatFloor)) == "Deck Plating");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatFrame)) == "Support Frame");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Grass)) == "Grass Block");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::JungleGrass)) == "Mossy Grass Block");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Sand)) == "Sand");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::BirchLog)) == "Birch Log");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::BirchLeaves)) == "Birch Leaves");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::DarkOakLog)) == "Dark Oak Log");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::DarkOakLeaves)) == "Dark Oak Leaves");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::DiamondOre)) == "Diamond Ore");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Glowstone)) == "Glowstone");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Fern)) == "Fern");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Podzol)) == "Podzol");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::CoarseDirt)) == "Coarse Dirt");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::OxygenGenerator)) == "Oxygen Generator");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatPanel)) == "Habitat Panel");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatFloor)) == "Habitat Floor");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::HabitatFrame)) == "Habitat Frame");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::AirlockPanel)) == "Airlock Panel");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::PowerConduit)) == "Power Conduit");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::GreenhouseGlass)) == "Greenhouse Glass");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::PlanterTray)) == "Planter Tray");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::FiberSapling)) == "Fiber Sapling");
     CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::FiberSprout)) == "Fiber Sprout");
-    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Torch)) == "Flare Lamp");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::GrassTuft)) == "Grass");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::SparseTuft)) == "Sparse Tuft");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::FlowerTuft)) == "Flower Tuft");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::DryTuft)) == "Dry Tuft");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::LushTuft)) == "Lush Tuft");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::FrostTuft)) == "Frost Tuft");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::CloverTuft)) == "Clover Tuft");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::SproutTuft)) == "Sprout Tuft");
+    CHECK(std::string(vibecraft::app::blockTypeLabel(BlockType::Torch)) == "Torch");
     CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::OxygenCanister)) == "Oxygen Canister");
     CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::FieldTank)) == "Field Tank");
     CHECK(std::string(vibecraft::app::equippedItemLabel(EquippedItem::ExpeditionTank)) == "Expedition Tank");
@@ -42,17 +58,22 @@ TEST_CASE("inventory labels present alien-world block names")
         == "Field Tank");
 }
 
-TEST_CASE("surface biome labels reflect the lush alien biome map")
+TEST_CASE("surface biome labels reflect the minecraft-style biome map")
 {
     using vibecraft::world::SurfaceBiome;
 
-    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::TemperateGrassland)) == "glow forest fringe");
-    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Sandy)) == "dry wastes");
-    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Snowy)) == "crystal expanse");
-    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Jungle)) == "glow forest heart");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Plains)) == "plains");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Forest)) == "forest");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::BirchForest)) == "birch forest");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::DarkForest)) == "dark forest");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Taiga)) == "taiga");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::SnowyTaiga)) == "snowy taiga");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Desert)) == "desert");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::SnowyPlains)) == "snowy plains");
+    CHECK(std::string(vibecraft::world::surfaceBiomeLabel(SurfaceBiome::Jungle)) == "jungle");
 }
 
-TEST_CASE("portable flare lamps can be crafted from lumen crystals")
+TEST_CASE("torches can be crafted from glowstone")
 {
     using vibecraft::app::CraftingGridSlots;
     using vibecraft::app::CraftingMode;
@@ -132,13 +153,13 @@ TEST_CASE("starter habitat blocks can be crafted for Mars base building")
     CHECK(conduitMatch->output.count == 4);
 }
 
-TEST_CASE("terrain generator still exposes all expedition biome families")
+TEST_CASE("terrain generator still exposes all overworld biome families")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
-    bool foundRegolithPlains = false;
-    bool foundDustFlats = false;
-    bool foundIceShelf = false;
-    bool foundOxygenGrove = false;
+    bool foundPlains = false;
+    bool foundDesert = false;
+    bool foundSnowyPlains = false;
+    bool foundJungle = false;
 
     for (int worldX = -16384; worldX <= 16384; worldX += 96)
     {
@@ -146,183 +167,213 @@ TEST_CASE("terrain generator still exposes all expedition biome families")
         {
             switch (terrainGenerator.surfaceBiomeAt(worldX, worldZ))
             {
-            case vibecraft::world::SurfaceBiome::TemperateGrassland:
-                foundRegolithPlains = true;
+            case vibecraft::world::SurfaceBiome::Plains:
+            case vibecraft::world::SurfaceBiome::Forest:
+                foundPlains = true;
                 break;
-            case vibecraft::world::SurfaceBiome::Sandy:
-                foundDustFlats = true;
+            case vibecraft::world::SurfaceBiome::Desert:
+                foundDesert = true;
                 break;
-            case vibecraft::world::SurfaceBiome::Snowy:
-                foundIceShelf = true;
+            case vibecraft::world::SurfaceBiome::SnowyPlains:
+            case vibecraft::world::SurfaceBiome::SnowyTaiga:
+                foundSnowyPlains = true;
                 break;
             case vibecraft::world::SurfaceBiome::Jungle:
-                foundOxygenGrove = true;
+            case vibecraft::world::SurfaceBiome::SparseJungle:
+            case vibecraft::world::SurfaceBiome::BambooJungle:
+                foundJungle = true;
+                break;
+            case vibecraft::world::SurfaceBiome::BirchForest:
+            case vibecraft::world::SurfaceBiome::DarkForest:
+            case vibecraft::world::SurfaceBiome::Taiga:
+                foundPlains = true;
                 break;
             }
 
-            if (foundRegolithPlains && foundDustFlats && foundIceShelf && foundOxygenGrove)
+            if (foundPlains && foundDesert && foundSnowyPlains && foundJungle)
             {
                 break;
             }
         }
 
-        if (foundRegolithPlains && foundDustFlats && foundIceShelf && foundOxygenGrove)
+        if (foundPlains && foundDesert && foundSnowyPlains && foundJungle)
         {
             break;
         }
     }
 
-    CHECK(foundRegolithPlains);
-    CHECK(foundDustFlats);
-    CHECK(foundIceShelf);
-    CHECK(foundOxygenGrove);
+    CHECK(foundPlains);
+    CHECK(foundDesert);
+    CHECK(foundSnowyPlains);
+    CHECK(foundJungle);
 }
 
-TEST_CASE("generated world decorates exposed terrain with lumen crystal outcrops")
+TEST_CASE("generated forest can grow oak trees")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Forest);
 
     vibecraft::world::World world;
-    world.generateRadius(terrainGenerator, 8);
+    world.generateRadius(terrainGenerator, 10);
 
-    bool foundCrystalOutcrop = false;
-    for (int worldX = -128; worldX <= 128 && !foundCrystalOutcrop; ++worldX)
+    bool foundOakTree = false;
+    for (int worldX = -160; worldX <= 160 && !foundOakTree; ++worldX)
     {
-        for (int worldZ = -128; worldZ <= 128 && !foundCrystalOutcrop; ++worldZ)
+        for (int worldZ = -160; worldZ <= 160 && !foundOakTree; ++worldZ)
         {
-            const auto biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
-            if (biome == vibecraft::world::SurfaceBiome::Jungle)
-            {
-                continue;
-            }
-
             const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
-            foundCrystalOutcrop =
-                world.blockAt(worldX, surfaceY + 1, worldZ) == vibecraft::world::BlockType::Glowstone;
+            foundOakTree =
+                world.blockAt(worldX, surfaceY + 1, worldZ) == vibecraft::world::BlockType::OakLog
+                || world.blockAt(worldX, surfaceY + 2, worldZ) == vibecraft::world::BlockType::OakLog
+                || world.blockAt(worldX, surfaceY + 3, worldZ) == vibecraft::world::BlockType::OakLeaves;
         }
     }
 
-    CHECK(foundCrystalOutcrop);
+    CHECK(foundOakTree);
 }
 
-TEST_CASE("generated crystal expanses can form multi-block crystal spires")
+TEST_CASE("generated snowy taiga can grow spruce trees")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::SnowyTaiga);
 
     vibecraft::world::World world;
-    world.generateRadius(terrainGenerator, 12);
+    world.generateRadius(terrainGenerator, 10);
 
-    bool foundCrystalSpire = false;
-    for (int worldX = -192; worldX <= 192 && !foundCrystalSpire; ++worldX)
+    bool foundSpruceTree = false;
+    for (int worldX = -160; worldX <= 160 && !foundSpruceTree; ++worldX)
     {
-        for (int worldZ = -192; worldZ <= 192 && !foundCrystalSpire; ++worldZ)
+        for (int worldZ = -160; worldZ <= 160 && !foundSpruceTree; ++worldZ)
         {
-            if (terrainGenerator.surfaceBiomeAt(worldX, worldZ) != vibecraft::world::SurfaceBiome::Snowy)
-            {
-                continue;
-            }
-
             const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
-            if (world.blockAt(worldX, surfaceY + 1, worldZ) != vibecraft::world::BlockType::Glowstone)
-            {
-                continue;
-            }
-
-            foundCrystalSpire = world.blockAt(worldX, surfaceY + 2, worldZ) == vibecraft::world::BlockType::Glowstone;
+            foundSpruceTree =
+                world.blockAt(worldX, surfaceY + 1, worldZ) == vibecraft::world::BlockType::SpruceLog
+                || world.blockAt(worldX, surfaceY + 2, worldZ) == vibecraft::world::BlockType::SpruceLog
+                || world.blockAt(worldX, surfaceY + 3, worldZ) == vibecraft::world::BlockType::SpruceLeaves;
         }
     }
 
-    CHECK(foundCrystalSpire);
+    CHECK(foundSpruceTree);
 }
 
-TEST_CASE("generated regolith plains expose ferrite outcrops for starter relay crafting")
+TEST_CASE("generated jungle can grow jungle trees")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Jungle);
 
     vibecraft::world::World world;
-    world.generateRadius(terrainGenerator, 8);
+    world.generateRadius(terrainGenerator, 10);
 
-    bool foundFerriteOutcrop = false;
-    for (int worldX = -128; worldX <= 128 && !foundFerriteOutcrop; ++worldX)
+    bool foundJungleTree = false;
+    for (int worldX = -160; worldX <= 160 && !foundJungleTree; ++worldX)
     {
-        for (int worldZ = -128; worldZ <= 128 && !foundFerriteOutcrop; ++worldZ)
+        for (int worldZ = -160; worldZ <= 160 && !foundJungleTree; ++worldZ)
         {
-            const auto biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
-            if (biome != vibecraft::world::SurfaceBiome::TemperateGrassland)
-            {
-                continue;
-            }
-
             const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
-            foundFerriteOutcrop =
-                world.blockAt(worldX, surfaceY + 1, worldZ) == vibecraft::world::BlockType::IronOre;
+            foundJungleTree =
+                world.blockAt(worldX, surfaceY + 1, worldZ) == vibecraft::world::BlockType::JungleLog
+                || world.blockAt(worldX, surfaceY + 2, worldZ) == vibecraft::world::BlockType::JungleLog
+                || world.blockAt(worldX, surfaceY + 3, worldZ) == vibecraft::world::BlockType::JungleLeaves;
         }
     }
 
-    CHECK(foundFerriteOutcrop);
+    CHECK(foundJungleTree);
 }
 
-TEST_CASE("generated dust flats can surface gravel lag deposits")
+TEST_CASE("generated jungle can place bamboo or melons")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Jungle);
 
     vibecraft::world::World world;
-    world.generateRadius(terrainGenerator, 12);
+    world.generateRadius(terrainGenerator, 10);
 
-    bool foundDustGravel = false;
-    for (int worldX = -256; worldX <= 256 && !foundDustGravel; worldX += 2)
+    bool foundJungleDecor = false;
+    for (int worldX = -160; worldX <= 160 && !foundJungleDecor; ++worldX)
     {
-        for (int worldZ = -256; worldZ <= 256 && !foundDustGravel; worldZ += 2)
+        for (int worldZ = -160; worldZ <= 160 && !foundJungleDecor; ++worldZ)
         {
-            const auto biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
-            if (biome != vibecraft::world::SurfaceBiome::Sandy)
-            {
-                continue;
-            }
-
             const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
-            if (world.blockAt(worldX, surfaceY, worldZ) == vibecraft::world::BlockType::Gravel)
-            {
-                foundDustGravel = true;
-            }
+            const auto blockAbove = world.blockAt(worldX, surfaceY + 1, worldZ);
+            foundJungleDecor =
+                blockAbove == vibecraft::world::BlockType::Bamboo
+                || blockAbove == vibecraft::world::BlockType::Melon;
         }
     }
 
-    CHECK(foundDustGravel);
+    CHECK(foundJungleDecor);
 }
 
-TEST_CASE("generated dry wastes can raise sandstone ridge outcrops")
+TEST_CASE("generated desert surface stays sand-first like Minecraft")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Desert);
+
+    std::array<vibecraft::world::BlockType, vibecraft::world::kWorldHeight> columnBlocks{};
+    terrainGenerator.fillColumn(0, 0, columnBlocks.data());
+    const int surfaceY = terrainGenerator.surfaceHeightAt(0, 0);
+    const auto surfaceBlock = columnBlocks[static_cast<std::size_t>(surfaceY - vibecraft::world::kWorldMinY)];
+    const bool isExpectedDesertSurface = surfaceBlock == vibecraft::world::BlockType::Sand
+        || surfaceBlock == vibecraft::world::BlockType::Sandstone;
+    CHECK(isExpectedDesertSurface);
+    CHECK(surfaceBlock != vibecraft::world::BlockType::Gravel);
+}
+
+TEST_CASE("generated desert exposes sandstone in surface strata")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Desert);
+
+    std::array<vibecraft::world::BlockType, vibecraft::world::kWorldHeight> columnBlocks{};
+    terrainGenerator.fillColumn(0, 0, columnBlocks.data());
+    const int surfaceY = terrainGenerator.surfaceHeightAt(0, 0);
+    bool foundSandstoneStrata = false;
+    for (int depth = 0; depth <= 8 && !foundSandstoneStrata; ++depth)
+    {
+        const int y = surfaceY - depth;
+        if (y < vibecraft::world::kWorldMinY)
+        {
+            break;
+        }
+        foundSandstoneStrata =
+            columnBlocks[static_cast<std::size_t>(y - vibecraft::world::kWorldMinY)] == vibecraft::world::BlockType::Sandstone;
+    }
+
+    CHECK(foundSandstoneStrata);
+}
+
+TEST_CASE("generated desert can place cactus or dead bushes")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Desert);
 
     vibecraft::world::World world;
-    world.generateRadius(terrainGenerator, 12);
+    world.generateRadius(terrainGenerator, 10);
 
-    bool foundSandstoneOutcrop = false;
-    for (int worldX = -192; worldX <= 192 && !foundSandstoneOutcrop; ++worldX)
+    bool foundDesertDecor = false;
+    for (int worldX = -160; worldX <= 160 && !foundDesertDecor; ++worldX)
     {
-        for (int worldZ = -192; worldZ <= 192 && !foundSandstoneOutcrop; ++worldZ)
+        for (int worldZ = -160; worldZ <= 160 && !foundDesertDecor; ++worldZ)
         {
-            if (terrainGenerator.surfaceBiomeAt(worldX, worldZ) != vibecraft::world::SurfaceBiome::Sandy)
-            {
-                continue;
-            }
-
             const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
-            foundSandstoneOutcrop =
-                world.blockAt(worldX, surfaceY + 1, worldZ) == vibecraft::world::BlockType::Sandstone;
+            const auto blockAbove = world.blockAt(worldX, surfaceY + 1, worldZ);
+            foundDesertDecor =
+                blockAbove == vibecraft::world::BlockType::Cactus
+                || blockAbove == vibecraft::world::BlockType::DeadBush;
         }
     }
 
-    CHECK(foundSandstoneOutcrop);
+    CHECK(foundDesertDecor);
 }
 
-TEST_CASE("lumen crystals remain breakable field resources")
+TEST_CASE("glowstone remains a breakable field resource")
 {
     using vibecraft::world::BlockType;
 
@@ -345,4 +396,22 @@ TEST_CASE("starter habitat blocks use reserved atlas tail tiles")
     CHECK(vibecraft::world::textureTileIndex(BlockType::FiberSprout, BlockFace::Top) == 74);
     CHECK(vibecraft::world::textureTileIndex(BlockType::AirlockPanel, BlockFace::Top) == 75);
     CHECK(vibecraft::world::textureTileIndex(BlockType::PowerConduit, BlockFace::Top) == 76);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::GrassTuft, BlockFace::Side) == 80);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::SparseTuft, BlockFace::Side) == 81);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::FlowerTuft, BlockFace::Side) == 82);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::DryTuft, BlockFace::Side) == 83);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::LushTuft, BlockFace::Side) == 84);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::FrostTuft, BlockFace::Side) == 85);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::CloverTuft, BlockFace::Side) == 86);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::SproutTuft, BlockFace::Side) == 87);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::BirchLog, BlockFace::Top) == 92);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::BirchLog, BlockFace::Side) == 93);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::BirchLeaves, BlockFace::Side) == 94);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Fern, BlockFace::Side) == 95);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Podzol, BlockFace::Top) == 96);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::Podzol, BlockFace::Side) == 97);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::CoarseDirt, BlockFace::Side) == 98);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::DarkOakLog, BlockFace::Top) == 99);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::DarkOakLog, BlockFace::Side) == 100);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::DarkOakLeaves, BlockFace::Side) == 101);
 }

@@ -7,6 +7,9 @@
 
 #include "vibecraft/world/TerrainNoise.hpp"
 #include "vibecraft/world/WorldVerticalScale.hpp"
+#include "vibecraft/world/biomes/BiomeProfile.hpp"
+#include "vibecraft/world/biomes/BiomeSelection.hpp"
+#include "vibecraft/world/biomes/BiomeTerrainContribution.hpp"
 #include "vibecraft/world/underground/CaveRules.hpp"
 #include "vibecraft/world/underground/OreVeinRules.hpp"
 
@@ -18,21 +21,13 @@ constexpr int kSeaLevel = 63;
 constexpr int kTopsoilDepth = 3;
 constexpr int kDeepslateFullStartY = -8;
 constexpr int kDeepslateTransitionEndY = 8;
-constexpr int kSandSurfaceMaxHeight = 74;
-constexpr int kBeachMaxHeightAboveSea = 1;
-constexpr int kMountainStoneCapStartY = 104;
+constexpr int kMountainStoneCapStartY = 110;
 constexpr int kMountainStoneCapThickness = 2;
-constexpr int kLowlandPondMaxHeightAboveSea = 3;
+constexpr int kLowlandPondMaxHeightAboveSea = 1;
+constexpr int kStarterForestRadius = 640;
 constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
 constexpr int kSandstoneStratumDepth = 6;
 constexpr std::uint32_t kMoisturePocketNoiseSeed = 0xd47a38c1U;
-constexpr std::uint32_t kSandyMesaNoiseSeed = 0xe58b49d2U;
-constexpr std::uint32_t kSandyWindCutNoiseSeed = 0xf69c5ae3U;
-constexpr std::uint32_t kSnowShelfNoiseSeed = 0x07ad6bf4U;
-constexpr std::uint32_t kSnowCrownNoiseSeed = 0x18be7c05U;
-constexpr std::uint32_t kJungleShelfNoiseSeed = 0x29cf8d16U;
-constexpr std::uint32_t kJungleValleyNoiseSeed = 0x3ae09e27U;
-constexpr std::uint32_t kTemperateTerraceNoiseSeed = 0x4bf1af38U;
 
 [[nodiscard]] constexpr std::uint32_t mixedSeed(const std::uint32_t baseSeed, const std::uint32_t worldSeed)
 {
@@ -45,14 +40,6 @@ constexpr std::uint32_t kTemperateTerraceNoiseSeed = 0x4bf1af38U;
     return mixed;
 }
 
-enum class ColumnBiome : std::uint8_t
-{
-    TemperateGrassland,
-    Sandy,
-    Snowy,
-    Jungle,
-};
-
 struct ColumnContext
 {
     int surfaceHeight = kSeaLevel;
@@ -61,7 +48,7 @@ struct ColumnContext
     int stratumTopExclusive = 0;
     int stratumBottomInclusive = 0;
     bool usesSandStrata = false;
-    ColumnBiome biome = ColumnBiome::TemperateGrassland;
+    SurfaceBiome biome = SurfaceBiome::Forest;
     BlockType surfaceBlockType = BlockType::Grass;
     BlockType subsurfaceBlockType = BlockType::Dirt;
 };
@@ -115,30 +102,25 @@ struct ColumnContext
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    // Broad climate bands keep the alien world readable: lush fringes, glow forests, crystal expanses, and dry wastes.
+    // Broad climate bands keep the world readable: plains, desert, snowy plains, and jungle.
+    // Use much broader climate scales so players stay within one biome for longer stretches.
     const double baseTemperature =
-        noise::fbmNoise2d(worldXd, worldZd, 4000.0, 4, mixedSeed(0x8b4d1e29U, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd, worldZd, 12000.0, 4, mixedSeed(0x8b4d1e29U, worldSeed)) * 2.0 - 1.0;
     const double variation =
-        noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 1800.0, 3, mixedSeed(0x1c0f3aa7U, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 5200.0, 3, mixedSeed(0x1c0f3aa7U, worldSeed)) * 2.0 - 1.0;
     const double altitudeCooling = std::clamp(
         static_cast<double>(surfaceHeight - kSeaLevel) / 120.0,
         0.0,
         0.55);
-    return baseTemperature + variation * 0.33 - altitudeCooling;
+    return baseTemperature + variation * 0.18 - altitudeCooling;
 }
 
 [[nodiscard]] double biomeHumidityAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 3800.0, 4, mixedSeed(0x32a7f1c4U, worldSeed)) * 2.0
+    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 11000.0, 4, mixedSeed(0x32a7f1c4U, worldSeed)) * 2.0
         - 1.0;
-}
-
-[[nodiscard]] double steppedHeightOffset(const double value, const double stepSize, const double strength)
-{
-    const double steppedValue = std::round(value / stepSize) * stepSize;
-    return (steppedValue - value) * strength;
 }
 
 [[nodiscard]] double moisturePocketNoiseAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
@@ -151,153 +133,71 @@ struct ColumnContext
         mixedSeed(kMoisturePocketNoiseSeed, worldSeed));
 }
 
-[[nodiscard]] ColumnBiome toColumnBiome(const SurfaceBiome biome)
-{
-    switch (biome)
-    {
-    case SurfaceBiome::Sandy:
-        return ColumnBiome::Sandy;
-    case SurfaceBiome::Snowy:
-        return ColumnBiome::Snowy;
-    case SurfaceBiome::Jungle:
-        return ColumnBiome::Jungle;
-    case SurfaceBiome::TemperateGrassland:
-    default:
-        return ColumnBiome::TemperateGrassland;
-    }
-}
-
 [[nodiscard]] double basinDepthFromContinents(double continents);
 [[nodiscard]] double ridgeHeightContribution(double ridges, double continents, double uplands);
+
+[[nodiscard]] double starterSpawnRegionUplift(const int worldX, const int worldZ)
+{
+    const double distanceFromOrigin = std::hypot(static_cast<double>(worldX), static_cast<double>(worldZ));
+    if (distanceFromOrigin >= 720.0)
+    {
+        return 0.0;
+    }
+
+    const double blend = 1.0 - distanceFromOrigin / 720.0;
+    return blend * blend * 8.0;
+}
 
 [[nodiscard]] double baseTerrainHeightAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
     const double continents =
-        noise::fbmNoise2d(worldXd, worldZd, 280.0, 4, mixedSeed(0x1234abcdU, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd, worldZd, 420.0, 4, mixedSeed(0x1234abcdU, worldSeed)) * 2.0 - 1.0;
     const double uplands =
-        noise::fbmNoise2d(worldXd + 91.0, worldZd - 137.0, 620.0, 3, mixedSeed(0x31f4bc9dU, worldSeed)) * 2.0 - 1.0;
-    const double ridges = noise::ridgeNoise2d(worldXd, worldZd, 110.0, mixedSeed(0x4422aa11U, worldSeed));
+        noise::fbmNoise2d(worldXd + 91.0, worldZd - 137.0, 180.0, 3, mixedSeed(0x31f4bc9dU, worldSeed)) * 2.0 - 1.0;
+    const double ridges = noise::ridgeNoise2d(worldXd, worldZd, 90.0, mixedSeed(0x4422aa11U, worldSeed));
     const double hills =
-        noise::fbmNoise2d(worldXd, worldZd, 84.0, 4, mixedSeed(0x90f0c55aU, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd, worldZd, 72.0, 4, mixedSeed(0x90f0c55aU, worldSeed)) * 2.0 - 1.0;
+    const double rolling =
+        noise::fbmNoise2d(worldXd - 43.0, worldZd + 27.0, 40.0, 3, mixedSeed(0x5b7e2c41U, worldSeed)) * 2.0 - 1.0;
     const double detail =
-        noise::fbmNoise2d(worldXd, worldZd, 34.0, 3, mixedSeed(0x7a0f3e19U, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd, worldZd, 24.0, 2, mixedSeed(0x7a0f3e19U, worldSeed)) * 2.0 - 1.0;
     return static_cast<double>(kSeaLevel)
-        - 12.0
-        + continents * 42.0
-        + uplands * 15.0
+        - 1.0
+        + continents * 16.0
+        + uplands * 4.8
         + ridgeHeightContribution(ridges, continents, uplands)
-        + hills * 10.0
-        + detail * 4.0
+        + hills * 4.8
+        + rolling * 3.8
+        + detail * 1.4
+        + starterSpawnRegionUplift(worldX, worldZ)
         - basinDepthFromContinents(continents);
 }
 
-[[nodiscard]] double biomeTerrainContribution(
-    const ColumnBiome biome,
-    const int worldX,
-    const int worldZ,
-    const double continents,
-    const double uplands,
-    const double ridges,
-    const std::uint32_t worldSeed)
-{
-    const double worldXd = static_cast<double>(worldX);
-    const double worldZd = static_cast<double>(worldZ);
-    switch (biome)
-    {
-    case ColumnBiome::Sandy:
-    {
-        const double mesaNoise =
-            noise::fbmNoise2d(worldXd - 181.0, worldZd + 129.0, 150.0, 3, mixedSeed(kSandyMesaNoiseSeed, worldSeed))
-            * 2.0
-            - 1.0;
-        const double windCutNoise =
-            noise::fbmNoise2d(worldXd + 73.0, worldZd - 61.0, 210.0, 3, mixedSeed(kSandyWindCutNoiseSeed, worldSeed))
-            * 2.0
-            - 1.0;
-        const double finNoise =
-            noise::ridgeNoise2d(worldXd + 51.0, worldZd - 87.0, 72.0, mixedSeed(kSandyWindCutNoiseSeed + 17U, worldSeed));
-        const double plateauMask = std::clamp((continents + uplands * 0.28 + 0.18) / 1.18, 0.0, 1.0);
-        const double mesas = plateauMask * std::max(0.0, mesaNoise * 0.78 + finNoise * 0.52 - 0.16) * 14.0;
-        const double windCuts = std::clamp((0.08 - windCutNoise) / 0.40, 0.0, 1.0) * 6.0;
-        return mesas + steppedHeightOffset(mesas, 9.0, 0.24) - windCuts;
-    }
-    case ColumnBiome::Snowy:
-    {
-        const double shelfNoise =
-            noise::fbmNoise2d(worldXd + 143.0, worldZd - 39.0, 132.0, 3, mixedSeed(kSnowShelfNoiseSeed, worldSeed))
-            * 2.0
-            - 1.0;
-        const double crownNoise =
-            noise::ridgeNoise2d(worldXd - 67.0, worldZd - 121.0, 84.0, mixedSeed(kSnowCrownNoiseSeed, worldSeed));
-        const double shelfMask = std::clamp((continents + ridges * 0.48 + 0.22) / 1.36, 0.0, 1.0);
-        const double shelves = shelfMask * std::max(0.0, shelfNoise + crownNoise * 0.74 - 0.12) * 14.0;
-        const double cirque = std::clamp((0.06 - shelfNoise) / 0.34, 0.0, 1.0) * 5.0;
-        return shelves + steppedHeightOffset(shelves, 10.0, 0.24) - cirque;
-    }
-    case ColumnBiome::Jungle:
-    {
-        const double shelfNoise =
-            noise::ridgeNoise2d(worldXd - 141.0, worldZd + 63.0, 88.0, mixedSeed(kJungleShelfNoiseSeed, worldSeed));
-        const double valleyNoise =
-            noise::fbmNoise2d(worldXd + 95.0, worldZd - 173.0, 170.0, 3, mixedSeed(kJungleValleyNoiseSeed, worldSeed))
-            * 2.0
-            - 1.0;
-        const double shelfMask = std::clamp((continents + uplands * 0.45 + 0.12) / 1.18, 0.0, 1.0);
-        const double shelves = shelfMask * std::max(0.0, shelfNoise - 0.18) * (10.0 + ridges * 5.0);
-        const double valleys = std::clamp((0.10 - valleyNoise) / 0.40, 0.0, 1.0) * (4.0 + shelfMask * 4.0);
-        return shelves + steppedHeightOffset(shelves, 8.0, 0.18) - valleys;
-    }
-    case ColumnBiome::TemperateGrassland:
-    default:
-    {
-        const double terraceNoise = noise::fbmNoise2d(
-                                         worldXd + 11.0,
-                                         worldZd + 157.0,
-                                         180.0,
-                                         3,
-                                         mixedSeed(kTemperateTerraceNoiseSeed, worldSeed))
-            * 2.0
-            - 1.0;
-        const double meadowLift =
-            std::clamp((terraceNoise + 0.14) / 1.12, 0.0, 1.0) * (3.0 + std::max(0.0, uplands) * 3.5);
-        return meadowLift + steppedHeightOffset(meadowLift, 6.0, 0.14);
-    }
-    }
-}
-
-[[nodiscard]] ColumnBiome columnBiomeAt(
+[[nodiscard]] SurfaceBiome columnBiomeAt(
     const int worldX,
     const int worldZ,
     const int surfaceHeight,
     const std::uint32_t worldSeed,
     const std::optional<SurfaceBiome> biomeOverride)
 {
-    if (biomeOverride.has_value())
-    {
-        return toColumnBiome(*biomeOverride);
-    }
-    if (surfaceHeight <= kSeaLevel + kBeachMaxHeightAboveSea)
-    {
-        return ColumnBiome::Sandy;
-    }
-
+    const long long wx = static_cast<long long>(worldX);
+    const long long wz = static_cast<long long>(worldZ);
+    const long long starterRadiusSq = static_cast<long long>(kStarterForestRadius) * kStarterForestRadius;
     const double temperature = biomeTemperatureAt(worldX, worldZ, surfaceHeight, worldSeed);
     const double humidity = biomeHumidityAt(worldX, worldZ, worldSeed);
-    if (surfaceHeight <= kSandSurfaceMaxHeight && temperature > 0.16 && humidity < 0.02)
-    {
-        return ColumnBiome::Sandy;
-    }
-    if (temperature < -0.18 || (surfaceHeight >= 96 && temperature < -0.04))
-    {
-        return ColumnBiome::Snowy;
-    }
-    if (temperature > 0.17 && humidity > 0.12)
-    {
-        return ColumnBiome::Jungle;
-    }
-    return ColumnBiome::TemperateGrassland;
+    return biomes::selectSurfaceBiome(
+        biomes::BiomeSelectionInputs{
+            .worldX = worldX,
+            .worldZ = worldZ,
+            .surfaceHeight = surfaceHeight,
+            .worldSeed = worldSeed,
+            .temperature = temperature,
+            .humidity = humidity,
+            .starterRegion = wx * wx + wz * wz <= starterRadiusSq,
+        },
+        biomeOverride);
 }
 
 [[nodiscard]] int surfaceHeightForCoordinates(
@@ -309,19 +209,18 @@ struct ColumnContext
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
     const double continents =
-        noise::fbmNoise2d(worldXd, worldZd, 280.0, 4, mixedSeed(0x1234abcdU, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd, worldZd, 420.0, 4, mixedSeed(0x1234abcdU, worldSeed)) * 2.0 - 1.0;
     const double uplands =
-        noise::fbmNoise2d(worldXd + 91.0, worldZd - 137.0, 620.0, 3, mixedSeed(0x31f4bc9dU, worldSeed)) * 2.0 - 1.0;
-    const double ridges = noise::ridgeNoise2d(worldXd, worldZd, 110.0, mixedSeed(0x4422aa11U, worldSeed));
+        noise::fbmNoise2d(worldXd + 91.0, worldZd - 137.0, 180.0, 3, mixedSeed(0x31f4bc9dU, worldSeed)) * 2.0 - 1.0;
+    const double ridges = noise::ridgeNoise2d(worldXd, worldZd, 90.0, mixedSeed(0x4422aa11U, worldSeed));
     const int provisionalSurfaceHeight = std::clamp(
         static_cast<int>(std::round(baseTerrainHeightAt(worldX, worldZ, worldSeed))),
-        -20,
-        190);
-    (void)biomeOverride;
-    const ColumnBiome targetBiome = columnBiomeAt(worldX, worldZ, provisionalSurfaceHeight, worldSeed, std::nullopt);
+        36,
+        144);
+    const SurfaceBiome targetBiome = columnBiomeAt(worldX, worldZ, provisionalSurfaceHeight, worldSeed, biomeOverride);
     const double terrainHeight = baseTerrainHeightAt(worldX, worldZ, worldSeed)
-        + biomeTerrainContribution(targetBiome, worldX, worldZ, continents, uplands, ridges, worldSeed);
-    return std::clamp(static_cast<int>(std::round(terrainHeight)), -20, 190);
+        + biomes::biomeTerrainContribution(targetBiome, worldX, worldZ, continents, uplands, ridges, worldSeed);
+    return std::clamp(static_cast<int>(std::round(terrainHeight)), 36, 144);
 }
 
 [[nodiscard]] int maxNeighborSurfaceDeltaAt(
@@ -342,76 +241,61 @@ struct ColumnContext
     return maxDelta;
 }
 
-/// Dust flats use sand on the surface; sandstone acts as a compacted dust-rock stratum below.
-[[nodiscard]] bool columnUsesSandStrata(const ColumnBiome biome)
+/// Desert columns use sand on the surface; sandstone acts as a compacted stratum below.
+[[nodiscard]] bool columnUsesSandStrata(const SurfaceBiome biome)
 {
-    return biome == ColumnBiome::Sandy;
+    return biomes::biomeProfile(biome).usesSandStrata;
 }
 
 [[nodiscard]] BlockType surfaceBlockTypeAt(
-    const ColumnBiome biome,
+    const SurfaceBiome biome,
     const int surfaceHeight,
     const int maxNeighborSurfaceDelta,
     const double moisturePocket)
 {
+    const biomes::BiomeProfile& profile = biomes::biomeProfile(biome);
     if (surfaceHeight >= kMountainStoneCapStartY)
     {
-        return biome == ColumnBiome::Snowy ? BlockType::SnowGrass : BlockType::Stone;
+        return profile.snowy ? BlockType::SnowGrass : BlockType::Stone;
     }
-    if (biome == ColumnBiome::Sandy)
+    if (profile.usesSandStrata)
     {
-        if (maxNeighborSurfaceDelta >= 10 || (surfaceHeight >= 96 && maxNeighborSurfaceDelta >= 6))
+        if (maxNeighborSurfaceDelta >= 18 || (surfaceHeight >= 112 && maxNeighborSurfaceDelta >= 12))
         {
             return BlockType::Sandstone;
         }
-        if (moisturePocket > 0.72 && surfaceHeight <= kSeaLevel + 6)
-        {
-            return BlockType::Gravel;
-        }
+        static_cast<void>(moisturePocket);
         return BlockType::Sand;
     }
-    if (biome == ColumnBiome::Snowy)
+    if (profile.snowy)
     {
-        if (maxNeighborSurfaceDelta >= 11)
+        if (maxNeighborSurfaceDelta >= 18 || (surfaceHeight >= 126 && maxNeighborSurfaceDelta >= 12))
         {
             return BlockType::Stone;
-        }
-        if (maxNeighborSurfaceDelta >= 6 || surfaceHeight >= 118)
-        {
-            return BlockType::Gravel;
         }
         return BlockType::SnowGrass;
     }
-    if (biome == ColumnBiome::Jungle)
+    if (profile.jungle)
     {
-        if (maxNeighborSurfaceDelta >= 12)
+        if (maxNeighborSurfaceDelta >= 18 || (surfaceHeight >= 120 && maxNeighborSurfaceDelta >= 11))
         {
             return BlockType::Stone;
         }
-        if ((moisturePocket > 0.58 && maxNeighborSurfaceDelta <= 4)
-            || (surfaceHeight <= kSeaLevel + 6 && moisturePocket > 0.48))
-        {
-            return BlockType::MossBlock;
-        }
         return BlockType::JungleGrass;
     }
-    if (maxNeighborSurfaceDelta >= 11 || (surfaceHeight >= 100 && maxNeighborSurfaceDelta >= 6))
+    if (maxNeighborSurfaceDelta >= 20 || (surfaceHeight >= 120 && maxNeighborSurfaceDelta >= 12))
     {
         return BlockType::Stone;
-    }
-    if (moisturePocket > 0.64 && maxNeighborSurfaceDelta <= 3)
-    {
-        return BlockType::MossBlock;
     }
     return BlockType::Grass;
 }
 
 [[nodiscard]] BlockType subsurfaceBlockTypeAt(
-    const ColumnBiome biome,
+    const SurfaceBiome biome,
     const int maxNeighborSurfaceDelta,
     const BlockType surfaceBlockType)
 {
-    if (biome == ColumnBiome::Sandy)
+    if (biomes::biomeProfile(biome).usesSandStrata)
     {
         return surfaceBlockType == BlockType::Sandstone || maxNeighborSurfaceDelta >= 8 ? BlockType::Sandstone : BlockType::Sand;
     }
@@ -425,7 +309,7 @@ struct ColumnContext
 [[nodiscard]] double basinDepthFromContinents(const double continents)
 {
     const double basinFactor = std::clamp((-continents - 0.04) / 0.96, 0.0, 1.0);
-    return basinFactor * basinFactor * 30.0;
+    return basinFactor * basinFactor * 9.0;
 }
 
 [[nodiscard]] double ridgeHeightContribution(
@@ -433,9 +317,9 @@ struct ColumnContext
     const double continents,
     const double uplands)
 {
-    const double ridgeMask = std::clamp((continents + uplands * 0.35 + 0.18) / 1.15, 0.0, 1.0);
-    const double shapedRidges = std::pow(std::clamp(ridges, 0.0, 1.0), 1.35);
-    return shapedRidges * (10.0 + ridgeMask * 30.0);
+    const double ridgeMask = std::clamp((continents + uplands * 0.24 + 0.20) / 1.20, 0.0, 1.0);
+    const double shapedRidges = std::pow(std::clamp(ridges, 0.0, 1.0), 1.8);
+    return shapedRidges * (1.8 + ridgeMask * 7.5);
 }
 
 [[nodiscard]] bool isMountainStoneCapLayer(const int y, const int surfaceHeight)
@@ -453,6 +337,10 @@ struct ColumnContext
     {
         return false;
     }
+    if (starterSpawnRegionUplift(worldX, worldZ) > 0.0)
+    {
+        return false;
+    }
 
     const double floodNoise = noise::fbmNoise2d(
         static_cast<double>(worldX),
@@ -460,7 +348,7 @@ struct ColumnContext
         88.0,
         3,
         mixedSeed(kPondNoiseSeed, worldSeed));
-    return floodNoise > 0.66;
+    return floodNoise > 0.90;
 }
 
 [[nodiscard]] ColumnContext buildColumnContext(
@@ -470,17 +358,17 @@ struct ColumnContext
     const std::uint32_t worldSeed,
     const std::optional<SurfaceBiome> biomeOverride)
 {
-    const ColumnBiome biome = columnBiomeAt(worldX, worldZ, surfaceHeight, worldSeed, biomeOverride);
+    const SurfaceBiome biome = columnBiomeAt(worldX, worldZ, surfaceHeight, worldSeed, biomeOverride);
     const int maxNeighborSurfaceDelta =
         maxNeighborSurfaceDeltaAt(worldX, worldZ, surfaceHeight, worldSeed, biomeOverride);
     const double moisturePocket = moisturePocketNoiseAt(worldX, worldZ, worldSeed);
     const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight, worldSeed);
     const bool lushPondPocket = !biomeOverride.has_value()
-        && (biome == ColumnBiome::Jungle || biome == ColumnBiome::TemperateGrassland)
+        && (biomes::isJungleSurfaceBiome(biome) || biomes::isTemperateGrassSurfaceBiome(biome) || biomes::isSnowySurfaceBiome(biome))
         && surfaceHeight >= kSeaLevel - 1
-        && surfaceHeight <= kSeaLevel + 5
-        && maxNeighborSurfaceDelta <= 2
-        && moisturePocket > 0.74;
+        && surfaceHeight <= kSeaLevel + 2
+        && maxNeighborSurfaceDelta <= 1
+        && moisturePocket > 0.94;
     const int columnWaterLevel = floodLowland || lushPondPocket ? surfaceHeight + 1 : kSeaLevel;
     const bool usesSandStrata = columnUsesSandStrata(biome);
     const bool forceCanonicalSurface = biomeOverride.has_value();
@@ -491,10 +379,6 @@ struct ColumnContext
         ? subsurfaceBlockTypeAt(biome, 0, surfaceBlockType)
         : subsurfaceBlockTypeAt(biome, maxNeighborSurfaceDelta, surfaceBlockType);
     int topsoilDepth = topsoilDepthAt(worldX, worldZ, worldSeed);
-    if (!forceCanonicalSurface && surfaceBlockType == BlockType::MossBlock && maxNeighborSurfaceDelta <= 2)
-    {
-        topsoilDepth += 1;
-    }
     if (!forceCanonicalSurface
         && (surfaceBlockType == BlockType::Stone || surfaceBlockType == BlockType::Sandstone)
         && topsoilDepth > 1)
@@ -516,33 +400,24 @@ struct ColumnContext
     };
 }
 
-[[nodiscard]] SurfaceBiome toSurfaceBiome(const ColumnBiome biome)
+[[nodiscard]] underground::BiomeOreProfile biomeOreProfileFromSurfaceBiome(const SurfaceBiome biome)
 {
     switch (biome)
     {
-    case ColumnBiome::Sandy:
-        return SurfaceBiome::Sandy;
-    case ColumnBiome::Snowy:
-        return SurfaceBiome::Snowy;
-    case ColumnBiome::Jungle:
-        return SurfaceBiome::Jungle;
-    case ColumnBiome::TemperateGrassland:
-    default:
-        return SurfaceBiome::TemperateGrassland;
-    }
-}
-
-[[nodiscard]] underground::BiomeOreProfile biomeOreProfileFromColumnBiome(const ColumnBiome biome)
-{
-    switch (biome)
-    {
-    case ColumnBiome::Sandy:
+    case SurfaceBiome::Desert:
         return underground::BiomeOreProfile::DustFlats;
-    case ColumnBiome::Snowy:
+    case SurfaceBiome::SnowyPlains:
+    case SurfaceBiome::SnowyTaiga:
         return underground::BiomeOreProfile::IceShelf;
-    case ColumnBiome::Jungle:
+    case SurfaceBiome::Jungle:
+    case SurfaceBiome::SparseJungle:
+    case SurfaceBiome::BambooJungle:
         return underground::BiomeOreProfile::OxygenGrove;
-    case ColumnBiome::TemperateGrassland:
+    case SurfaceBiome::Plains:
+    case SurfaceBiome::Forest:
+    case SurfaceBiome::BirchForest:
+    case SurfaceBiome::DarkForest:
+    case SurfaceBiome::Taiga:
     default:
         return underground::BiomeOreProfile::RegolithPlains;
     }
@@ -593,7 +468,7 @@ struct ColumnContext
             worldZ,
             columnContext.surfaceHeight,
             hostBlockType,
-            biomeOreProfileFromColumnBiome(columnContext.biome)))
+            biomeOreProfileFromSurfaceBiome(columnContext.biome)))
     {
         return *ore;
     }
@@ -604,23 +479,6 @@ struct ColumnContext
 std::uint32_t TerrainGenerator::worldSeed() const
 {
     return worldSeed_;
-}
-
-const char* surfaceBiomeLabel(const SurfaceBiome biome)
-{
-    switch (biome)
-    {
-    case SurfaceBiome::TemperateGrassland:
-        return "glow forest fringe";
-    case SurfaceBiome::Sandy:
-        return "dry wastes";
-    case SurfaceBiome::Snowy:
-        return "crystal expanse";
-    case SurfaceBiome::Jungle:
-        return "glow forest heart";
-    }
-
-    return "unknown";
 }
 
 void TerrainGenerator::setWorldSeed(const std::uint32_t worldSeed)
@@ -646,7 +504,7 @@ int TerrainGenerator::surfaceHeightAt(const int worldX, const int worldZ) const
 SurfaceBiome TerrainGenerator::surfaceBiomeAt(const int worldX, const int worldZ) const
 {
     const int surfaceHeight = surfaceHeightAt(worldX, worldZ);
-    return toSurfaceBiome(columnBiomeAt(worldX, worldZ, surfaceHeight, worldSeed_, biomeOverride_));
+    return columnBiomeAt(worldX, worldZ, surfaceHeight, worldSeed_, biomeOverride_);
 }
 
 BlockType TerrainGenerator::blockTypeAt(const int worldX, const int y, const int worldZ) const

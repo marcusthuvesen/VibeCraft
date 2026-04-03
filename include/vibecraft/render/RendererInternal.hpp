@@ -12,12 +12,15 @@ namespace vibecraft::render::detail
 {
 inline constexpr bgfx::ViewId kMainView = 0;
 inline constexpr bgfx::ViewId kUiView = 1;
+// Do not add BGFX_RESET_MSAA_* here. With MSAA enabled, bgfx debug text (dbgText) on the Metal
+// backend has broken the main menu: full-screen magenta/pink and no proper overlay. Keep MSAA
+// off for the default swapchain until a separate non-dbgText UI path can use it safely.
 inline constexpr std::uint32_t kDefaultResetFlags = BGFX_RESET_VSYNC;
-/// Dusk sky tint (RGBA8 for bgfx clear: 0xRRGGBBAA).
-inline constexpr std::uint32_t kMainMenuClearColor = 0xff6a4fff;
+/// `bgfx::setViewClear` packs color as **0xRRGGBBAA** (see bgfx `Clear::set`). Not ABGR vertex color.
+inline constexpr std::uint32_t kMainMenuClearColor = 0x1d2a40ff;
 inline constexpr std::uint64_t kChunkRenderState =
     BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
-    | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ALPHA;
+    | BGFX_STATE_DEPTH_TEST_LESS;
 inline constexpr std::uint16_t kChunkAtlasWidth = vibecraft::kChunkAtlasWidthPx;
 inline constexpr std::uint16_t kChunkAtlasHeight = vibecraft::kChunkAtlasHeightPx;
 
@@ -71,6 +74,7 @@ struct ChunkVertex
     return bgfx::UniformHandle{handleIndex};
 }
 
+/// Packed **0xRRGGBBAA** for `bgfx::setViewClear` / APIs that follow the same channel order.
 [[nodiscard]] inline std::uint32_t packRgba8(const glm::vec3& color, const float alpha = 1.0f)
 {
     const auto toByte = [](const float channel)
@@ -85,6 +89,7 @@ struct ChunkVertex
     return (r << 24U) | (g << 16U) | (b << 8U) | a;
 }
 
+/// Packed **0xAABBGGRR** for vertex `abgr` attributes and debug draw colors — not for `setViewClear`.
 [[nodiscard]] inline std::uint32_t packAbgr8(const glm::vec3& color, const float alpha = 1.0f)
 {
     const auto toByte = [](const float channel)

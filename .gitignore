@@ -7,3 +7,7 @@ build/
 compile_commands.json
 Testing/
 assets/saves/*.bin
+assets/saves/worlds/
+third_party/HyAssets/
+third_party/minecraft-assets/
+tmp_menu*.png

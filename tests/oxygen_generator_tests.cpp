@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "vibecraft/app/ApplicationSurvival.hpp"
-#include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/World.hpp"
 
@@ -10,9 +10,10 @@ TEST_CASE("oxygen generator metadata uses machine-style atlas tiles")
     using vibecraft::world::BlockFace;
     using vibecraft::world::BlockType;
 
-    CHECK(vibecraft::world::textureTileIndex(BlockType::OxygenGenerator, BlockFace::Top) == 43);
-    CHECK(vibecraft::world::textureTileIndex(BlockType::OxygenGenerator, BlockFace::Bottom) == 41);
-    CHECK(vibecraft::world::textureTileIndex(BlockType::OxygenGenerator, BlockFace::Side) == 66);
+    // Dedicated relay faces (77–79) so bricks (41), glowstone (43), and moss (66) stay distinct in the atlas.
+    CHECK(vibecraft::world::textureTileIndex(BlockType::OxygenGenerator, BlockFace::Top) == 79);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::OxygenGenerator, BlockFace::Bottom) == 77);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::OxygenGenerator, BlockFace::Side) == 78);
 }
 
 TEST_CASE("oxygen generator recipe crafts from glass torch iron and cobblestone")
@@ -38,7 +39,7 @@ TEST_CASE("oxygen generator recipe crafts from glass torch iron and cobblestone"
     CHECK(match->output.count == 1);
 }
 
-TEST_CASE("oxygen generator also crafts from grove moss and a lumen crystal core")
+TEST_CASE("oxygen generator also crafts from moss and a glowstone core")
 {
     using vibecraft::app::CraftingGridSlots;
     using vibecraft::app::CraftingMode;

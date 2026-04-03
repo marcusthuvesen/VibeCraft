@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <string>
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -22,6 +24,10 @@ namespace vibecraft::render::detail
 {
 namespace
 {
+/// Use nearest-neighbor sampling so Minecraft-style atlas texels stay crisp and alpha holes don't halo.
+inline constexpr std::uint64_t kChunkAtlasSamplerFlags =
+    BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+
 struct RgbaColor
 {
     std::uint8_t r = 0;
@@ -152,8 +158,66 @@ void stripWhiteEdgeMatteAlpha(
 
 [[nodiscard]] std::filesystem::path runtimeAssetPath(const std::filesystem::path& relativePath)
 {
+    std::vector<std::filesystem::path> candidates;
+    candidates.reserve(24);
+
+    const auto addCandidate = [&candidates](const std::filesystem::path& candidate)
+    {
+        if (candidate.empty())
+        {
+            return;
+        }
+        if (std::find(candidates.begin(), candidates.end(), candidate) == candidates.end())
+        {
+            candidates.push_back(candidate);
+        }
+    };
+
+    const auto addRootCandidates =
+        [&addCandidate, &relativePath](const std::filesystem::path& rootPath)
+    {
+        if (rootPath.empty())
+        {
+            return;
+        }
+        addCandidate(rootPath / relativePath);
+        addCandidate(rootPath / "assets" / relativePath);
+
+        std::filesystem::path probe = rootPath;
+        for (int depth = 0; depth < 6; ++depth)
+        {
+            addCandidate(probe / "assets" / relativePath);
+            const std::filesystem::path parent = probe.parent_path();
+            if (parent.empty() || parent == probe)
+            {
+                break;
+            }
+            probe = parent;
+        }
+    };
+
+    const char* const explicitHome = std::getenv("VIBECRAFT_HOME");
+    if (explicitHome != nullptr && std::string(explicitHome).empty() == false)
+    {
+        addRootCandidates(std::filesystem::path(explicitHome));
+    }
+
+    // Prefer repository paths first so development launches consistently pick freshly rebuilt assets.
+    addRootCandidates(std::filesystem::current_path());
+
+    // Binary-adjacent assets remain a fallback for packaged distributions.
     const char* const basePathCStr = SDL_GetBasePath();
     const std::filesystem::path basePath = basePathCStr != nullptr ? basePathCStr : "";
+    addRootCandidates(basePath);
+
+    for (const std::filesystem::path& candidate : candidates)
+    {
+        if (std::filesystem::exists(candidate))
+        {
+            return candidate;
+        }
+    }
+
     return basePath / relativePath;
 }
 
@@ -297,7 +361,7 @@ void stripWhiteEdgeMatteAlpha(
         false,
         1,
         bgfx::TextureFormat::BGRA8,
-        BGFX_TEXTURE_NONE,
+        kChunkAtlasSamplerFlags,
         atlasMemory);
 }
 
@@ -337,7 +401,7 @@ void stripWhiteEdgeMatteAlpha(
         false,
         1,
         bgfx::TextureFormat::BGRA8,
-        BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+        kChunkAtlasSamplerFlags,
         atlasMemory);
 }
 
@@ -764,32 +828,32 @@ void stripWhiteEdgeMatteAlpha(
         stripePeriod = 8;
         seed = 3;
         break;
-    case MK::Sporegrazer:
-        top = {.r = 118, .g = 148, .b = 62, .a = 255};
-        bottom = {.r = 43, .g = 72, .b = 32, .a = 255};
-        accent = {.r = 198, .g = 236, .b = 112, .a = 255};
-        stripePeriod = 9;
+    case MK::Cow:
+        top = {.r = 124, .g = 92, .b = 72, .a = 255};
+        bottom = {.r = 82, .g = 58, .b = 44, .a = 255};
+        accent = {.r = 242, .g = 235, .b = 220, .a = 255};
+        stripePeriod = 11;
         seed = 19;
         break;
-    case MK::Burrower:
-        top = {.r = 147, .g = 91, .b = 46, .a = 255};
-        bottom = {.r = 62, .g = 34, .b = 20, .a = 255};
-        accent = {.r = 229, .g = 155, .b = 78, .a = 255};
-        stripePeriod = 5;
+    case MK::Pig:
+        top = {.r = 234, .g = 168, .b = 168, .a = 255};
+        bottom = {.r = 191, .g = 126, .b = 136, .a = 255};
+        accent = {.r = 250, .g = 196, .b = 196, .a = 255};
+        stripePeriod = 12;
         seed = 27;
         break;
-    case MK::Shardback:
-        top = {.r = 148, .g = 166, .b = 182, .a = 255};
-        bottom = {.r = 69, .g = 82, .b = 102, .a = 255};
-        accent = {.r = 102, .g = 255, .b = 250, .a = 255};
-        stripePeriod = 10;
+    case MK::Sheep:
+        top = {.r = 228, .g = 228, .b = 220, .a = 255};
+        bottom = {.r = 188, .g = 188, .b = 180, .a = 255};
+        accent = {.r = 96, .g = 88, .b = 82, .a = 255};
+        stripePeriod = 8;
         seed = 7;
         break;
-    case MK::Skitterwing:
-        top = {.r = 66, .g = 82, .b = 148, .a = 255};
-        bottom = {.r = 18, .g = 21, .b = 54, .a = 255};
-        accent = {.r = 244, .g = 188, .b = 84, .a = 255};
-        stripePeriod = 4;
+    case MK::Chicken:
+        top = {.r = 244, .g = 242, .b = 236, .a = 255};
+        bottom = {.r = 214, .g = 212, .b = 204, .a = 255};
+        accent = {.r = 236, .g = 182, .b = 62, .a = 255};
+        stripePeriod = 7;
         seed = 31;
         break;
     }
@@ -812,9 +876,25 @@ void stripWhiteEdgeMatteAlpha(
             {
                 color = lerpColor(color, accent, 0.36f);
             }
-            if (glowBand)
+            if (glowBand && mobKind == MK::VoidStrider)
             {
                 color = lerpColor(color, accent, 0.55f);
+            }
+            if (mobKind == MK::Cow && ((x * 5 + y * 3 + seed) % 23) < 5)
+            {
+                color = lerpColor(color, RgbaColor{40, 32, 28, 255}, 0.92f);
+            }
+            if (mobKind == MK::Pig && y > 8 && y < 18 && x > 18 && x < 46)
+            {
+                color = lerpColor(color, RgbaColor{246, 182, 188, 255}, 0.16f);
+            }
+            if (mobKind == MK::Sheep && ((x + y + seed) % 6) < 3)
+            {
+                color = lerpColor(color, RgbaColor{246, 244, 240, 255}, 0.14f);
+            }
+            if (mobKind == MK::Chicken && y > 7 && y < 15 && x > 18 && x < 46 && ((x + seed) % 9) < 2)
+            {
+                color = lerpColor(color, RgbaColor{188, 48, 40, 255}, 0.65f);
             }
             fillTexturePixels(pixels, kWidth, x, y, color);
         }

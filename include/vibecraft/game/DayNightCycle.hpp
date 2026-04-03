@@ -37,12 +37,12 @@ namespace detail
 {
 inline constexpr float kFullRotationDegrees = 360.0f;
 inline constexpr float kTwoPi = 6.28318530717958647692f;
-inline const glm::vec3 kDaySkyTint{0.14f, 0.18f, 0.28f};
+inline const glm::vec3 kDaySkyTint{0.44f, 0.67f, 0.98f};
 inline const glm::vec3 kNightSkyTint{0.01f, 0.01f, 0.03f};
-inline const glm::vec3 kTwilightSkyTint{0.72f, 0.27f, 0.17f};
-inline const glm::vec3 kDayHorizonTint{0.42f, 0.32f, 0.24f};
+inline const glm::vec3 kTwilightSkyTint{0.92f, 0.50f, 0.30f};
+inline const glm::vec3 kDayHorizonTint{0.76f, 0.86f, 0.98f};
 inline const glm::vec3 kNightHorizonTint{0.05f, 0.05f, 0.08f};
-inline const glm::vec3 kTwilightHorizonTint{0.96f, 0.46f, 0.24f};
+inline const glm::vec3 kTwilightHorizonTint{0.98f, 0.68f, 0.42f};
 inline const glm::vec3 kDaySunTint{1.0f, 0.95f, 0.86f};
 inline const glm::vec3 kTwilightSunTint{1.0f, 0.68f, 0.36f};
 inline const glm::vec3 kMoonLightTint{0.62f, 0.72f, 1.0f};

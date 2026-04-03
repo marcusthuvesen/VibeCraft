@@ -41,6 +41,17 @@ class SoundEffects
     void playPlayerLand(bool hardLanding);
     /// One-shot death cue before respawn.
     void playPlayerDeath();
+    /// UI button / inventory slot click.
+    void playUiClick();
+    /// Container open/close cues for chest storage.
+    void playChestOpen();
+    void playChestClose();
+    /// General consume cue for currently usable items.
+    void playItemConsume();
+    /// Passive / hostile idle vocalizations.
+    void playMobAmbient(vibecraft::game::MobKind mobKind);
+    /// Mob movement cue distinct from terrain footsteps.
+    void playMobStep(vibecraft::game::MobKind mobKind);
     /// Mob damage impact cue.
     void playMobHit(vibecraft::game::MobKind mobKind);
     /// Slightly heavier cue when a mob dies.

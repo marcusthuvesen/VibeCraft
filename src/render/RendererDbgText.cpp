@@ -519,40 +519,14 @@ void drawMainMenuFramedButton5(
     const std::string& label,
     const bool hovered)
 {
-    // Solid-filled button colors for stronger visual hierarchy.
-    constexpr std::uint16_t kBorderGray = 0x17;
-    constexpr std::uint16_t kLabelGray = 0x17;
-    constexpr std::uint16_t kBorderHi = 0x3f;
-    constexpr std::uint16_t kLabelHi = 0x3f;
-
-    const std::uint16_t borderAttr = hovered ? kBorderHi : kBorderGray;
-    const std::uint16_t labelAttr = hovered ? kLabelHi : kLabelGray;
-    const int inner = outerWidth - 2;
-    const std::string borderLine = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
-    const std::string midEmpty = "|" + std::string(static_cast<std::size_t>(inner), ' ') + "|";
-    const std::string midLabel = "|" + padLabelToInnerWidth(label, inner) + "|";
-
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), borderAttr, "%s", borderLine.c_str());
-    const int innerRows = std::max(1, lineCount - 2);
-    const int labelInnerRow = innerRows / 2;
-    for (int innerRow = 0; innerRow < innerRows; ++innerRow)
-    {
-        const bool isLabelRow = innerRow == labelInnerRow;
-        const std::uint16_t attr = isLabelRow ? labelAttr : borderAttr;
-        const std::string& line = isLabelRow ? midLabel : midEmpty;
-        bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(col),
-            static_cast<std::uint16_t>(row + 1 + innerRow),
-            attr,
-            "%s",
-            line.c_str());
-    }
-    bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(col),
-        static_cast<std::uint16_t>(row + lineCount - 1),
-        borderAttr,
-        "%s",
-        borderLine.c_str());
+    static_cast<void>(col);
+    const int safeWidth = std::max(1, outerWidth);
+    const int labelRow = row + std::max(0, lineCount / 2);
+    const std::uint16_t labelAttr = hovered ? static_cast<std::uint16_t>(0x0f) : static_cast<std::uint16_t>(0x0e);
+    dbgTextPrintfCenteredRow(
+        static_cast<std::uint16_t>(std::max(0, labelRow)),
+        labelAttr,
+        label.substr(0, static_cast<std::size_t>(safeWidth)));
 }
 
 void drawFramedButton3(
@@ -988,7 +962,7 @@ void drawMainMenuOverlay(
     if (frameDebugData.mainMenuSingleplayerPanelActive)
     {
         constexpr int kWide = 72;
-        constexpr int kPanelHeight = 31;
+        constexpr int kPanelHeight = 39;
         const int panelCol = std::max(0, (tw - kWide) / 2);
         const int panelRow = std::max(1, (th - kPanelHeight) / 2);
         const int hovered = frameDebugData.mainMenuSingleplayerHoveredControl;
@@ -1004,22 +978,28 @@ void drawMainMenuOverlay(
                     frameDebugData.mainMenuSelectedWorldLabel.empty() ? std::string("No world selected")
                                                                       : frameDebugData.mainMenuSelectedWorldLabel),
                 tw - 2));
-        drawFramedButton3(panelRow + 9, panelCol, kWide, "Start from saved world", hovered == 0, 0x17, 0x17, 0x3f, 0x3f);
-        drawFramedButton3(panelRow + 16, panelCol, kWide, "Start new world", hovered == 1, 0x17, 0x17, 0x3f, 0x3f);
-        drawFramedButton3(panelRow + 23, panelCol, kWide, "Back", hovered == 2, 0x17, 0x17, 0x3f, 0x3f);
+        dbgTextPrintfCenteredRow(
+            static_cast<std::uint16_t>(panelRow + 8),
+            0x0f,
+            clampDbgTextLine(
+                fmt::format(
+                    "Target biome: {}",
+                    frameDebugData.mainMenuSpawnBiomeLabel.empty() ? std::string("Any")
+                                                                   : frameDebugData.mainMenuSpawnBiomeLabel),
+                tw - 2));
+        drawFramedButton3(panelRow + 13, panelCol, kWide, "Start from saved world", hovered == 0, 0x17, 0x17, 0x3f, 0x3f);
+        drawFramedButton3(panelRow + 20, panelCol, kWide, "Start new world", hovered == 1, 0x17, 0x17, 0x3f, 0x3f);
+        drawFramedButton3(panelRow + 27, panelCol, kWide, "Cycle biome target", hovered == 2, 0x17, 0x17, 0x3f, 0x3f);
+        drawFramedButton3(panelRow + 34, panelCol, kWide, "Back", hovered == 3, 0x17, 0x17, 0x3f, 0x3f);
         dbgTextPrintfCenteredRow(
             footerRow,
             0x07,
-            "Click: select option   Esc: back");
+            "Click: select option   Esc: back   Biome target applies on world start");
         return;
     }
 
     const MainMenuComputedLayout menu = computeMainMenuLayout(tw, th, mainMenuTitleContentRowOffset);
-    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.subtitleRow), 0x07, "DESKTOP EDITION");
-
-    const int ruleWidth = std::clamp(menu.outerWidth, 24, tw - 4);
-    const std::string ruleLine(static_cast<std::size_t>(ruleWidth), '-');
-    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.ruleRow), 0x08, ruleLine);
+    dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(menu.subtitleRow), 0x0e, "ADVENTURE SANDBOX");
 
     const int hovered = frameDebugData.mainMenuHoveredButton;
     const std::array<std::string, 5> mainMenuLabels{
@@ -1045,21 +1025,21 @@ void drawMainMenuOverlay(
     if (menu.centerCol >= 7)
     {
         bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(menu.centerCol - 6),
+            static_cast<std::uint16_t>(menu.centerCol - 5),
             static_cast<std::uint16_t>(menu.iconHintsRow),
             iconAttrG,
-            "[C]");
+            " C ");
     }
     bgfx::dbgTextPrintf(
-        static_cast<std::uint16_t>(menu.centerCol + menu.outerWidth - 3),
+        static_cast<std::uint16_t>(menu.centerCol + menu.outerWidth + 3),
         static_cast<std::uint16_t>(menu.iconHintsRow),
         iconAttrA,
-        "[V]");
+        " V ");
 
     const bool splashBright =
         static_cast<int>(frameDebugData.mainMenuTimeSeconds * 3.0f) % 2 == 0;
     const std::uint16_t splashAttr = splashBright ? 0x07 : 0x08;
-    const std::string splash = "Also try building!";
+    const std::string splash = "Explore, craft, expand";
     const int splashRow =
         std::clamp(std::max(th - 5, menu.iconHintsRow + 2), 0, std::max(0, th - 3));
     const int splashCol = std::max(0, tw - static_cast<int>(splash.size()) - 2);
@@ -1086,8 +1066,9 @@ void drawMainMenuOverlay(
         footerRow,
         0x07,
         fmt::format(
-            "Spawn: {}   C/[C]: creative   V/[V]: cycle spawn",
-            frameDebugData.mainMenuSpawnPresetLabel.empty() ? "Origin" : frameDebugData.mainMenuSpawnPresetLabel));
+            "Spawn: {}   Biome: {}   C/[C]: creative   V/[V]: cycle spawn",
+            frameDebugData.mainMenuSpawnPresetLabel.empty() ? "Origin" : frameDebugData.mainMenuSpawnPresetLabel,
+            frameDebugData.mainMenuSpawnBiomeLabel.empty() ? "Any" : frameDebugData.mainMenuSpawnBiomeLabel));
 }
 
 void drawPauseMenuFramedButton(
@@ -1097,15 +1078,15 @@ void drawPauseMenuFramedButton(
     const std::string& label,
     const bool hovered)
 {
-    // High-contrast VGA attrs: 0x1f white-on-blue; hover 0x3f white-on-cyan for the whole control.
-    const std::uint16_t borderAttr = hovered ? static_cast<std::uint16_t>(0x3f) : static_cast<std::uint16_t>(0x1f);
-    const std::uint16_t labelAttr = hovered ? static_cast<std::uint16_t>(0x3f) : static_cast<std::uint16_t>(0x1f);
-    const int inner = outerWidth - 2;
-    const std::string border = "+" + std::string(static_cast<std::size_t>(inner), '-') + "+";
-    const std::string mid = "|" + padLabelToInnerWidth(label, inner) + "|";
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(rowTop), borderAttr, "%s", border.c_str());
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(rowTop + 1), labelAttr, "%s", mid.c_str());
-    bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(rowTop + 2), borderAttr, "%s", border.c_str());
+    static_cast<void>(col);
+    constexpr int kSpan = detail::PauseMenuLayout::kButtonRowSpan;
+    constexpr int kLabelOffset = detail::PauseMenuLayout::kButtonLabelRowOffset;
+    const int safeWidth = std::max(1, outerWidth);
+    const std::uint16_t labelAttr = hovered ? static_cast<std::uint16_t>(0x0f) : static_cast<std::uint16_t>(0x0e);
+    dbgTextPrintfCenteredRow(
+        static_cast<std::uint16_t>(std::max(0, rowTop + std::min(kSpan - 1, kLabelOffset))),
+        labelAttr,
+        label.substr(0, static_cast<std::size_t>(safeWidth)));
 }
 
 void drawPauseMenuOverlay(
@@ -1168,13 +1149,21 @@ void drawPauseMenuOverlay(
                 frameDebugData.pauseSpawnBiomeLabel.empty() ? "Any" : frameDebugData.pauseSpawnBiomeLabel),
             hovered == 2);
         drawPauseMenuFramedButton(
+            PauseMenuLayout::pauseGameTravelButtonRow(th),
+            centerCol,
+            kWide,
+            fmt::format(
+                "Travel now: {}",
+                frameDebugData.pauseSpawnBiomeLabel.empty() ? "Any" : frameDebugData.pauseSpawnBiomeLabel),
+            hovered == 3);
+        drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameWeatherButtonRow(th),
             centerCol,
             kWide,
             fmt::format(
                 "Weather: {}",
                 frameDebugData.pauseWeatherLabel.empty() ? "Unknown" : frameDebugData.pauseWeatherLabel),
-            hovered == 3);
+            hovered == 4);
         drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameBackButtonRow(th),
             centerCol,

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 
 #include "vibecraft/app/ApplicationSurvival.hpp"
 #include "vibecraft/world/Block.hpp"
@@ -73,7 +74,15 @@ constexpr std::array<SampleOffset, 24> kTerraformSampleOffsets{{
         || blockType == vibecraft::world::BlockType::Allium
         || blockType == vibecraft::world::BlockType::OxeyeDaisy
         || blockType == vibecraft::world::BlockType::BrownMushroom
-        || blockType == vibecraft::world::BlockType::RedMushroom;
+        || blockType == vibecraft::world::BlockType::RedMushroom
+        || blockType == vibecraft::world::BlockType::GrassTuft
+        || blockType == vibecraft::world::BlockType::FlowerTuft
+        || blockType == vibecraft::world::BlockType::DryTuft
+        || blockType == vibecraft::world::BlockType::LushTuft
+        || blockType == vibecraft::world::BlockType::FrostTuft
+        || blockType == vibecraft::world::BlockType::SparseTuft
+        || blockType == vibecraft::world::BlockType::CloverTuft
+        || blockType == vibecraft::world::BlockType::SproutTuft;
 }
 
 [[nodiscard]] bool sampleFallsInsideSafeZone(
@@ -88,6 +97,18 @@ constexpr std::array<SampleOffset, 24> kTerraformSampleOffsets{{
         static_cast<float>(worldZ) + 0.5f);
     const glm::vec3 delta = samplePoint - safeZone.center;
     return glm::dot(delta, delta) <= safeZone.radius * safeZone.radius;
+}
+
+[[nodiscard]] std::uint32_t terraformHash(const int worldX, const int worldZ, const std::size_t salt)
+{
+    std::uint32_t value = static_cast<std::uint32_t>(worldX) * 0x27d4eb2dU;
+    value ^= static_cast<std::uint32_t>(worldZ) * 0x165667b1U + static_cast<std::uint32_t>(salt * 0x9e3779b9U);
+    value ^= value >> 15U;
+    value *= 0x7feb352dU;
+    value ^= value >> 15U;
+    value *= 0x846ca68bU;
+    value ^= value >> 16U;
+    return value;
 }
 
 [[nodiscard]] bool tryTerraformOneSample(
@@ -134,11 +155,37 @@ constexpr std::array<SampleOffset, 24> kTerraformSampleOffsets{{
         }
     }
 
-    return world.applyEditCommand({
+    if (!world.applyEditCommand({
         .action = vibecraft::world::WorldEditAction::Place,
         .position = {worldX, surfaceY, worldZ},
         .blockType = nextBlock,
-    });
+    }))
+    {
+        return false;
+    }
+
+    if ((nextBlock == vibecraft::world::BlockType::Grass || nextBlock == vibecraft::world::BlockType::JungleGrass)
+        && world.blockAt(worldX, surfaceY + 1, worldZ) == vibecraft::world::BlockType::Air)
+    {
+        const std::uint32_t hash = terraformHash(worldX, worldZ, safeZone.generatorCount);
+        const float roll = static_cast<float>(hash & 0xffffu) / 65535.0f;
+        const float tuftChance = std::min(0.92f, 0.28f + static_cast<float>(safeZone.generatorCount) * 0.12f);
+        if (roll < tuftChance)
+        {
+            const vibecraft::world::BlockType tuftBlock = safeZone.generatorCount >= 3
+                ? vibecraft::world::BlockType::LushTuft
+                : (safeZone.generatorCount >= 2
+                        ? vibecraft::world::BlockType::FlowerTuft
+                        : vibecraft::world::BlockType::GrassTuft);
+            world.applyEditCommand({
+                .action = vibecraft::world::WorldEditAction::Place,
+                .position = {worldX, surfaceY + 1, worldZ},
+                .blockType = tuftBlock,
+            });
+        }
+    }
+
+    return true;
 }
 }  // namespace
 

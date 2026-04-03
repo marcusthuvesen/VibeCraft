@@ -4,6 +4,8 @@
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
+#include <array>
+#include <limits>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -16,9 +18,33 @@
 
 namespace vibecraft::world
 {
+namespace
+{
+constexpr int kWaterHorizontalReach = 7;
+constexpr int kLavaHorizontalReach = 3;
+
+[[nodiscard]] bool isFluidReplaceable(const BlockType blockType)
+{
+    return blockType == BlockType::Air || isFluid(blockType);
+}
+
+[[nodiscard]] bool isChunkCoordInRange(const int worldX, const int worldZ, const ChunkCoord& coord)
+{
+    return worldToChunkCoord(worldX, worldZ) == coord;
+}
+}  // namespace
+
 std::uint32_t World::generationSeed() const
 {
     return generationSeed_;
+}
+
+std::size_t World::FluidCellHash::operator()(const FluidCell& cell) const noexcept
+{
+    std::size_t seed = static_cast<std::size_t>(static_cast<std::uint32_t>(cell.x));
+    seed ^= static_cast<std::size_t>(static_cast<std::uint32_t>(cell.y + 0x9e3779b9U)) + (seed << 6U) + (seed >> 2U);
+    seed ^= static_cast<std::size_t>(static_cast<std::uint32_t>(cell.z + 0x85ebca6bU)) + (seed << 6U) + (seed >> 2U);
+    return seed;
 }
 
 void World::setGenerationSeed(const std::uint32_t generationSeed)
@@ -89,6 +115,7 @@ void World::generateMissingChunksAround(
 
         Chunk& chunk = ensureChunk(coord);
         populateChunkFromTerrain(chunk, coord, terrainGenerator);
+        registerFluidStateForChunk(chunk);
         markChunkDirty(coord);
         ++generatedCount;
     }
@@ -119,6 +146,15 @@ bool World::applyEditCommand(const WorldEditCommand& command)
     {
         return false;
     }
+
+    const FluidCell cell{command.position.x, command.position.y, command.position.z};
+    fluidSources_.erase(cell);
+    flowingFluids_.erase(cell);
+    if (isFluid(targetType))
+    {
+        fluidSources_[cell] = targetType;
+    }
+    scheduleFluidNeighborhood(command.position.x, command.position.y, command.position.z);
 
     for (const ChunkCoord& dirtyCoord : neighboringChunkCoords(coord))
     {
@@ -290,6 +326,28 @@ std::uint32_t World::totalVisibleFaces() const
     return faceCount;
 }
 
+void World::tickFluids(const std::size_t maxUpdates)
+{
+    if (maxUpdates == 0 || activeFluidCells_.empty())
+    {
+        return;
+    }
+
+    std::vector<FluidCell> pending;
+    pending.reserve(std::min(maxUpdates, activeFluidCells_.size()));
+    auto it = activeFluidCells_.begin();
+    while (it != activeFluidCells_.end() && pending.size() < maxUpdates)
+    {
+        pending.push_back(*it);
+        it = activeFluidCells_.erase(it);
+    }
+
+    for (const FluidCell& cell : pending)
+    {
+        processFluidCell(cell);
+    }
+}
+
 void World::rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher)
 {
     const std::vector<ChunkCoord> dirtyCoords(dirtyChunks_.begin(), dirtyChunks_.end());
@@ -349,6 +407,8 @@ void World::replaceChunk(Chunk chunk)
     }
 
     chunks_[coord] = std::move(chunk);
+    clearFluidStateForChunk(coord);
+    registerFluidStateForChunk(chunks_.at(coord));
 
     // A streamed chunk update can change faces on the chunk itself and along all four borders.
     for (const ChunkCoord& dirtyCoord : neighboringChunkCoords(coord))
@@ -362,10 +422,13 @@ void World::replaceChunks(ChunkMap chunks)
     chunks_ = std::move(chunks);
     dirtyChunks_.clear();
     meshStats_.clear();
+    fluidSources_.clear();
+    flowingFluids_.clear();
+    activeFluidCells_.clear();
 
     for (const auto& [coord, chunk] : chunks_)
     {
-        static_cast<void>(chunk);
+        registerFluidStateForChunk(chunk);
         markChunkDirty(coord);
     }
 }
@@ -380,5 +443,325 @@ Chunk& World::ensureChunk(const ChunkCoord& coord)
 void World::markChunkDirty(const ChunkCoord& coord)
 {
     dirtyChunks_.insert(coord);
+}
+
+bool World::setBlockUnchecked(const int worldX, const int y, const int worldZ, const BlockType blockType)
+{
+    if (y < kWorldMinY || y > kWorldMaxY)
+    {
+        return false;
+    }
+
+    Chunk& chunk = ensureChunk(worldToChunkCoord(worldX, worldZ));
+    const int localX = worldToLocalCoord(worldX);
+    const int localZ = worldToLocalCoord(worldZ);
+    if (!chunk.setBlock(localX, y, localZ, blockType))
+    {
+        return false;
+    }
+
+    for (const ChunkCoord& dirtyCoord : neighboringChunkCoords(chunk.coord()))
+    {
+        markChunkDirty(dirtyCoord);
+    }
+    return true;
+}
+
+void World::scheduleFluidNeighborhood(const int worldX, const int y, const int worldZ)
+{
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+        activeFluidCells_.insert(FluidCell{worldX, y + dy, worldZ});
+    }
+
+    constexpr std::array<std::array<int, 3>, 8> kOffsets{{
+        {{1, 0, 0}},
+        {{-1, 0, 0}},
+        {{0, 0, 1}},
+        {{0, 0, -1}},
+        {{1, -1, 0}},
+        {{-1, -1, 0}},
+        {{0, -1, 1}},
+        {{0, -1, -1}},
+    }};
+    for (const auto& offset : kOffsets)
+    {
+        activeFluidCells_.insert(FluidCell{worldX + offset[0], y + offset[1], worldZ + offset[2]});
+        activeFluidCells_.insert(FluidCell{worldX + offset[0], y + 1, worldZ + offset[2]});
+    }
+}
+
+void World::clearFluidStateForChunk(const ChunkCoord& coord)
+{
+    for (auto it = fluidSources_.begin(); it != fluidSources_.end();)
+    {
+        if (isChunkCoordInRange(it->first.x, it->first.z, coord))
+        {
+            it = fluidSources_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    for (auto it = flowingFluids_.begin(); it != flowingFluids_.end();)
+    {
+        if (isChunkCoordInRange(it->first.x, it->first.z, coord))
+        {
+            it = flowingFluids_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    for (auto it = activeFluidCells_.begin(); it != activeFluidCells_.end();)
+    {
+        if (isChunkCoordInRange(it->x, it->z, coord))
+        {
+            it = activeFluidCells_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+void World::registerFluidStateForChunk(const Chunk& chunk)
+{
+    const ChunkCoord coord = chunk.coord();
+    const int minWorldX = coord.x * Chunk::kSize;
+    const int minWorldZ = coord.z * Chunk::kSize;
+    for (int localZ = 0; localZ < Chunk::kSize; ++localZ)
+    {
+        for (int localX = 0; localX < Chunk::kSize; ++localX)
+        {
+            const int worldX = minWorldX + localX;
+            const int worldZ = minWorldZ + localZ;
+            for (int y = kWorldMinY; y <= kWorldMaxY; ++y)
+            {
+                const BlockType blockType = chunk.blockAt(localX, y, localZ);
+                if (!isFluid(blockType))
+                {
+                    continue;
+                }
+
+                const FluidCell cell{worldX, y, worldZ};
+                fluidSources_[cell] = blockType;
+                constexpr std::array<std::array<int, 3>, 6> kOffsets{{
+                    {{1, 0, 0}},
+                    {{-1, 0, 0}},
+                    {{0, 0, 1}},
+                    {{0, 0, -1}},
+                    {{0, 1, 0}},
+                    {{0, -1, 0}},
+                }};
+                for (const auto& offset : kOffsets)
+                {
+                    const BlockType neighbor = blockAt(worldX + offset[0], y + offset[1], worldZ + offset[2]);
+                    if (neighbor == BlockType::Air || (isFluid(neighbor) && neighbor != blockType))
+                    {
+                        scheduleFluidNeighborhood(worldX, y, worldZ);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void World::processFluidCell(const FluidCell& cell)
+{
+    if (cell.y < kWorldMinY || cell.y > kWorldMaxY)
+    {
+        return;
+    }
+
+    const BlockType currentBlock = blockAt(cell.x, cell.y, cell.z);
+
+    const auto sourceIt = fluidSources_.find(cell);
+    const auto flowIt = flowingFluids_.find(cell);
+    const bool hasWaterSource = sourceIt != fluidSources_.end() && sourceIt->second == BlockType::Water;
+    const bool hasLavaSource = sourceIt != fluidSources_.end() && sourceIt->second == BlockType::Lava;
+
+    if ((currentBlock == BlockType::Water || currentBlock == BlockType::Lava)
+        && sourceIt != fluidSources_.end())
+    {
+        constexpr std::array<std::array<int, 3>, 6> kNeighborOffsets{{
+            {{1, 0, 0}},
+            {{-1, 0, 0}},
+            {{0, 0, 1}},
+            {{0, 0, -1}},
+            {{0, 1, 0}},
+            {{0, -1, 0}},
+        }};
+        if (currentBlock == BlockType::Lava)
+        {
+            for (const auto& offset : kNeighborOffsets)
+            {
+                if (blockAt(cell.x + offset[0], cell.y + offset[1], cell.z + offset[2]) == BlockType::Water)
+                {
+                    const BlockType cooledBlock = hasLavaSource ? BlockType::Obsidian : BlockType::Cobblestone;
+                    if (setBlockUnchecked(cell.x, cell.y, cell.z, cooledBlock))
+                    {
+                        fluidSources_.erase(cell);
+                        flowingFluids_.erase(cell);
+                        scheduleFluidNeighborhood(cell.x, cell.y, cell.z);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    struct DesiredFluid
+    {
+        BlockType type = BlockType::Air;
+        int horizontalDistance = 0;
+        bool valid = false;
+    };
+
+    const auto computeDesiredFluid = [&](const BlockType fluidType, const int horizontalReach)
+    {
+        DesiredFluid desired{};
+        if (!isFluidReplaceable(currentBlock) || (isFluid(currentBlock) && currentBlock != fluidType && currentBlock != BlockType::Air))
+        {
+            if (currentBlock != fluidType)
+            {
+                return desired;
+            }
+        }
+
+        if ((fluidType == BlockType::Water && hasWaterSource) || (fluidType == BlockType::Lava && hasLavaSource))
+        {
+            desired.type = fluidType;
+            desired.horizontalDistance = 0;
+            desired.valid = true;
+            return desired;
+        }
+
+        if (blockAt(cell.x, cell.y + 1, cell.z) == fluidType)
+        {
+            desired.type = fluidType;
+            desired.horizontalDistance = 0;
+            desired.valid = true;
+            return desired;
+        }
+
+        const BlockType below = blockAt(cell.x, cell.y - 1, cell.z);
+        if (below == BlockType::Air)
+        {
+            return desired;
+        }
+
+        int bestDistance = std::numeric_limits<int>::max();
+        constexpr std::array<std::array<int, 2>, 4> kHorizontalOffsets{{
+            {{1, 0}},
+            {{-1, 0}},
+            {{0, 1}},
+            {{0, -1}},
+        }};
+        for (const auto& offset : kHorizontalOffsets)
+        {
+            const FluidCell neighbor{cell.x + offset[0], cell.y, cell.z + offset[1]};
+            const BlockType neighborBlock = blockAt(neighbor.x, neighbor.y, neighbor.z);
+            if (neighborBlock != fluidType)
+            {
+                continue;
+            }
+
+            if (const auto neighborSourceIt = fluidSources_.find(neighbor);
+                neighborSourceIt != fluidSources_.end() && neighborSourceIt->second == fluidType)
+            {
+                bestDistance = std::min(bestDistance, 1);
+                continue;
+            }
+
+            const auto neighborFlowIt = flowingFluids_.find(neighbor);
+            if (neighborFlowIt == flowingFluids_.end() || neighborFlowIt->second.type != fluidType)
+            {
+                continue;
+            }
+            bestDistance = std::min(bestDistance, static_cast<int>(neighborFlowIt->second.horizontalDistance) + 1);
+        }
+
+        if (bestDistance <= horizontalReach)
+        {
+            desired.type = fluidType;
+            desired.horizontalDistance = bestDistance;
+            desired.valid = true;
+        }
+        return desired;
+    };
+
+    const DesiredFluid desiredWater = computeDesiredFluid(BlockType::Water, kWaterHorizontalReach);
+    const DesiredFluid desiredLava = computeDesiredFluid(BlockType::Lava, kLavaHorizontalReach);
+
+    BlockType desiredBlock = BlockType::Air;
+    int desiredDistance = 0;
+    if (desiredWater.valid && desiredLava.valid)
+    {
+        desiredBlock = desiredWater.horizontalDistance <= desiredLava.horizontalDistance ? BlockType::Water : BlockType::Lava;
+        desiredDistance =
+            desiredBlock == BlockType::Water ? desiredWater.horizontalDistance : desiredLava.horizontalDistance;
+    }
+    else if (desiredWater.valid)
+    {
+        desiredBlock = BlockType::Water;
+        desiredDistance = desiredWater.horizontalDistance;
+    }
+    else if (desiredLava.valid)
+    {
+        desiredBlock = BlockType::Lava;
+        desiredDistance = desiredLava.horizontalDistance;
+    }
+
+    if (currentBlock == BlockType::Lava && desiredBlock == BlockType::Water)
+    {
+        const BlockType cooledBlock = hasLavaSource ? BlockType::Obsidian : BlockType::Cobblestone;
+        if (setBlockUnchecked(cell.x, cell.y, cell.z, cooledBlock))
+        {
+            fluidSources_.erase(cell);
+            flowingFluids_.erase(cell);
+            scheduleFluidNeighborhood(cell.x, cell.y, cell.z);
+        }
+        return;
+    }
+
+    if (desiredBlock == BlockType::Air)
+    {
+        if (flowIt != flowingFluids_.end() && currentBlock == flowIt->second.type)
+        {
+            if (setBlockUnchecked(cell.x, cell.y, cell.z, BlockType::Air))
+            {
+                flowingFluids_.erase(cell);
+                scheduleFluidNeighborhood(cell.x, cell.y, cell.z);
+            }
+        }
+        return;
+    }
+
+    if ((desiredBlock == BlockType::Water && hasWaterSource) || (desiredBlock == BlockType::Lava && hasLavaSource))
+    {
+        flowingFluids_.erase(cell);
+    }
+    else
+    {
+        flowingFluids_[cell] = FlowingFluidState{
+            .type = desiredBlock,
+            .horizontalDistance = static_cast<std::uint8_t>(std::clamp(desiredDistance, 0, 255)),
+        };
+    }
+
+    if (currentBlock != desiredBlock && setBlockUnchecked(cell.x, cell.y, cell.z, desiredBlock))
+    {
+        scheduleFluidNeighborhood(cell.x, cell.y, cell.z);
+    }
+
+    if (desiredBlock != BlockType::Air)
+    {
+        scheduleFluidNeighborhood(cell.x, cell.y - 1, cell.z);
+    }
 }
 }  // namespace vibecraft::world

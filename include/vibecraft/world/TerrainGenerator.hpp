@@ -1,21 +1,12 @@
 #pragma once
 
 #include "vibecraft/world/Block.hpp"
+#include "vibecraft/world/biomes/SurfaceBiome.hpp"
 
 #include <optional>
 
 namespace vibecraft::world
 {
-enum class SurfaceBiome : std::uint8_t
-{
-    TemperateGrassland,
-    Sandy,
-    Snowy,
-    Jungle,
-};
-
-[[nodiscard]] const char* surfaceBiomeLabel(SurfaceBiome biome);
-
 class TerrainGenerator
 {
   public:

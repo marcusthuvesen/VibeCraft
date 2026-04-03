@@ -5,6 +5,7 @@
 #include "vibecraft/world/Block.hpp"
 #include "vibecraft/world/TerrainGenerator.hpp"
 #include "vibecraft/world/World.hpp"
+#include "vibecraft/world/biomes/BiomeProfile.hpp"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
@@ -178,14 +179,14 @@ struct MobDimensionsForKind
         return {.halfWidth = 0.28f, .height = 1.75f};
     case MobKind::Player:
         return {.halfWidth = 0.30f, .height = 2.0f};
-    case MobKind::Sporegrazer:
-        return {.halfWidth = 0.52f, .height = 1.42f};
-    case MobKind::Burrower:
-        return {.halfWidth = 0.42f, .height = 0.86f};
-    case MobKind::Shardback:
-        return {.halfWidth = 0.44f, .height = 1.20f};
-    case MobKind::Skitterwing:
-        return {.halfWidth = 0.24f, .height = 0.74f};
+    case MobKind::Cow:
+        return {.halfWidth = 0.45f, .height = 1.40f};
+    case MobKind::Pig:
+        return {.halfWidth = 0.42f, .height = 0.94f};
+    case MobKind::Sheep:
+        return {.halfWidth = 0.43f, .height = 1.24f};
+    case MobKind::Chicken:
+        return {.halfWidth = 0.20f, .height = 0.78f};
     }
     return {.halfWidth = 0.28f, .height = 1.75f};
 }
@@ -211,13 +212,13 @@ struct MobDimensionsForKind
     switch (dist(rng))
     {
     case 0:
-        return MobKind::Sporegrazer;
+        return MobKind::Cow;
     case 1:
-        return MobKind::Burrower;
+        return MobKind::Pig;
     case 2:
-        return MobKind::Shardback;
+        return MobKind::Sheep;
     default:
-        return MobKind::Skitterwing;
+        return MobKind::Chicken;
     }
 }
 
@@ -673,7 +674,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
         }
 
         const world::SurfaceBiome surfaceBiome = terrain.surfaceBiomeAt(ix, iz);
-        if (surfaceBiome == world::SurfaceBiome::Jungle)
+        if (world::biomes::isJungleSurfaceBiome(surfaceBiome))
         {
             std::uniform_real_distribution<float> grovePeaceDist(0.0f, 1.0f);
             if (grovePeaceDist(rng_) < 0.58f)
@@ -681,7 +682,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
                 continue;
             }
         }
-        else if (surfaceBiome == world::SurfaceBiome::Sandy)
+        else if (world::biomes::isSandySurfaceBiome(surfaceBiome))
         {
             std::uniform_real_distribution<float> dustHostileDist(0.0f, 1.0f);
             if (dustHostileDist(rng_) < 0.12f)

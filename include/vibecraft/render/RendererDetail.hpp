@@ -21,10 +21,10 @@ namespace vibecraft::render::detail
 {
 namespace MainMenuLayout
 {
-constexpr int kPreferredButtonLineCount = 9;
-constexpr int kMinButtonLineCount = 5;
-constexpr int kMinOuterWidth = 92;
-constexpr int kMaxOuterWidth = 140;
+constexpr int kPreferredButtonLineCount = 11;
+constexpr int kMinButtonLineCount = 7;
+constexpr int kMinOuterWidth = 104;
+constexpr int kMaxOuterWidth = 156;
 constexpr int kSubtitleRuleAndGapRows = 3;
 }  // namespace MainMenuLayout
 
@@ -141,14 +141,15 @@ constexpr int kMultiplayerExtraRowsBelowLogo = 6;
 /// Pause menu dbg-text grid; must match `drawPauseMenuOverlay` and pause hit tests.
 namespace PauseMenuLayout
 {
-constexpr int kWideChars = 96;
-/// Framed control height: top rule, label, bottom rule (one text line per button).
-constexpr int kButtonRowSpan = 3;
+constexpr int kWideChars = 116;
+/// Framed control height: top/bottom rule with padded interior lines.
+constexpr int kButtonRowSpan = 5;
+constexpr int kButtonLabelRowOffset = kButtonRowSpan / 2;
 constexpr int kButtonGapRows = 2;
 constexpr int kButtonPitch = kButtonRowSpan + kButtonGapRows;
 constexpr int kMainButtonCount = 5;
 constexpr int kPauseSoundButtonCount = 3;
-constexpr int kPauseGameButtonCount = 4;
+constexpr int kPauseGameButtonCount = 5;
 
 [[nodiscard]] inline int mainPauseMenuTotalRows()
 {
@@ -221,9 +222,14 @@ constexpr int kPauseGameButtonCount = 4;
     return pauseGameMobButtonRow(textHeight) + kButtonPitch;
 }
 
-[[nodiscard]] inline int pauseGameWeatherButtonRow(const int textHeight)
+[[nodiscard]] inline int pauseGameTravelButtonRow(const int textHeight)
 {
     return pauseGameBiomeButtonRow(textHeight) + kButtonPitch;
+}
+
+[[nodiscard]] inline int pauseGameWeatherButtonRow(const int textHeight)
+{
+    return pauseGameTravelButtonRow(textHeight) + kButtonPitch;
 }
 
 [[nodiscard]] inline int pauseGameBackButtonRow(const int textHeight)
@@ -242,7 +248,8 @@ constexpr int kSoundSliderFillChars = 18;
 constexpr int kGameTitleRow = 3;
 constexpr int kGameMobButtonRow = 6;
 constexpr int kGameBiomeButtonRow = kGameMobButtonRow + kButtonPitch;
-constexpr int kGameWeatherButtonRow = kGameBiomeButtonRow + kButtonPitch;
+constexpr int kGameTravelButtonRow = kGameBiomeButtonRow + kButtonPitch;
+constexpr int kGameWeatherButtonRow = kGameTravelButtonRow + kButtonPitch;
 constexpr int kGameBackButtonRow = kGameWeatherButtonRow + kButtonPitch;
 }  // namespace PauseMenuLayout
 

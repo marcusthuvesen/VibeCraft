@@ -1,6 +1,9 @@
 #include "vibecraft/meshing/ChunkMesher.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstdint>
 #include <limits>
 
 #include "vibecraft/ChunkAtlasLayout.hpp"
@@ -25,10 +28,10 @@ struct FaceDefinition
 };
 
 constexpr std::array<FaceDefinition, 6> kFaces{{
-    {1, 0, 0, vibecraft::world::BlockFace::Side,
+    {1, 0, 0, vibecraft::world::BlockFace::East,
      {{{1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}}},
      {{{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}}}},
-    {-1, 0, 0, vibecraft::world::BlockFace::Side,
+    {-1, 0, 0, vibecraft::world::BlockFace::West,
      {{{0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 0.0f}}},
      {{{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}}}},
     {0, 1, 0, vibecraft::world::BlockFace::Top,
@@ -37,10 +40,10 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
     {0, -1, 0, vibecraft::world::BlockFace::Bottom,
      {{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}}},
      {{{0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f}}}},
-    {0, 0, 1, vibecraft::world::BlockFace::Side,
+    {0, 0, 1, vibecraft::world::BlockFace::South,
      {{{1.0f, 0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}}},
      {{{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}}}},
-    {0, 0, -1, vibecraft::world::BlockFace::Side,
+    {0, 0, -1, vibecraft::world::BlockFace::North,
      {{{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}},
      {{{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}}}},
 }};
@@ -51,7 +54,76 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
         || blockType == BlockType::BlueOrchid || blockType == BlockType::Allium
         || blockType == BlockType::OxeyeDaisy || blockType == BlockType::BrownMushroom
         || blockType == BlockType::RedMushroom || blockType == BlockType::Vines
-        || blockType == BlockType::Bamboo;
+        || blockType == BlockType::Bamboo
+        || blockType == BlockType::Fern
+        || blockType == BlockType::Torch
+        || blockType == BlockType::GrassTuft || blockType == BlockType::FlowerTuft
+        || blockType == BlockType::DryTuft || blockType == BlockType::LushTuft
+        || blockType == BlockType::FrostTuft || blockType == BlockType::SparseTuft
+        || blockType == BlockType::CloverTuft || blockType == BlockType::SproutTuft;
+}
+
+[[nodiscard]] constexpr float crossPlantInset(const BlockType blockType)
+{
+    if (blockType == BlockType::Bamboo)
+    {
+        return 0.33f;
+    }
+    if (blockType == BlockType::Torch)
+    {
+        return 0.40f;
+    }
+    return 0.18f;
+}
+
+[[nodiscard]] constexpr bool usesDenseFloraMesh(const BlockType blockType)
+{
+    return blockType == BlockType::GrassTuft || blockType == BlockType::FlowerTuft
+        || blockType == BlockType::DryTuft || blockType == BlockType::LushTuft
+        || blockType == BlockType::FrostTuft || blockType == BlockType::Dandelion
+        || blockType == BlockType::Fern
+        || blockType == BlockType::SparseTuft || blockType == BlockType::CloverTuft
+        || blockType == BlockType::SproutTuft
+        || blockType == BlockType::Poppy || blockType == BlockType::BlueOrchid
+        || blockType == BlockType::Allium || blockType == BlockType::OxeyeDaisy
+        || blockType == BlockType::BrownMushroom || blockType == BlockType::RedMushroom;
+}
+
+[[nodiscard]] std::uint32_t hash32(const int x, const int y, const int z, const std::uint32_t seed)
+{
+    std::uint32_t h = static_cast<std::uint32_t>(x) * 0x9e3779b9u;
+    h ^= static_cast<std::uint32_t>(y) * 0x85ebca6bu + seed;
+    h ^= static_cast<std::uint32_t>(z) * 0xc2b2ae35u + 0x165667b1u;
+    h ^= h >> 16u;
+    h *= 0x7feb352du;
+    h ^= h >> 15u;
+    h *= 0x846ca68bu;
+    h ^= h >> 16u;
+    return h;
+}
+
+[[nodiscard]] float hash01(const int x, const int y, const int z, const std::uint32_t seed)
+{
+    return static_cast<float>(hash32(x, y, z, seed)) * (1.0f / 4294967295.0f);
+}
+
+[[nodiscard]] std::uint32_t modulateAbgrRgb(const std::uint32_t abgr, const float factor)
+{
+    const float f = std::clamp(factor, 0.0f, 2.0f);
+    const auto scale = [f](const std::uint8_t channel)
+    {
+        const int scaled = static_cast<int>(std::lround(static_cast<float>(channel) * f));
+        return static_cast<std::uint8_t>(std::clamp(scaled, 0, 255));
+    };
+
+    const std::uint8_t r = static_cast<std::uint8_t>(abgr & 0xffu);
+    const std::uint8_t g = static_cast<std::uint8_t>((abgr >> 8u) & 0xffu);
+    const std::uint8_t b = static_cast<std::uint8_t>((abgr >> 16u) & 0xffu);
+    const std::uint8_t a = static_cast<std::uint8_t>((abgr >> 24u) & 0xffu);
+    return (static_cast<std::uint32_t>(a) << 24u)
+        | (static_cast<std::uint32_t>(scale(b)) << 16u)
+        | (static_cast<std::uint32_t>(scale(g)) << 8u)
+        | static_cast<std::uint32_t>(scale(r));
 }
 
 constexpr std::uint16_t kAtlasColumns = vibecraft::kChunkAtlasTileColumns;
@@ -136,6 +208,235 @@ constexpr float kTileInsetV = 0.5f / static_cast<float>(vibecraft::kChunkAtlasHe
     }
     return southChunk != nullptr ? southChunk->blockAt(localX, y, 0) : BlockType::Air;
 }
+
+struct IntOffset
+{
+    int x = 0;
+    int y = 0;
+    int z = 0;
+};
+
+[[nodiscard]] IntOffset axisOffsetForFace(const FaceDefinition& face, const bool firstAxis)
+{
+    if (face.offsetX != 0)
+    {
+        return firstAxis ? IntOffset{0, 1, 0} : IntOffset{0, 0, 1};
+    }
+    if (face.offsetY != 0)
+    {
+        return firstAxis ? IntOffset{1, 0, 0} : IntOffset{0, 0, 1};
+    }
+    return firstAxis ? IntOffset{1, 0, 0} : IntOffset{0, 1, 0};
+}
+
+[[nodiscard]] int cornerSignForAxis(
+    const IntOffset& axis,
+    const std::array<float, 3>& corner)
+{
+    if (axis.x != 0)
+    {
+        return corner[0] > 0.5f ? 1 : -1;
+    }
+    if (axis.y != 0)
+    {
+        return corner[1] > 0.5f ? 1 : -1;
+    }
+    return corner[2] > 0.5f ? 1 : -1;
+}
+
+[[nodiscard]] float ambientOcclusionForCorner(
+    const BlockStorage& currentStorage,
+    const vibecraft::world::Chunk* const westChunk,
+    const vibecraft::world::Chunk* const eastChunk,
+    const vibecraft::world::Chunk* const northChunk,
+    const vibecraft::world::Chunk* const southChunk,
+    const int localX,
+    const int y,
+    const int localZ,
+    const FaceDefinition& face,
+    const std::array<float, 3>& corner)
+{
+    const IntOffset axisA = axisOffsetForFace(face, true);
+    const IntOffset axisB = axisOffsetForFace(face, false);
+    const int signA = cornerSignForAxis(axisA, corner);
+    const int signB = cornerSignForAxis(axisB, corner);
+    const int sampleOriginX = localX + face.offsetX;
+    const int sampleOriginY = y + face.offsetY;
+    const int sampleOriginZ = localZ + face.offsetZ;
+
+    const bool sideAOccluder = vibecraft::world::occludesFaces(sampledNeighborBlock(
+        currentStorage,
+        westChunk,
+        eastChunk,
+        northChunk,
+        southChunk,
+        sampleOriginX + axisA.x * signA,
+        sampleOriginY + axisA.y * signA,
+        sampleOriginZ + axisA.z * signA));
+    const bool sideBOccluder = vibecraft::world::occludesFaces(sampledNeighborBlock(
+        currentStorage,
+        westChunk,
+        eastChunk,
+        northChunk,
+        southChunk,
+        sampleOriginX + axisB.x * signB,
+        sampleOriginY + axisB.y * signB,
+        sampleOriginZ + axisB.z * signB));
+    const bool cornerOccluder = vibecraft::world::occludesFaces(sampledNeighborBlock(
+        currentStorage,
+        westChunk,
+        eastChunk,
+        northChunk,
+        southChunk,
+        sampleOriginX + axisA.x * signA + axisB.x * signB,
+        sampleOriginY + axisA.y * signA + axisB.y * signB,
+        sampleOriginZ + axisA.z * signA + axisB.z * signB));
+
+    int occluders = (sideAOccluder ? 1 : 0) + (sideBOccluder ? 1 : 0) + (cornerOccluder ? 1 : 0);
+    if (sideAOccluder && sideBOccluder)
+    {
+        occluders = 3;
+    }
+
+    constexpr std::array<float, 4> kAoByOccluderCount{1.0f, 0.93f, 0.86f, 0.80f};
+    return kAoByOccluderCount[static_cast<std::size_t>(std::clamp(occluders, 0, 3))];
+}
+
+void appendCustomQuad(
+    ChunkMeshData& meshData,
+    const std::array<std::array<float, 3>, 4>& corners,
+    const std::array<std::array<float, 2>, 4>& uvs,
+    const std::array<float, 3>& normal,
+    const std::uint8_t tileIndex,
+    const std::uint32_t abgr)
+{
+    const std::uint32_t baseIndex = static_cast<std::uint32_t>(meshData.vertices.size());
+    for (std::size_t vertexIndex = 0; vertexIndex < corners.size(); ++vertexIndex)
+    {
+        const auto atlasUv = atlasUvForBlockType(tileIndex, uvs[vertexIndex]);
+        meshData.vertices.push_back(DebugVertex{
+            .x = corners[vertexIndex][0],
+            .y = corners[vertexIndex][1],
+            .z = corners[vertexIndex][2],
+            .nx = normal[0],
+            .ny = normal[1],
+            .nz = normal[2],
+            .u = atlasUv[0],
+            .v = atlasUv[1],
+            .abgr = abgr,
+        });
+    }
+
+    meshData.indices.push_back(baseIndex);
+    meshData.indices.push_back(baseIndex + 1);
+    meshData.indices.push_back(baseIndex + 2);
+    meshData.indices.push_back(baseIndex);
+    meshData.indices.push_back(baseIndex + 2);
+    meshData.indices.push_back(baseIndex + 3);
+    ++meshData.faceCount;
+}
+
+void appendBookshelfInsetFace(
+    ChunkMeshData& meshData,
+    const FaceDefinition& face,
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const std::uint8_t centerTileIndex,
+    const std::uint8_t frameTileIndex,
+    const std::uint32_t abgr)
+{
+    constexpr std::array<std::array<float, 2>, 4> kQuadUv{{
+        {0.0f, 1.0f},
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+        {1.0f, 1.0f},
+    }};
+    constexpr float kInsetDepth = 0.09f;
+    constexpr float kFrameThickness = 0.12f;
+    const float wx = static_cast<float>(worldX);
+    const float wy = static_cast<float>(y);
+    const float wz = static_cast<float>(worldZ);
+
+    const auto emitEast = [&](const float xPlane, const float y0, const float y1, const float z0, const float z1, const std::uint8_t tile)
+    {
+        appendCustomQuad(
+            meshData,
+            {{{wx + xPlane, wy + y0, wz + z0}, {wx + xPlane, wy + y1, wz + z0}, {wx + xPlane, wy + y1, wz + z1}, {wx + xPlane, wy + y0, wz + z1}}},
+            kQuadUv,
+            {1.0f, 0.0f, 0.0f},
+            tile,
+            abgr);
+    };
+    const auto emitWest = [&](const float xPlane, const float y0, const float y1, const float z0, const float z1, const std::uint8_t tile)
+    {
+        appendCustomQuad(
+            meshData,
+            {{{wx + xPlane, wy + y0, wz + z1}, {wx + xPlane, wy + y1, wz + z1}, {wx + xPlane, wy + y1, wz + z0}, {wx + xPlane, wy + y0, wz + z0}}},
+            kQuadUv,
+            {-1.0f, 0.0f, 0.0f},
+            tile,
+            abgr);
+    };
+    const auto emitSouth = [&](const float zPlane, const float x0, const float x1, const float y0, const float y1, const std::uint8_t tile)
+    {
+        appendCustomQuad(
+            meshData,
+            {{{wx + x1, wy + y0, wz + zPlane}, {wx + x1, wy + y1, wz + zPlane}, {wx + x0, wy + y1, wz + zPlane}, {wx + x0, wy + y0, wz + zPlane}}},
+            kQuadUv,
+            {0.0f, 0.0f, 1.0f},
+            tile,
+            abgr);
+    };
+    const auto emitNorth = [&](const float zPlane, const float x0, const float x1, const float y0, const float y1, const std::uint8_t tile)
+    {
+        appendCustomQuad(
+            meshData,
+            {{{wx + x0, wy + y0, wz + zPlane}, {wx + x0, wy + y1, wz + zPlane}, {wx + x1, wy + y1, wz + zPlane}, {wx + x1, wy + y0, wz + zPlane}}},
+            kQuadUv,
+            {0.0f, 0.0f, -1.0f},
+            tile,
+            abgr);
+    };
+
+    if (face.offsetX > 0)
+    {
+        const float xPlane = 1.0f - kInsetDepth;
+        emitEast(xPlane, kFrameThickness, 1.0f - kFrameThickness, kFrameThickness, 1.0f - kFrameThickness, centerTileIndex);
+        emitEast(xPlane, 1.0f - kFrameThickness, 1.0f, 0.0f, 1.0f, frameTileIndex);
+        emitEast(xPlane, 0.0f, kFrameThickness, 0.0f, 1.0f, frameTileIndex);
+        emitEast(xPlane, kFrameThickness, 1.0f - kFrameThickness, 0.0f, kFrameThickness, frameTileIndex);
+        emitEast(xPlane, kFrameThickness, 1.0f - kFrameThickness, 1.0f - kFrameThickness, 1.0f, frameTileIndex);
+        return;
+    }
+    if (face.offsetX < 0)
+    {
+        const float xPlane = kInsetDepth;
+        emitWest(xPlane, kFrameThickness, 1.0f - kFrameThickness, kFrameThickness, 1.0f - kFrameThickness, centerTileIndex);
+        emitWest(xPlane, 1.0f - kFrameThickness, 1.0f, 0.0f, 1.0f, frameTileIndex);
+        emitWest(xPlane, 0.0f, kFrameThickness, 0.0f, 1.0f, frameTileIndex);
+        emitWest(xPlane, kFrameThickness, 1.0f - kFrameThickness, 0.0f, kFrameThickness, frameTileIndex);
+        emitWest(xPlane, kFrameThickness, 1.0f - kFrameThickness, 1.0f - kFrameThickness, 1.0f, frameTileIndex);
+        return;
+    }
+    if (face.offsetZ > 0)
+    {
+        const float zPlane = 1.0f - kInsetDepth;
+        emitSouth(zPlane, kFrameThickness, 1.0f - kFrameThickness, kFrameThickness, 1.0f - kFrameThickness, centerTileIndex);
+        emitSouth(zPlane, 0.0f, 1.0f, 1.0f - kFrameThickness, 1.0f, frameTileIndex);
+        emitSouth(zPlane, 0.0f, 1.0f, 0.0f, kFrameThickness, frameTileIndex);
+        emitSouth(zPlane, 0.0f, kFrameThickness, kFrameThickness, 1.0f - kFrameThickness, frameTileIndex);
+        emitSouth(zPlane, 1.0f - kFrameThickness, 1.0f, kFrameThickness, 1.0f - kFrameThickness, frameTileIndex);
+        return;
+    }
+
+    const float zPlane = kInsetDepth;
+    emitNorth(zPlane, kFrameThickness, 1.0f - kFrameThickness, kFrameThickness, 1.0f - kFrameThickness, centerTileIndex);
+    emitNorth(zPlane, 0.0f, 1.0f, 1.0f - kFrameThickness, 1.0f, frameTileIndex);
+    emitNorth(zPlane, 0.0f, 1.0f, 0.0f, kFrameThickness, frameTileIndex);
+    emitNorth(zPlane, 0.0f, kFrameThickness, kFrameThickness, 1.0f - kFrameThickness, frameTileIndex);
+    emitNorth(zPlane, 1.0f - kFrameThickness, 1.0f, kFrameThickness, 1.0f - kFrameThickness, frameTileIndex);
+}
 }  // namespace
 
 ChunkMeshData ChunkMesher::buildMesh(
@@ -211,15 +512,8 @@ ChunkMeshData ChunkMesher::buildMesh(
 
                 if (usesCrossPlantMesh(blockType))
                 {
-                    // Flora meshes are centered crossed quads instead of a full cube.
-                    // Larger inset narrows the quads (smaller apparent stem diameter); bamboo uses a
-                    // thinner stalk than flowers/mushrooms.
-                    const float inset =
-                        blockType == BlockType::Bamboo ? 0.33f : 0.146f;
-                    const std::array<std::array<std::array<float, 3>, 4>, 2> plantCrossQuads{{
-                        {{{inset, 0.0f, inset}, {inset, 1.0f, inset}, {1.0f - inset, 1.0f, 1.0f - inset}, {1.0f - inset, 0.0f, 1.0f - inset}}},
-                        {{{1.0f - inset, 0.0f, inset}, {1.0f - inset, 1.0f, inset}, {inset, 1.0f, 1.0f - inset}, {inset, 0.0f, 1.0f - inset}}},
-                    }};
+                    // Flora meshes are crossed billboards instead of cubes. Dense flora uses tri-cross quads
+                    // with per-cell jitter so fields read organic rather than a repeated X pattern.
                     constexpr std::array<std::array<float, 2>, 4> kPlantUv{{
                         {0.0f, 1.0f},
                         {0.0f, 0.0f},
@@ -230,24 +524,99 @@ ChunkMeshData ChunkMesher::buildMesh(
                     const auto metadata = vibecraft::world::blockMetadata(blockType);
                     const std::uint8_t tileIndex =
                         vibecraft::world::textureTileIndex(blockType, vibecraft::world::BlockFace::Side);
-                    for (const auto& quad : plantCrossQuads)
+                    const bool denseFlora = usesDenseFloraMesh(blockType);
+                    const bool bamboo = blockType == BlockType::Bamboo;
+                    const bool torch = blockType == BlockType::Torch;
+                    const float randomA = hash01(worldX, y, worldZ, 0x31a67c59u);
+                    const float randomB = hash01(worldX, y, worldZ, 0x7f4a7c15u);
+                    const float baseInset = crossPlantInset(blockType);
+                    float halfWidth = 0.5f - baseInset;
+                    if (torch)
                     {
+                        halfWidth = 0.10f;
+                    }
+                    else if (!bamboo && denseFlora)
+                    {
+                        halfWidth = 0.27f + randomA * 0.10f;
+                    }
+                    halfWidth = std::clamp(halfWidth, 0.10f, 0.49f);
+
+                    float heightScale = 1.0f;
+                    if (torch)
+                    {
+                        heightScale = 1.08f;
+                    }
+                    else if (!bamboo)
+                    {
+                        if (blockType == BlockType::BrownMushroom || blockType == BlockType::RedMushroom)
+                        {
+                            heightScale = 0.56f + randomB * 0.16f;
+                        }
+                        else if (blockType == BlockType::DryTuft || blockType == BlockType::GrassTuft
+                            || blockType == BlockType::FlowerTuft || blockType == BlockType::LushTuft
+                            || blockType == BlockType::FrostTuft || blockType == BlockType::SparseTuft
+                            || blockType == BlockType::CloverTuft || blockType == BlockType::SproutTuft)
+                        {
+                            heightScale = 0.54f + randomB * 0.12f;
+                        }
+                        else if (denseFlora)
+                        {
+                            heightScale = 0.82f + randomB * 0.14f;
+                        }
+                    }
+
+                    const std::size_t quadCount = torch ? 3u : 2u;
+                    constexpr float kPi = 3.14159265358979323846f;
+                    const float startAngle = torch ? 0.0f : (bamboo ? (kPi * 0.25f) : (randomA * kPi));
+                    const float angleStep = kPi / static_cast<float>(quadCount);
+                    for (std::size_t quadIndex = 0; quadIndex < quadCount; ++quadIndex)
+                    {
+                        const float angle = startAngle + static_cast<float>(quadIndex) * angleStep;
+                        const float dirX = std::cos(angle);
+                        const float dirZ = std::sin(angle);
+                        const std::array<std::array<float, 3>, 4> quad{{
+                            {{0.5f - dirX * halfWidth, 0.0f, 0.5f - dirZ * halfWidth}},
+                            {{0.5f - dirX * halfWidth, heightScale, 0.5f - dirZ * halfWidth}},
+                            {{0.5f + dirX * halfWidth, heightScale, 0.5f + dirZ * halfWidth}},
+                            {{0.5f + dirX * halfWidth, 0.0f, 0.5f + dirZ * halfWidth}},
+                        }};
+
+                        float nx = dirZ;
+                        float ny = 0.0f;
+                        float nz = -dirX;
+                        if (torch)
+                        {
+                            ny = 0.32f;
+                            const float invLength = 1.0f / std::sqrt(nx * nx + ny * ny + nz * nz);
+                            nx *= invLength;
+                            ny *= invLength;
+                            nz *= invLength;
+                        }
+                        else if (!bamboo)
+                        {
+                            ny = denseFlora ? 0.24f : 0.15f;
+                            const float invLength = 1.0f / std::sqrt(nx * nx + ny * ny + nz * nz);
+                            nx *= invLength;
+                            ny *= invLength;
+                            nz *= invLength;
+                        }
+
                         const std::uint32_t baseIndex = static_cast<std::uint32_t>(meshData.vertices.size());
                         for (std::size_t vertexIndex = 0; vertexIndex < quad.size(); ++vertexIndex)
                         {
                             const auto& corner = quad[vertexIndex];
                             const auto atlasUv = atlasUvForBlockType(tileIndex, kPlantUv[vertexIndex]);
+                            const float tintNoise = denseFlora ? (0.98f + randomB * 0.04f) : 1.0f;
                             meshData.vertices.push_back(DebugVertex{
                                 .x = static_cast<float>(worldX) + corner[0],
                                 .y = static_cast<float>(y) + corner[1],
                                 .z = static_cast<float>(worldZ) + corner[2],
-                                // Keep plant lighting stable from all directions.
-                                .nx = 0.0f,
-                                .ny = 1.0f,
-                                .nz = 0.0f,
+                                .nx = nx,
+                                .ny = ny,
+                                .nz = nz,
                                 .u = atlasUv[0],
                                 .v = atlasUv[1],
-                                .abgr = metadata.debugColor,
+                                .abgr = modulateAbgrRgb(metadata.debugColor, tintNoise),
                             });
                         }
 
@@ -282,10 +651,38 @@ ChunkMeshData ChunkMesher::buildMesh(
                     const std::uint32_t baseIndex = static_cast<std::uint32_t>(meshData.vertices.size());
                     const auto metadata = vibecraft::world::blockMetadata(blockType);
                     const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(blockType, face.blockFace);
+                    if (blockType == BlockType::Bookshelf
+                        && (face.blockFace == vibecraft::world::BlockFace::East
+                            || face.blockFace == vibecraft::world::BlockFace::West
+                            || face.blockFace == vibecraft::world::BlockFace::South
+                            || face.blockFace == vibecraft::world::BlockFace::North))
+                    {
+                        appendBookshelfInsetFace(
+                            meshData,
+                            face,
+                            worldX,
+                            y,
+                            worldZ,
+                            tileIndex,
+                            metadata.textureTiles.top,
+                            metadata.debugColor);
+                        continue;
+                    }
                     for (std::size_t vertexIndex = 0; vertexIndex < face.corners.size(); ++vertexIndex)
                     {
                         const auto& corner = face.corners[vertexIndex];
                         const auto atlasUv = atlasUvForBlockType(tileIndex, face.uvs[vertexIndex]);
+                        const float ao = ambientOcclusionForCorner(
+                            currentStorage,
+                            westChunk,
+                            eastChunk,
+                            northChunk,
+                            southChunk,
+                            localX,
+                            y,
+                            localZ,
+                            face,
+                            corner);
                         meshData.vertices.push_back(DebugVertex{
                             .x = static_cast<float>(worldX) + corner[0],
                             .y = static_cast<float>(y) + corner[1],
@@ -295,7 +692,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                             .nz = static_cast<float>(face.offsetZ),
                             .u = atlasUv[0],
                             .v = atlasUv[1],
-                            .abgr = metadata.debugColor,
+                            .abgr = modulateAbgrRgb(metadata.debugColor, ao),
                         });
                     }
 

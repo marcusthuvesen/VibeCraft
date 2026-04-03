@@ -8,6 +8,8 @@
 #include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 
+#include "vibecraft/world/biomes/BiomeProfile.hpp"
+
 namespace vibecraft::app
 {
 namespace
@@ -32,15 +34,30 @@ namespace
 
 [[nodiscard]] float birdBiomeActivity(const world::SurfaceBiome biome)
 {
-    switch (biome)
+    switch (world::biomes::biomeProfile(biome).floraFamily)
     {
-    case world::SurfaceBiome::Jungle:
+    case world::biomes::FloraGenerationFamily::Jungle:
+    case world::biomes::FloraGenerationFamily::BambooJungle:
         return 1.0f;
-    case world::SurfaceBiome::TemperateGrassland:
+    case world::biomes::FloraGenerationFamily::SparseJungle:
+        return 0.76f;
+    case world::biomes::FloraGenerationFamily::Forest:
+        return 0.72f;
+    case world::biomes::FloraGenerationFamily::BirchForest:
         return 0.62f;
-    case world::SurfaceBiome::Snowy:
+    case world::biomes::FloraGenerationFamily::DarkForest:
+        return 0.58f;
+    case world::biomes::FloraGenerationFamily::Taiga:
+        return 0.50f;
+    case world::biomes::FloraGenerationFamily::Plains:
+        return 0.36f;
+    case world::biomes::FloraGenerationFamily::SnowyTaiga:
         return 0.26f;
-    case world::SurfaceBiome::Sandy:
+    case world::biomes::FloraGenerationFamily::SnowyPlains:
+        return 0.16f;
+    case world::biomes::FloraGenerationFamily::Desert:
+        // Sparse silhouettes over the wastes (heat / distance), without jungle-level density.
+        return 0.14f;
     default:
         return 0.0f;
     }
@@ -48,15 +65,24 @@ namespace
 
 [[nodiscard]] glm::vec3 birdTintForBiome(const world::SurfaceBiome biome)
 {
-    switch (biome)
+    switch (world::biomes::biomeProfile(biome).floraFamily)
     {
-    case world::SurfaceBiome::Jungle:
+    case world::biomes::FloraGenerationFamily::Jungle:
+    case world::biomes::FloraGenerationFamily::BambooJungle:
         return glm::vec3(0.52f, 0.98f, 0.92f);
-    case world::SurfaceBiome::TemperateGrassland:
+    case world::biomes::FloraGenerationFamily::SparseJungle:
+        return glm::vec3(0.68f, 0.96f, 0.86f);
+    case world::biomes::FloraGenerationFamily::Forest:
+    case world::biomes::FloraGenerationFamily::BirchForest:
+    case world::biomes::FloraGenerationFamily::DarkForest:
+    case world::biomes::FloraGenerationFamily::Taiga:
+    case world::biomes::FloraGenerationFamily::Plains:
         return glm::vec3(0.98f, 0.94f, 0.82f);
-    case world::SurfaceBiome::Snowy:
+    case world::biomes::FloraGenerationFamily::SnowyPlains:
+    case world::biomes::FloraGenerationFamily::SnowyTaiga:
         return glm::vec3(0.82f, 0.90f, 1.0f);
-    case world::SurfaceBiome::Sandy:
+    case world::biomes::FloraGenerationFamily::Desert:
+        return glm::vec3(0.94f, 0.80f, 0.58f);
     default:
         return glm::vec3(0.90f, 0.86f, 0.72f);
     }
@@ -117,12 +143,13 @@ std::vector<render::FrameDebugData::WorldBirdHud> buildAmbientBirdHud(
             }
 
             const float surfaceY = static_cast<float>(terrainGenerator.surfaceHeightAt(sampleX, sampleZ));
-            const float altitude = sampleBiome == world::SurfaceBiome::Jungle
+            const float altitude = world::biomes::isJungleSurfaceBiome(sampleBiome)
                 ? 26.0f + hash01(cellX, cellZ, 731) * 18.0f
                 : 20.0f + hash01(cellX, cellZ, 731) * 14.0f;
             const float anchorY = surfaceY + altitude;
             const std::uint32_t flockHash = hashUint32(cellX, cellZ, 741);
-            const int flockCount = 1 + static_cast<int>(flockHash % 3U) + (sampleBiome == world::SurfaceBiome::Jungle ? 1 : 0);
+            const int flockCount =
+                1 + static_cast<int>(flockHash % 3U) + (world::biomes::isJungleSurfaceBiome(sampleBiome) ? 1 : 0);
 
             for (int birdIndex = 0; birdIndex < flockCount; ++birdIndex)
             {
@@ -133,7 +160,12 @@ std::vector<render::FrameDebugData::WorldBirdHud> buildAmbientBirdHud(
 
                 const float phaseOffset = hash01(cellX, cellZ, 751 + birdIndex) * 6.28318530718f;
                 const float heading = hash01(cellX, cellZ, 801 + birdIndex) * 6.28318530718f;
-                glm::vec2 forward(std::cos(heading), std::sin(heading));
+                // Gentle steering so flocks arc instead of sliding on rails.
+                const float steer =
+                    0.58f * std::sin(weatherTimeSeconds * 0.39f + phaseOffset * 1.27f)
+                    + 0.22f * std::sin(weatherTimeSeconds * 0.71f + static_cast<float>(birdIndex) * 0.9f);
+                const float dynamicHeading = heading + steer;
+                glm::vec2 forward(std::cos(dynamicHeading), std::sin(dynamicHeading));
                 const float forwardLenSq = forward.x * forward.x + forward.y * forward.y;
                 if (forwardLenSq > 1.0e-8f)
                 {
@@ -146,6 +178,13 @@ std::vector<render::FrameDebugData::WorldBirdHud> buildAmbientBirdHud(
                     forward = glm::vec2(1.0f, 0.0f);
                 }
                 const glm::vec2 perp(-forward.y, forward.x);
+                // Roll into the turn (derivative of steer is in phase with cos term).
+                const float bankAngle =
+                    glm::clamp(
+                        0.48f * std::cos(weatherTimeSeconds * 0.39f + phaseOffset * 1.27f)
+                            + 0.12f * std::sin(weatherTimeSeconds * 0.62f + static_cast<float>(birdIndex)),
+                        -0.55f,
+                        0.55f);
 
                 const float flapHz = 2.05f + hash01(cellX, birdIndex, 811) * 0.55f;
                 const float flapPhase =
@@ -161,18 +200,27 @@ std::vector<render::FrameDebugData::WorldBirdHud> buildAmbientBirdHud(
                 }
                 along -= pathSpan * 0.5f;
 
+                const float wobbleAlong =
+                    0.55f * std::sin(weatherTimeSeconds * 1.05f + phaseOffset * 0.5f)
+                    + 0.28f * std::sin(weatherTimeSeconds * 0.47f + phaseOffset);
+                const float lateralAmp = 1.15f + hash01(cellZ, cellX, 841) * 1.15f;
                 const float lateral =
-                    (1.15f + hash01(cellZ, cellX, 841) * 1.1f) * std::sin(weatherTimeSeconds * 0.88f + phaseOffset * 0.35f);
+                    lateralAmp * std::sin(weatherTimeSeconds * 0.88f + phaseOffset * 0.35f)
+                    + 0.62f * std::sin(weatherTimeSeconds * 0.36f + phaseOffset * 0.61f)
+                    + 0.35f * std::sin(weatherTimeSeconds * 0.19f + phaseOffset) * std::cos(weatherTimeSeconds * 0.51f);
                 const float downstroke = std::max(0.0f, -std::cos(flapPhase));
-                const float surge = 0.55f * downstroke * downstroke;
+                // Sharper forward surge on the power stroke (less floaty than x² alone).
+                const float surge = 0.62f * std::pow(downstroke, 1.65f);
 
                 const float verticalBob =
-                    0.24f * std::sin(flapPhase) + 0.07f * std::sin(weatherTimeSeconds * 0.62f + phaseOffset);
+                    0.26f * std::sin(flapPhase)
+                    + 0.09f * std::sin(weatherTimeSeconds * 0.62f + phaseOffset)
+                    + 0.42f * std::sin(weatherTimeSeconds * 0.33f + phaseOffset * 0.8f);
 
                 const glm::vec3 position(
-                    anchorX + forward.x * (along + surge) + perp.x * lateral,
+                    anchorX + forward.x * (along + surge + wobbleAlong) + perp.x * lateral,
                     anchorY + verticalBob,
-                    anchorZ + forward.y * (along + surge) + perp.y * lateral);
+                    anchorZ + forward.y * (along + surge + wobbleAlong) + perp.y * lateral);
                 const glm::vec3 toBird = position - cameraPosition;
                 const float distanceSq = glm::dot(toBird, toBird);
                 if (distanceSq < 18.0f * 18.0f || distanceSq > 190.0f * 190.0f)
@@ -180,15 +228,16 @@ std::vector<render::FrameDebugData::WorldBirdHud> buildAmbientBirdHud(
                     continue;
                 }
 
-                const float scale = sampleBiome == world::SurfaceBiome::Snowy ? 0.86f : 1.0f;
+                const float scale = world::biomes::isSnowySurfaceBiome(sampleBiome) ? 0.86f : 1.0f;
                 birds.push_back(render::FrameDebugData::WorldBirdHud{
                     .worldPosition = position,
-                    .halfWidth = (sampleBiome == world::SurfaceBiome::Jungle ? 1.15f : 0.95f) * scale,
-                    .halfHeight = (sampleBiome == world::SurfaceBiome::Jungle ? 0.48f : 0.42f) * scale,
+                    .halfWidth = (world::biomes::isJungleSurfaceBiome(sampleBiome) ? 1.15f : 0.95f) * scale,
+                    .halfHeight = (world::biomes::isJungleSurfaceBiome(sampleBiome) ? 0.48f : 0.42f) * scale,
                     .tint = tint,
                     .alpha = 0.42f + activity * 0.35f,
                     .flapPhase = flapPhase,
                     .flightForwardXZ = forward,
+                    .bankAngle = bankAngle,
                 });
             }
         }

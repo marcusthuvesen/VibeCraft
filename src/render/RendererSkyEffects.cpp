@@ -70,7 +70,6 @@ void drawSkyAtmosphereVeils(DebugDrawEncoder& debugDrawEncoder, const CameraFram
     constexpr float kRingDistance = 214.0f;
     const glm::vec3 veilTint = glm::mix(cameraFrameData.horizonTint, cameraFrameData.sunLightTint, 0.32f);
     const glm::vec3 coolTint = glm::mix(cameraFrameData.skyTint, cameraFrameData.cloudTint, 0.62f);
-    const glm::vec3 bioLuminescentTint = glm::mix(cameraFrameData.skyTint, glm::vec3(0.72f, 0.38f, 1.0f), 0.28f);
     const glm::vec3 sunHorizDir = safeNormalized(
         glm::vec3(cameraFrameData.sunDirection.x, 0.24f, cameraFrameData.sunDirection.z),
         glm::vec3(1.0f, 0.0f, 0.0f));
@@ -83,14 +82,12 @@ void drawSkyAtmosphereVeils(DebugDrawEncoder& debugDrawEncoder, const CameraFram
             glm::dot(direction, sunHorizDir) * 0.5f + 0.5f,
             0.0f,
             1.0f);
-        const float chroma = 0.5f + 0.5f * std::sin(cameraFrameData.weatherTimeSeconds * 0.08f + angle * 2.6f);
-        const glm::vec3 exoticTint = glm::mix(coolTint, bioLuminescentTint, chroma * 0.55f);
-        const glm::vec3 tint = glm::mix(exoticTint, veilTint, sunBlend * 0.78f);
+        const glm::vec3 tint = glm::mix(coolTint, veilTint, sunBlend * 0.72f);
         const glm::vec3 center = cameraFrameData.position
             + direction * kRingDistance
             + glm::vec3(0.0f, -14.0f + std::sin(angle * 1.7f) * 7.0f, 0.0f);
         const float size = 198.0f + sunBlend * 48.0f;
-        const float alpha = 0.07f + cameraFrameData.sunVisibility * 0.10f + sunBlend * 0.05f;
+        const float alpha = 0.008f + cameraFrameData.sunVisibility * 0.018f + sunBlend * 0.012f;
         drawCelestialQuad(debugDrawEncoder, cameraFrameData.position, center, size, tint, alpha);
     }
 }
@@ -128,9 +125,9 @@ void drawSkyCirrusBands(DebugDrawEncoder& debugDrawEncoder, const CameraFrameDat
 void drawSkyHorizonBloom(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
 {
     constexpr float kTwoPi = 6.28318530717958647692f;
-    constexpr int kBloomCount = 12;
-    const glm::vec3 warmGlow = glm::mix(cameraFrameData.horizonTint, cameraFrameData.sunLightTint, 0.58f);
-    const glm::vec3 coolGlow = glm::mix(cameraFrameData.skyTint, glm::vec3(0.44f, 0.96f, 0.98f), 0.42f);
+    constexpr int kBloomCount = 18;
+    const glm::vec3 warmGlow = glm::mix(cameraFrameData.horizonTint, cameraFrameData.sunLightTint, 0.62f);
+    const glm::vec3 coolGlow = glm::mix(cameraFrameData.skyTint, cameraFrameData.cloudTint, 0.30f);
     const glm::vec3 horizonSunDir = safeNormalized(
         glm::vec3(cameraFrameData.sunDirection.x, 0.12f, cameraFrameData.sunDirection.z),
         glm::vec3(1.0f, 0.0f, 0.0f));
@@ -144,14 +141,19 @@ void drawSkyHorizonBloom(DebugDrawEncoder& debugDrawEncoder, const CameraFrameDa
         const glm::vec3 center = cameraFrameData.position
             + direction * (170.0f + std::sin(angle * 1.5f) * 8.0f)
             + glm::vec3(0.0f, -26.0f + sunWeight * 5.0f, 0.0f);
-        const float size = 162.0f + sunWeight * 56.0f;
-        const float alpha = 0.08f + cameraFrameData.sunVisibility * 0.09f + cameraFrameData.cloudCoverage * 0.04f;
+        const float size = 168.0f + sunWeight * 62.0f;
+        const float alpha = 0.015f + cameraFrameData.sunVisibility * 0.025f + cameraFrameData.cloudCoverage * 0.01f;
         drawCelestialQuad(debugDrawEncoder, cameraFrameData.position, center, size, tint, alpha);
     }
 }
 
 void drawSkyNebulaCanopy(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData& cameraFrameData)
 {
+    if (cameraFrameData.sunVisibility > 0.20f)
+    {
+        return;
+    }
+
     constexpr int kNebulaCount = 9;
     const glm::vec3 baseTint = glm::mix(cameraFrameData.skyTint, glm::vec3(0.66f, 0.30f, 1.0f), 0.34f);
     const glm::vec3 accentTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.30f, 1.0f, 0.92f), 0.40f);

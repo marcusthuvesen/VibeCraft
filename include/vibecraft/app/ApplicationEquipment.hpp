@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/app/OxygenItems.hpp"
 #include "vibecraft/game/OxygenSystem.hpp"

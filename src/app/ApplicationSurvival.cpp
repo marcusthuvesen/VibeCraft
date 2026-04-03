@@ -12,6 +12,8 @@
 #include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
 
+#include "vibecraft/world/biomes/BiomeProfile.hpp"
+
 namespace vibecraft::app
 {
 namespace
@@ -169,43 +171,33 @@ constexpr float kLegacyNetworkAirTierStride = 100.0f;
 
 [[nodiscard]] float oxygenDrainMultiplierForBiome(const vibecraft::world::SurfaceBiome biome)
 {
-    using B = vibecraft::world::SurfaceBiome;
-    switch (biome)
+    if (vibecraft::world::biomes::isJungleSurfaceBiome(biome))
     {
-    case B::TemperateGrassland:
-        return 1.0f;
-    case B::Sandy:
-        return 1.45f;
-    case B::Snowy:
-        return 1.15f;
-    case B::Jungle:
         return 0.0f;
     }
-
+    if (vibecraft::world::biomes::isSandySurfaceBiome(biome))
+    {
+        return 1.45f;
+    }
+    if (vibecraft::world::biomes::isSnowySurfaceBiome(biome))
+    {
+        return 1.15f;
+    }
+    if (biome == vibecraft::world::SurfaceBiome::DarkForest)
+    {
+        return 0.92f;
+    }
     return 1.0f;
 }
 
 [[nodiscard]] const char* oxygenBiomeLabel(const vibecraft::world::SurfaceBiome biome)
 {
-    using B = vibecraft::world::SurfaceBiome;
-    switch (biome)
-    {
-    case B::TemperateGrassland:
-        return "forest fringe";
-    case B::Sandy:
-        return "dry wastes";
-    case B::Snowy:
-        return "crystal expanse";
-    case B::Jungle:
-        return "glow forest";
-    }
-
-    return "unknown";
+    return vibecraft::world::surfaceBiomeLabel(biome);
 }
 
 [[nodiscard]] bool oxygenGrovesProvideRefill(const vibecraft::world::SurfaceBiome biome)
 {
-    return biome == vibecraft::world::SurfaceBiome::Jungle;
+    return vibecraft::world::biomes::isJungleSurfaceBiome(biome);
 }
 
 [[nodiscard]] const char* oxygenBiomeGuidanceForBiome(const vibecraft::world::SurfaceBiome biome)
@@ -213,14 +205,26 @@ constexpr float kLegacyNetworkAirTierStride = 100.0f;
     using B = vibecraft::world::SurfaceBiome;
     switch (biome)
     {
-    case B::TemperateGrassland:
-        return "Glow forest fringe: open alien meadows, ferrite on the surface, and easier routes through the valleys.";
-    case B::Sandy:
-        return "Dry wastes: warm dust, exposed glassy sand, and harsher open ridgelines between safer basins.";
-    case B::Snowy:
-        return "Crystal expanse: luminous mineral fields gather along cold shelves and exposed cliff bands.";
+    case B::Plains:
+        return "Plains: open grassland with gentle terrain, exposed ore near the surface, and easy routes between forest belts.";
+    case B::Forest:
+        return "Forest: the default woodland around spawn, with mixed oak and birch cover and frequent safe tree lines.";
+    case B::BirchForest:
+        return "Birch forest: brighter woodland with cleaner spacing and tall pale trunks for easy navigation.";
+    case B::DarkForest:
+        return "Dark forest: denser canopy, more mushrooms, and heavier shade than the starter woods.";
+    case B::Taiga:
+        return "Taiga: spruce-heavy woodland with rougher undergrowth, ferns, and darker forest floor patches.";
+    case B::SnowyPlains:
+        return "Snowy plains: colder shelves, bright snow cover, and exposed stone along steeper ridges.";
+    case B::SnowyTaiga:
+        return "Snowy taiga: cold spruce woods with snowy ground and sparser cover than warm forests.";
+    case B::Desert:
+        return "Desert: warm sand, exposed sandstone, and harsher open ridgelines between safer basins.";
     case B::Jungle:
-        return "Glow forest heart: dense luminous canopy, breathable moss, and the strongest living-world atmosphere.";
+    case B::SparseJungle:
+    case B::BambooJungle:
+        return "Jungle: dense canopy, heavy ground cover, and the thickest vegetation in the world.";
     }
 
     return {};
@@ -491,16 +495,16 @@ std::string survivalTipLine(const float sessionPlaySeconds)
     case 0:
         return "Tip: E — inventory, oxygen tank slot, armor, 2×2 craft.";
     case 1:
-        return "Tip: right-click places Atmos Relay; the sphere shows the breathable radius.";
+        return "Tip: right-click places Oxygen Generator; the sphere shows the breathable radius.";
     case 2:
-        return "Tip: watch O2; glow forest hearts and relays refill you in safe conditions.";
+        return "Tip: watch O2; jungles and oxygen generators refill you in safe conditions.";
     case 3:
         return "Tip: water and lava override oxygen safety — move or build upward.";
     case 4:
         return "Tip: cured hide (3×3 workbench) → Scout armor — less damage from hostiles.";
     case 5:
     default:
-        return "Tip: use biome hints — ferrite, glass, lumen, moss for your next goal.";
+        return "Tip: use biome hints - iron, glass, glowstone, and moss help with your next goal.";
     }
 }
 

@@ -14,7 +14,7 @@
 
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/app/ApplicationBotanyRuntime.hpp"
-#include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/app/ApplicationTerraformingRuntime.hpp"
 #include "vibecraft/app/SingleplayerSave.hpp"
 #include "vibecraft/audio/MusicDirector.hpp"
@@ -198,7 +198,18 @@ class Application
     void clearClientWorldAwaitingHostChunks();
 
     void update(float deltaTimeSeconds);
+    void buildFrameDebugData(
+        float deltaTimeSeconds,
+        const vibecraft::game::DayNightSample& dayNightSample,
+        const vibecraft::game::WeatherSample& weatherSample,
+        vibecraft::world::SurfaceBiome playerSurfaceBiome,
+        const std::optional<vibecraft::world::RaycastHit>& raycastHit,
+        vibecraft::render::FrameDebugData& frameDebugData);
     void processInput(float deltaTimeSeconds);
+    void processMainMenuInput();
+    void processPausedInput();
+    [[nodiscard]] bool processPlayingMovementInput(float deltaTimeSeconds, bool craftingKeyPressed);
+    void processPlayingActionInput(float deltaTimeSeconds);
     void refreshSingleplayerWorldList();
     [[nodiscard]] std::filesystem::path prefsRootPath() const;
     [[nodiscard]] std::filesystem::path singleplayerWorldsRootPath() const;
@@ -221,6 +232,7 @@ class Application
     void handleCraftingMenuClick();
     void handleCraftingMenuRightClick();
     void returnCraftingSlotsToInventory();
+    void updateMobSoundEffects(float deltaTimeSeconds, const std::vector<vibecraft::game::MobInstance>& mobs);
     void spawnDroppedItem(vibecraft::world::BlockType blockType, const glm::ivec3& blockPosition);
     void spawnDroppedItemAtPosition(vibecraft::world::BlockType blockType, const glm::vec3& worldPosition);
     void spawnDroppedItemAtPosition(EquippedItem equippedItem, const glm::vec3& worldPosition);
@@ -247,6 +259,7 @@ class Application
     float accumulatedFallDistance_ = 0.0f;
     bool isGrounded_ = false;
     bool jumpWasHeld_ = false;
+    float autoJumpCooldownSeconds_ = 0.0f;
     vibecraft::game::EnvironmentalHazards playerHazards_{};
     vibecraft::game::OxygenEnvironment playerOxygenEnvironment_{};
     vibecraft::game::PlayerVitals playerVitals_{};
@@ -295,7 +308,7 @@ class Application
     bool pauseSoundSettingsOpen_ = false;
     bool pauseGameSettingsOpen_ = false;
     bool mobSpawningEnabled_ = true;
-    SpawnBiomeTarget spawnBiomeTarget_ = SpawnBiomeTarget::Any;
+    SpawnBiomeTarget spawnBiomeTarget_ = SpawnBiomeTarget::Temperate;
     bool mainMenuSoundSettingsOpen_ = false;
     bool creativeModeEnabled_ = false;
     SpawnPreset spawnPreset_ = SpawnPreset::Origin;
@@ -322,6 +335,9 @@ class Application
     bool pendingHostStartAfterWorldLoad_ = false;
     bool pendingClientJoinAfterWorldLoad_ = false;
     bool mainMenuBootLoading_ = true;
+    bool autoStartSingleplayerRequested_ = false;
+    bool autoStartCreatesNewWorld_ = false;
+    bool autoStartSingleplayerConsumed_ = false;
     bool mainMenuSingleplayerPickerOpen_ = false;
     bool mainMenuSingleplayerAwaitingMouseRelease_ = false;
     /// Frames spent in client join load (for throttled diagnostics).
@@ -335,6 +351,15 @@ class Application
     glm::vec3 cachedVisibleOxygenGeneratorsReference_{0.0f};
     float cachedVisibleOxygenGeneratorsCooldownSeconds_ = 0.0f;
     bool cachedVisibleOxygenGeneratorsValid_ = false;
+    struct MobAudioState
+    {
+        glm::vec3 lastFeetPosition{0.0f};
+        float stepDistanceAccumulator = 0.0f;
+        float ambientCooldownSeconds = 0.0f;
+        std::uint32_t rngState = 0u;
+        bool initialized = false;
+    };
+    std::unordered_map<std::uint32_t, MobAudioState> mobAudioStateById_;
     TerraformingRuntimeState terraformingRuntimeState_{};
     BotanyRuntimeState botanyRuntimeState_{};
 };

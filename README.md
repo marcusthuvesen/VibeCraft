@@ -34,6 +34,19 @@ Before pushing:
 - Keep modules small and explicit instead of growing `Application.cpp` further.
 - Preserve current movement, mining, placing, crafting, save/load, and multiplayer behavior unless a task explicitly changes them.
 
+## Modular OOP and Extraction Rules
+
+These rules are for all future contributors and should be treated as architecture policy, not suggestions:
+
+- Every class and module must have one clear responsibility; if a file is handling unrelated concerns, split it.
+- `Application` should orchestrate systems, not own every gameplay implementation detail.
+- Prefer composition and service-style helpers over adding more static utility logic to monolithic files.
+- New feature work should go into focused modules first; do not default to adding code into hotspot files.
+- If a file crosses `700` lines, treat it as an extraction warning; if it reaches `800`, extraction is mandatory before adding more behavior.
+- Extractions must preserve behavior and include local validation (build/tests/smoke checks) in the same change.
+- Keep public interfaces small and explicit; move implementation detail to `.cpp` files and dedicated submodules.
+- When extracting, place new code in existing domain folders (`app`, `game`, `world`, `render`, `audio`, etc.) before creating new structure.
+
 ## Game Vision
 
 The target game keeps the current first-person voxel feel while changing the survival fantasy:
@@ -109,7 +122,7 @@ The project is split into these major layers:
 - `audio`: music, sound effects, runtime audio roots, and shared output
 - `multiplayer`: protocol, sessions, transport, snapshots, and block-edit synchronization
 - `core`: logging and small shared helpers
-- `tests`: focused validation for world logic, saves, crafting, multiplayer protocol, and gameplay systems
+- `tests`: focused validation for world logic, saves, crafting (`tests/crafting/`), multiplayer protocol, and gameplay systems
 
 The intended dependency direction is:
 
@@ -148,6 +161,7 @@ flowchart TD
 |-- include/
 |   |-- vibecraft/
 |       |-- app/
+|       |   |-- crafting/
 |       |-- audio/
 |       |-- core/
 |       |-- game/
@@ -161,6 +175,7 @@ flowchart TD
 |   |-- build_chunk_atlas.sh
 |-- src/
 |   |-- app/
+|   |   |-- crafting/
 |   |-- audio/
 |   |-- core/
 |   |-- game/
@@ -171,12 +186,17 @@ flowchart TD
 |   |-- world/
 |       |-- underground/
 |-- tests/
+|   |-- crafting/
+|   |-- game/
+|   |-- multiplayer/
+|   |-- world/
 ```
 
 ## Module Responsibilities
 
 ### `app`
 
+- Crafting grid matching, recipe data, and related helpers live under `include/vibecraft/app/crafting/` and `src/app/crafting/`.
 - Owns startup and shutdown order.
 - Owns the per-frame update sequence.
 - Pulls input from `platform`, updates `game` and `world`, and asks `render` to present the frame.

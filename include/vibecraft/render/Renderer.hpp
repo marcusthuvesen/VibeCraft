@@ -28,6 +28,8 @@ struct CameraFrameData
     glm::vec3 sunLightTint{1.0f, 0.97f, 0.92f};
     glm::vec3 moonLightTint{0.62f, 0.72f, 1.0f};
     glm::vec3 cloudTint{0.96f, 0.97f, 1.0f};
+    glm::vec3 terrainHazeColor{0.67f, 0.80f, 0.95f};
+    glm::vec3 terrainBounceTint{0.92f, 1.0f, 0.94f};
     glm::vec2 weatherWindDirectionXZ{1.0f, 0.0f};
     float sunVisibility = 1.0f;
     float moonVisibility = 0.0f;
@@ -35,6 +37,8 @@ struct CameraFrameData
     float rainIntensity = 0.0f;
     float weatherTimeSeconds = 0.0f;
     float weatherWindSpeed = 2.0f;
+    float terrainHazeStrength = 0.28f;
+    float terrainSaturation = 1.12f;
     float verticalFovDegrees = 60.0f;
     float nearClip = 0.1f;
     float farClip = 1024.0f;
@@ -199,6 +203,8 @@ struct FrameDebugData
         float flapPhase = 0.0f;
         /// Horizontal flight direction in the XZ plane (x, z), normalized when set by ambient life.
         glm::vec2 flightForwardXZ{1.0f, 0.0f};
+        /// Extra body roll (radians) into path turns — combined with wing flap roll in the renderer.
+        float bankAngle = 0.0f;
     };
     std::vector<WorldBirdHud> worldBirds;
 
@@ -219,6 +225,7 @@ struct FrameDebugData
     std::string mainMenuNotice;
     bool mainMenuCreativeModeEnabled = false;
     std::string mainMenuSpawnPresetLabel;
+    std::string mainMenuSpawnBiomeLabel;
     std::string mainMenuSelectedWorldLabel;
     bool mainMenuLoadingActive = false;
     float mainMenuLoadingProgress = 0.0f;
@@ -298,7 +305,7 @@ class Renderer
         std::uint16_t menuLogoWidthPx = 0,
         std::uint16_t menuLogoHeightPx = 0);
 
-    /// Singleplayer panel: 0 Start saved, 1 Start new, 2 Back.
+    /// Singleplayer panel: 0 Start saved, 1 Start new, 2 Cycle biome target, 3 Back.
     [[nodiscard]] static int hitTestMainMenuSingleplayerPanel(
         float mouseX,
         float mouseY,
@@ -316,7 +323,7 @@ class Renderer
         std::uint16_t textWidth,
         std::uint16_t textHeight);
 
-    /// Pause game options: 0 Back, 1 Mob spawning toggle, 2 Spawn biome cycle, 3 Weather cycle.
+    /// Pause game options: 0 Back, 1 Mob spawning toggle, 2 Spawn biome cycle, 3 Travel now, 4 Weather cycle.
     [[nodiscard]] static int hitTestPauseGameSettingsMenu(
         float mouseX,
         float mouseY,
@@ -412,7 +419,16 @@ class Renderer
     void destroySceneMesh(std::uint64_t sceneMeshId);
     void destroySceneMeshes();
     void drawMainMenuBackground();
+    void drawMainMenuChrome(
+        const FrameDebugData& frameDebugData,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight,
+        int mainMenuTitleContentRowOffset);
     void drawMainMenuLogo();
+    void drawPauseMenuChrome(
+        const FrameDebugData& frameDebugData,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight);
     void drawCrosshairOverlay();
     void drawHeldItemOverlay(const FrameDebugData& frameDebugData);
     void drawBlockBreakingOverlay(const FrameDebugData& frameDebugData);
@@ -434,7 +450,7 @@ class Renderer
         float iconSizePx,
         std::uint16_t textureHandle,
         const TextureUvRect& uvRect = {});
-    void drawWorldPickupSprites(const FrameDebugData& frameDebugData);
+    void drawWorldPickupSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     void drawWorldBirdSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     void drawWorldMobSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     [[nodiscard]] std::uint16_t mobTextureHandleForKind(vibecraft::game::MobKind kind) const;
@@ -453,6 +469,9 @@ class Renderer
     std::uint16_t chunkMoonDirectionUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkMoonLightColorUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkAmbientLightUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkAnimUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkBiomeHazeUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkBiomeGradeUniformHandle_ = UINT16_MAX;
     std::uint16_t logoProgramHandle_ = UINT16_MAX;
     std::uint16_t logoTextureHandle_ = UINT16_MAX;
     std::uint16_t logoSamplerHandle_ = UINT16_MAX;
@@ -461,6 +480,8 @@ class Renderer
     std::uint16_t mainMenuBackgroundTextureHandle_ = UINT16_MAX;
     std::uint16_t mainMenuBackgroundWidthPx_ = 0;
     std::uint16_t mainMenuBackgroundHeightPx_ = 0;
+    std::uint16_t skySunTextureHandle_ = UINT16_MAX;
+    std::uint16_t skyMoonPhasesTextureHandle_ = UINT16_MAX;
     std::uint16_t crosshairProgramHandle_ = UINT16_MAX;
     std::uint16_t crosshairTextureHandle_ = UINT16_MAX;
     std::uint16_t crosshairSamplerHandle_ = UINT16_MAX;
@@ -476,6 +497,10 @@ class Renderer
     std::uint16_t starterTankTextureHandle_ = UINT16_MAX;
     std::uint16_t fieldTankTextureHandle_ = UINT16_MAX;
     std::uint16_t expeditionTankTextureHandle_ = UINT16_MAX;
+    std::uint16_t scoutHelmetTextureHandle_ = UINT16_MAX;
+    std::uint16_t scoutChestRigTextureHandle_ = UINT16_MAX;
+    std::uint16_t scoutGreavesTextureHandle_ = UINT16_MAX;
+    std::uint16_t scoutBootsTextureHandle_ = UINT16_MAX;
     TextureUvRect oxygenCanisterTextureUv_{};
     TextureUvRect starterTankTextureUv_{};
     TextureUvRect fieldTankTextureUv_{};

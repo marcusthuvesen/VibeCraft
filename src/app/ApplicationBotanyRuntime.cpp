@@ -183,9 +183,9 @@ constexpr int kBotanySearchRadiusBlocks = 56;
     const int trunkHeight = lushTree ? 5 : 4;
     const int crownRadius = lushTree ? 3 : 2;
     const vibecraft::world::BlockType trunkBlock =
-        lushTree ? vibecraft::world::BlockType::JungleTreeTrunk : vibecraft::world::BlockType::TreeTrunk;
+        lushTree ? vibecraft::world::BlockType::JungleLog : vibecraft::world::BlockType::OakLog;
     const vibecraft::world::BlockType crownBlock =
-        lushTree ? vibecraft::world::BlockType::JungleTreeCrown : vibecraft::world::BlockType::TreeCrown;
+        lushTree ? vibecraft::world::BlockType::JungleLeaves : vibecraft::world::BlockType::OakLeaves;
     if (!canGrowTreeAt(world, saplingPosition, trunkHeight, crownRadius))
     {
         return false;

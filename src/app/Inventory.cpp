@@ -119,115 +119,145 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
     switch (blockType)
     {
     case vibecraft::world::BlockType::Grass:
-        return "Regolith Turf";
+        return "Grass Block";
     case vibecraft::world::BlockType::SnowGrass:
-        return "Frosted Regolith";
+        return "Snowy Grass Block";
     case vibecraft::world::BlockType::JungleGrass:
-        return "Oxygen Moss";
+        return "Mossy Grass Block";
     case vibecraft::world::BlockType::Dirt:
-        return "Packed Regolith";
+        return "Dirt";
     case vibecraft::world::BlockType::Stone:
-        return "Basalt";
+        return "Stone";
     case vibecraft::world::BlockType::Deepslate:
-        return "Deep Basalt";
+        return "Deepslate";
     case vibecraft::world::BlockType::CoalOre:
-        return "Carbon Ore";
+        return "Coal Ore";
     case vibecraft::world::BlockType::Sand:
-        return "Red Dust";
+        return "Sand";
     case vibecraft::world::BlockType::Bedrock:
         return "Bedrock";
     case vibecraft::world::BlockType::Water:
-        return "Ice Melt";
+        return "Water";
     case vibecraft::world::BlockType::IronOre:
-        return "Ferrite Ore";
+        return "Iron Ore";
     case vibecraft::world::BlockType::GoldOre:
-        return "Auric Ore";
+        return "Gold Ore";
     case vibecraft::world::BlockType::DiamondOre:
-        return "Azure Crystal";
+        return "Diamond Ore";
     case vibecraft::world::BlockType::EmeraldOre:
-        return "Resonance Crystal";
+        return "Emerald Ore";
     case vibecraft::world::BlockType::Lava:
-        return "Thermal Vent";
-    case vibecraft::world::BlockType::TreeTrunk:
-        return "Fiber Stem";
-    case vibecraft::world::BlockType::TreeCrown:
-        return "Canopy Fronds";
-    case vibecraft::world::BlockType::JungleTreeTrunk:
-        return "Grove Stem";
-    case vibecraft::world::BlockType::JungleTreeCrown:
-        return "Grove Canopy";
-    case vibecraft::world::BlockType::SnowTreeTrunk:
-        return "Frost Stem";
-    case vibecraft::world::BlockType::SnowTreeCrown:
-        return "Frost Fronds";
+        return "Lava";
+    case vibecraft::world::BlockType::OakLog:
+        return "Oak Log";
+    case vibecraft::world::BlockType::OakLeaves:
+        return "Oak Leaves";
+    case vibecraft::world::BlockType::BirchLog:
+        return "Birch Log";
+    case vibecraft::world::BlockType::BirchLeaves:
+        return "Birch Leaves";
+    case vibecraft::world::BlockType::DarkOakLog:
+        return "Dark Oak Log";
+    case vibecraft::world::BlockType::DarkOakLeaves:
+        return "Dark Oak Leaves";
+    case vibecraft::world::BlockType::JungleLog:
+        return "Jungle Log";
+    case vibecraft::world::BlockType::JungleLeaves:
+        return "Jungle Leaves";
+    case vibecraft::world::BlockType::SpruceLog:
+        return "Spruce Log";
+    case vibecraft::world::BlockType::SpruceLeaves:
+        return "Spruce Leaves";
     case vibecraft::world::BlockType::OakPlanks:
-        return "Habitat Planks";
+        return "Oak Planks";
     case vibecraft::world::BlockType::CraftingTable:
-        return "Field Fabricator";
+        return "Crafting Table";
     case vibecraft::world::BlockType::Cobblestone:
-        return "Fractured Basalt";
+        return "Cobblestone";
     case vibecraft::world::BlockType::Sandstone:
-        return "Duststone";
-    case vibecraft::world::BlockType::Oven:
-        return "Thermal Smelter";
+        return "Sandstone";
+    case vibecraft::world::BlockType::Furnace:
+        return "Furnace";
     case vibecraft::world::BlockType::Chest:
-        return "Cargo Crate";
+        return "Chest";
     case vibecraft::world::BlockType::OxygenGenerator:
-        return "Atmos Relay";
+        return "Oxygen Generator";
     case vibecraft::world::BlockType::Torch:
-        return "Flare Lamp";
+        return "Torch";
     case vibecraft::world::BlockType::TNT:
-        return "Seismic Charge";
+        return "TNT";
     case vibecraft::world::BlockType::Glass:
-        return "Habitat Glass";
+        return "Glass";
     case vibecraft::world::BlockType::Bricks:
-        return "Composite Bricks";
+        return "Bricks";
     case vibecraft::world::BlockType::Bookshelf:
-        return "Data Shelf";
+        return "Bookshelf";
     case vibecraft::world::BlockType::Glowstone:
-        return "Lumen Crystal";
+        return "Glowstone";
     case vibecraft::world::BlockType::Obsidian:
-        return "Volcanic Glass";
+        return "Obsidian";
     case vibecraft::world::BlockType::Gravel:
-        return "Shale Gravel";
+        return "Gravel";
     case vibecraft::world::BlockType::Cactus:
-        return "Spine Reed";
+        return "Cactus";
     case vibecraft::world::BlockType::Dandelion:
-        return "Sunspike Bloom";
+        return "Dandelion";
     case vibecraft::world::BlockType::Poppy:
-        return "Crimson Bloom";
+        return "Poppy";
     case vibecraft::world::BlockType::BlueOrchid:
-        return "Blue Spore Bloom";
+        return "Blue Orchid";
     case vibecraft::world::BlockType::Allium:
-        return "Violet Spore Bloom";
+        return "Allium";
     case vibecraft::world::BlockType::OxeyeDaisy:
-        return "White Signal Bloom";
+        return "Oxeye Daisy";
     case vibecraft::world::BlockType::BrownMushroom:
-        return "Amber Fungus";
+        return "Brown Mushroom";
     case vibecraft::world::BlockType::RedMushroom:
-        return "Crimson Fungus";
+        return "Red Mushroom";
     case vibecraft::world::BlockType::DeadBush:
-        return "Dry Thicket";
+        return "Dead Bush";
+    case vibecraft::world::BlockType::Fern:
+        return "Fern";
+    case vibecraft::world::BlockType::Podzol:
+        return "Podzol";
+    case vibecraft::world::BlockType::CoarseDirt:
+        return "Coarse Dirt";
+    case vibecraft::world::BlockType::GrassTuft:
+        return "Grass";
+    case vibecraft::world::BlockType::SparseTuft:
+        return "Sparse Tuft";
+    case vibecraft::world::BlockType::FlowerTuft:
+        return "Flower Tuft";
+    case vibecraft::world::BlockType::DryTuft:
+        return "Dry Tuft";
+    case vibecraft::world::BlockType::LushTuft:
+        return "Lush Tuft";
+    case vibecraft::world::BlockType::FrostTuft:
+        return "Frost Tuft";
+    case vibecraft::world::BlockType::CloverTuft:
+        return "Clover Tuft";
+    case vibecraft::world::BlockType::SproutTuft:
+        return "Sprout Tuft";
     case vibecraft::world::BlockType::Vines:
-        return "Tendrils";
+        return "Vines";
     case vibecraft::world::BlockType::CocoaPod:
-        return "Seed Pod";
+        return "Cocoa Pod";
     case vibecraft::world::BlockType::Melon:
-        return "Hydromelon";
+        return "Melon";
     case vibecraft::world::BlockType::Bamboo:
-        return "Reed Spire";
+        return "Bamboo";
     case vibecraft::world::BlockType::JunglePlanks:
-        return "Grove Planks";
+        return "Jungle Planks";
     case vibecraft::world::BlockType::MossBlock:
-        return "Oxygen Mat";
+        return "Moss Block";
     case vibecraft::world::BlockType::MossyCobblestone:
-        return "Mossy Basalt";
+        return "Mossy Cobblestone";
     case vibecraft::world::BlockType::HabitatPanel:
-        return "Hab Panel";
+        return "Habitat Panel";
     case vibecraft::world::BlockType::HabitatFloor:
-        return "Deck Plating";
+        return "Habitat Floor";
     case vibecraft::world::BlockType::HabitatFrame:
-        return "Support Frame";
+        return "Habitat Frame";
     case vibecraft::world::BlockType::AirlockPanel:
         return "Airlock Panel";
     case vibecraft::world::BlockType::PowerConduit:
@@ -251,13 +281,13 @@ const char* equippedItemLabel(const EquippedItem equippedItem)
     switch (equippedItem)
     {
     case EquippedItem::DiamondSword:
-        return "Azure Blade";
+        return "Diamond Sword";
     case EquippedItem::Stick:
-        return "Fiber Rod";
+        return "Stick";
     case EquippedItem::RottenFlesh:
-        return "Spoiled Meat";
+        return "Rotten Flesh";
     case EquippedItem::Leather:
-        return "Cured Hide";
+        return "Leather";
     case EquippedItem::RawPorkchop:
         return "Raw Pork";
     case EquippedItem::Mutton:
@@ -265,33 +295,33 @@ const char* equippedItemLabel(const EquippedItem equippedItem)
     case EquippedItem::Feather:
         return "Feather";
     case EquippedItem::WoodSword:
-        return "Habitat Blade";
+        return "Wooden Sword";
     case EquippedItem::StoneSword:
-        return "Basalt Blade";
+        return "Stone Sword";
     case EquippedItem::IronSword:
-        return "Ferrite Blade";
+        return "Iron Sword";
     case EquippedItem::GoldSword:
-        return "Auric Blade";
+        return "Golden Sword";
     case EquippedItem::WoodPickaxe:
-        return "Habitat Pickaxe";
+        return "Wooden Pickaxe";
     case EquippedItem::StonePickaxe:
-        return "Basalt Pickaxe";
+        return "Stone Pickaxe";
     case EquippedItem::IronPickaxe:
-        return "Ferrite Pickaxe";
+        return "Iron Pickaxe";
     case EquippedItem::GoldPickaxe:
-        return "Auric Pickaxe";
+        return "Golden Pickaxe";
     case EquippedItem::DiamondPickaxe:
-        return "Azure Pickaxe";
+        return "Diamond Pickaxe";
     case EquippedItem::WoodAxe:
-        return "Habitat Axe";
+        return "Wooden Axe";
     case EquippedItem::StoneAxe:
-        return "Basalt Axe";
+        return "Stone Axe";
     case EquippedItem::IronAxe:
-        return "Ferrite Axe";
+        return "Iron Axe";
     case EquippedItem::GoldAxe:
-        return "Auric Axe";
+        return "Golden Axe";
     case EquippedItem::DiamondAxe:
-        return "Azure Axe";
+        return "Diamond Axe";
     case EquippedItem::OxygenCanister:
         return "Oxygen Canister";
     case EquippedItem::FieldTank:
@@ -299,7 +329,7 @@ const char* equippedItemLabel(const EquippedItem equippedItem)
     case EquippedItem::ExpeditionTank:
         return "Expedition Tank";
     case EquippedItem::Coal:
-        return "Carbon Charge";
+        return "Coal";
     case EquippedItem::StarterTank:
         return "Starter Tank";
     case EquippedItem::ScoutHelmet:

@@ -71,6 +71,7 @@ class World
     [[nodiscard]] std::size_t dirtyChunkCount() const;
     [[nodiscard]] std::vector<ChunkCoord> dirtyChunkCoords() const;
     [[nodiscard]] std::uint32_t totalVisibleFaces() const;
+    void tickFluids(std::size_t maxUpdates = 96);
 
     void rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher);
     void rebuildDirtyMeshes(
@@ -81,12 +82,40 @@ class World
     void replaceChunks(ChunkMap chunks);
 
   private:
+    struct FluidCell
+    {
+        int x = 0;
+        int y = 0;
+        int z = 0;
+
+        auto operator<=>(const FluidCell&) const = default;
+    };
+
+    struct FluidCellHash
+    {
+        std::size_t operator()(const FluidCell& cell) const noexcept;
+    };
+
+    struct FlowingFluidState
+    {
+        BlockType type = BlockType::Air;
+        std::uint8_t horizontalDistance = 0;
+    };
+
     Chunk& ensureChunk(const ChunkCoord& coord);
     void markChunkDirty(const ChunkCoord& coord);
+    bool setBlockUnchecked(int worldX, int y, int worldZ, BlockType blockType);
+    void scheduleFluidNeighborhood(int worldX, int y, int worldZ);
+    void clearFluidStateForChunk(const ChunkCoord& coord);
+    void registerFluidStateForChunk(const Chunk& chunk);
+    void processFluidCell(const FluidCell& cell);
 
     std::uint32_t generationSeed_ = 0;
     ChunkMap chunks_;
     std::unordered_map<ChunkCoord, ChunkMeshStats, ChunkCoordHash> meshStats_;
     std::unordered_set<ChunkCoord, ChunkCoordHash> dirtyChunks_;
+    std::unordered_map<FluidCell, BlockType, FluidCellHash> fluidSources_;
+    std::unordered_map<FluidCell, FlowingFluidState, FluidCellHash> flowingFluids_;
+    std::unordered_set<FluidCell, FluidCellHash> activeFluidCells_;
 };
 }  // namespace vibecraft::world

@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "vibecraft/app/ApplicationEquipment.hpp"
-#include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/app/OxygenItems.hpp"
 #include "vibecraft/game/OxygenSystem.hpp"
 

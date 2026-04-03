@@ -48,11 +48,14 @@ TEST_CASE("oxygen groves count as breathable refill zones")
     vibecraft::world::TerrainGenerator terrainGenerator;
 
     std::optional<glm::vec3> jungleFeetPosition;
-    for (int worldX = -16384; worldX <= 16384 && !jungleFeetPosition.has_value(); worldX += 96)
+    for (int worldX = -24576; worldX <= 24576 && !jungleFeetPosition.has_value(); worldX += 96)
     {
-        for (int worldZ = -16384; worldZ <= 16384; worldZ += 96)
+        for (int worldZ = -24576; worldZ <= 24576; worldZ += 96)
         {
-            if (terrainGenerator.surfaceBiomeAt(worldX, worldZ) != vibecraft::world::SurfaceBiome::Jungle)
+            const auto biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
+            if (biome != vibecraft::world::SurfaceBiome::Jungle
+                && biome != vibecraft::world::SurfaceBiome::SparseJungle
+                && biome != vibecraft::world::SurfaceBiome::BambooJungle)
             {
                 continue;
             }
@@ -84,11 +87,14 @@ TEST_CASE("submerged players lose oxygen safety even inside grove biomes")
     vibecraft::world::TerrainGenerator terrainGenerator;
 
     std::optional<glm::vec3> jungleFeetPosition;
-    for (int worldX = -16384; worldX <= 16384 && !jungleFeetPosition.has_value(); worldX += 96)
+    for (int worldX = -24576; worldX <= 24576 && !jungleFeetPosition.has_value(); worldX += 96)
     {
-        for (int worldZ = -16384; worldZ <= 16384; worldZ += 96)
+        for (int worldZ = -24576; worldZ <= 24576; worldZ += 96)
         {
-            if (terrainGenerator.surfaceBiomeAt(worldX, worldZ) != vibecraft::world::SurfaceBiome::Jungle)
+            const auto biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
+            if (biome != vibecraft::world::SurfaceBiome::Jungle
+                && biome != vibecraft::world::SurfaceBiome::SparseJungle
+                && biome != vibecraft::world::SurfaceBiome::BambooJungle)
             {
                 continue;
             }
@@ -114,30 +120,30 @@ TEST_CASE("submerged players lose oxygen safety even inside grove biomes")
     CHECK(environment.drainMultiplier >= doctest::Approx(2.35f));
 }
 
-TEST_CASE("dust flats drain oxygen faster than regolith plains")
+TEST_CASE("desert air drains oxygen faster than forest woodland")
 {
     vibecraft::world::World world;
     vibecraft::world::TerrainGenerator terrainGenerator;
 
-    std::optional<glm::vec3> temperateFeetPosition;
-    std::optional<glm::vec3> sandyFeetPosition;
+    std::optional<glm::vec3> forestFeetPosition;
+    std::optional<glm::vec3> desertFeetPosition;
     for (int worldX = -16384; worldX <= 16384
-            && (!temperateFeetPosition.has_value() || !sandyFeetPosition.has_value());
+            && (!forestFeetPosition.has_value() || !desertFeetPosition.has_value());
          worldX += 96)
     {
         for (int worldZ = -16384; worldZ <= 16384; worldZ += 96)
         {
             const auto biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
-            if (biome == vibecraft::world::SurfaceBiome::TemperateGrassland && !temperateFeetPosition.has_value())
+            if (biome == vibecraft::world::SurfaceBiome::Forest && !forestFeetPosition.has_value())
             {
-                temperateFeetPosition = glm::vec3(
+                forestFeetPosition = glm::vec3(
                     static_cast<float>(worldX) + 0.5f,
                     static_cast<float>(terrainGenerator.surfaceHeightAt(worldX, worldZ) + 1),
                     static_cast<float>(worldZ) + 0.5f);
             }
-            else if (biome == vibecraft::world::SurfaceBiome::Sandy && !sandyFeetPosition.has_value())
+            else if (biome == vibecraft::world::SurfaceBiome::Desert && !desertFeetPosition.has_value())
             {
-                sandyFeetPosition = glm::vec3(
+                desertFeetPosition = glm::vec3(
                     static_cast<float>(worldX) + 0.5f,
                     static_cast<float>(terrainGenerator.surfaceHeightAt(worldX, worldZ) + 1),
                     static_cast<float>(worldZ) + 0.5f);
@@ -145,14 +151,14 @@ TEST_CASE("dust flats drain oxygen faster than regolith plains")
         }
     }
 
-    REQUIRE(temperateFeetPosition.has_value());
-    REQUIRE(sandyFeetPosition.has_value());
+    REQUIRE(forestFeetPosition.has_value());
+    REQUIRE(desertFeetPosition.has_value());
 
-    const auto temperateEnvironment =
-        vibecraft::app::sampleOxygenEnvironment(world, terrainGenerator, *temperateFeetPosition, {}, false);
-    const auto sandyEnvironment =
-        vibecraft::app::sampleOxygenEnvironment(world, terrainGenerator, *sandyFeetPosition, {}, false);
-    CHECK(sandyEnvironment.drainMultiplier > temperateEnvironment.drainMultiplier);
+    const auto forestEnvironment =
+        vibecraft::app::sampleOxygenEnvironment(world, terrainGenerator, *forestFeetPosition, {}, false);
+    const auto desertEnvironment =
+        vibecraft::app::sampleOxygenEnvironment(world, terrainGenerator, *desertFeetPosition, {}, false);
+    CHECK(desertEnvironment.drainMultiplier > forestEnvironment.drainMultiplier);
 }
 
 TEST_CASE("singleplayer saves preserve oxygen state")

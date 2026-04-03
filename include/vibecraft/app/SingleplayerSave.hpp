@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "vibecraft/app/Crafting.hpp"
+#include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/game/OxygenSystem.hpp"
 

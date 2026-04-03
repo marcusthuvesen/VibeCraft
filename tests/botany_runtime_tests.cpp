@@ -74,7 +74,7 @@ TEST_CASE("fiber saplings grow into trees inside relay zones")
         runtimeState);
 
     CHECK(tickResult.treesGrown > 0);
-    CHECK(world.blockAt(0, 11, 0) == vibecraft::world::BlockType::TreeTrunk);
+    CHECK(world.blockAt(0, 11, 0) == vibecraft::world::BlockType::OakLog);
 }
 
 TEST_CASE("fiber saplings become sprouts before full tree growth")
@@ -160,7 +160,7 @@ TEST_CASE("greenhouse structure speeds fiber growth")
         runtimeState);
 
     CHECK(tickResult.treesGrown > 0);
-    CHECK(world.blockAt(0, 11, 0) == vibecraft::world::BlockType::TreeTrunk);
+    CHECK(world.blockAt(0, 11, 0) == vibecraft::world::BlockType::OakLog);
 }
 
 TEST_CASE("power conduits contribute to greenhouse growth speed")
@@ -208,5 +208,5 @@ TEST_CASE("power conduits contribute to greenhouse growth speed")
         runtimeState);
 
     CHECK(tickResult.treesGrown > 0);
-    CHECK(world.blockAt(0, 11, 0) == vibecraft::world::BlockType::TreeTrunk);
+    CHECK(world.blockAt(0, 11, 0) == vibecraft::world::BlockType::OakLog);
 }

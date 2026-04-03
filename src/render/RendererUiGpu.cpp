@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "vibecraft/ChunkAtlasLayout.hpp"
+#include "vibecraft/core/Logger.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 
 namespace vibecraft::render
@@ -103,7 +104,7 @@ struct ModelPartSpec
             .arm = makeCuboidUvSet(kTexW, kTexH, 40.0f, 16.0f, 4.0f, 12.0f, 4.0f),
             .horn = makeCuboidUvSet(kTexW, kTexH, 24.0f, 0.0f, 2.0f, 8.0f, 2.0f),
         };
-    case MK::Sporegrazer:
+    case MK::Cow:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 18.0f, 4.0f, 12.0f, 18.0f, 10.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 6.0f),
@@ -111,22 +112,20 @@ struct ModelPartSpec
             .snout = makeCuboidUvSet(kTexW, kTexH, 0.0f, 22.0f, 4.0f, 3.0f, 2.0f),
             .horn = makeCuboidUvSet(kTexW, kTexH, 22.0f, 0.0f, 1.0f, 3.0f, 1.0f),
         };
-    case MK::Burrower:
+    case MK::Pig:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 28.0f, 8.0f, 10.0f, 16.0f, 8.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 6.0f, 4.0f),
             .snout = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 4.0f, 3.0f, 2.0f),
-            .horn = makeCuboidUvSet(kTexW, kTexH, 24.0f, 0.0f, 2.0f, 3.0f, 1.0f),
         };
-    case MK::Shardback:
+    case MK::Sheep:
         return {
-            .body = makeCuboidUvSet(kTexW, kTexH, 28.0f, 8.0f, 8.0f, 16.0f, 6.0f),
+            .body = makeCuboidUvSet(kTexW, kTexH, 28.0f, 8.0f, 12.0f, 16.0f, 8.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 6.0f, 6.0f, 8.0f),
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 6.0f, 4.0f),
-            .horn = makeCuboidUvSet(kTexW, kTexH, 22.0f, 0.0f, 2.0f, 6.0f, 2.0f),
         };
-    case MK::Skitterwing:
+    case MK::Chicken:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 0.0f, 9.0f, 6.0f, 8.0f, 6.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 4.0f, 6.0f, 3.0f),
@@ -147,14 +146,14 @@ struct ModelPartSpec
     case MK::VoidStrider:
     case MK::Player:
         return 32.0f;
-    case MK::Sporegrazer:
+    case MK::Cow:
         return 20.0f;
-    case MK::Burrower:
-        return 14.0f;
-    case MK::Shardback:
+    case MK::Pig:
         return 16.0f;
-    case MK::Skitterwing:
-        return 16.0f;
+    case MK::Sheep:
+        return 18.0f;
+    case MK::Chicken:
+        return 12.0f;
     }
     return 16.0f;
 }
@@ -167,16 +166,66 @@ struct ModelPartSpec
     case MK::VoidStrider:
     case MK::Player:
         return 6.0f;
-    case MK::Sporegrazer:
+    case MK::Cow:
         return 6.0f;
-    case MK::Burrower:
+    case MK::Pig:
         return 5.0f;
-    case MK::Shardback:
-        return 4.0f;
-    case MK::Skitterwing:
+    case MK::Sheep:
+        return 5.0f;
+    case MK::Chicken:
         return 4.0f;
     }
     return 4.0f;
+}
+
+struct TextGridMetrics
+{
+    float charWidthPx = 1.0f;
+    float charHeightPx = 1.0f;
+};
+
+struct PixelRect
+{
+    float x0 = 0.0f;
+    float y0 = 0.0f;
+    float x1 = 0.0f;
+    float y1 = 0.0f;
+};
+
+[[nodiscard]] TextGridMetrics makeTextGridMetrics(
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    return TextGridMetrics{
+        .charWidthPx = static_cast<float>(windowWidth) / static_cast<float>(std::max<std::uint16_t>(1, textWidth)),
+        .charHeightPx = static_cast<float>(windowHeight) / static_cast<float>(std::max<std::uint16_t>(1, textHeight)),
+    };
+}
+
+[[nodiscard]] PixelRect gridRectFromChars(
+    const TextGridMetrics& metrics,
+    const int col,
+    const int row,
+    const int widthChars,
+    const int heightRows)
+{
+    const float x0 = std::floor(static_cast<float>(std::max(0, col)) * metrics.charWidthPx);
+    const float y0 = std::floor(static_cast<float>(std::max(0, row)) * metrics.charHeightPx);
+    const float x1 = std::ceil(static_cast<float>(std::max(0, col + std::max(0, widthChars))) * metrics.charWidthPx);
+    const float y1 = std::ceil(static_cast<float>(std::max(0, row + std::max(0, heightRows))) * metrics.charHeightPx);
+    return PixelRect{.x0 = x0, .y0 = y0, .x1 = x1, .y1 = y1};
+}
+
+[[nodiscard]] PixelRect expandedRect(const PixelRect& rect, const float insetPx)
+{
+    return PixelRect{
+        .x0 = rect.x0 - insetPx,
+        .y0 = rect.y0 - insetPx,
+        .x1 = rect.x1 + insetPx,
+        .y1 = rect.y1 + insetPx,
+    };
 }
 } // namespace
 
@@ -435,15 +484,16 @@ void Renderer::drawInventoryItemIcons(
 
     if (canDrawSolid && hotbarLayout.slotSize > 0.0f)
     {
-        const std::uint32_t hotbarFrameOuterAbgr = detail::packAbgr8(glm::vec3(0.10f, 0.10f, 0.10f), 0.94f);
-        const std::uint32_t hotbarFrameInnerAbgr = detail::packAbgr8(glm::vec3(0.22f, 0.22f, 0.22f), 0.93f);
-        const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.06f, 0.06f, 0.06f), 0.97f);
-        const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.20f, 0.20f, 0.20f), 0.95f);
-        const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.30f, 0.30f, 0.30f), 0.96f);
-        const std::uint32_t selectedOuterAbgr = detail::packAbgr8(glm::vec3(1.0f, 1.0f, 1.0f), 0.98f);
-        const std::uint32_t selectedInnerAbgr = detail::packAbgr8(glm::vec3(0.88f, 0.88f, 0.88f), 0.98f);
-        const std::uint32_t xpTrackAbgr = detail::packAbgr8(glm::vec3(0.08f, 0.08f, 0.08f), 0.92f);
-        const std::uint32_t xpFillAbgr = detail::packAbgr8(glm::vec3(0.45f, 0.83f, 0.18f), 0.98f);
+        // Hytale-inspired: cool navy strip, steel-blue slots, bright gold selection ring.
+        const std::uint32_t hotbarFrameOuterAbgr = detail::packAbgr8(glm::vec3(0.03f, 0.06f, 0.10f), 0.95f);
+        const std::uint32_t hotbarFrameInnerAbgr = detail::packAbgr8(glm::vec3(0.10f, 0.17f, 0.27f), 0.94f);
+        const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.03f, 0.06f, 0.10f), 0.98f);
+        const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.14f, 0.24f, 0.38f), 0.96f);
+        const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.25f, 0.38f, 0.56f), 0.96f);
+        const std::uint32_t selectedOuterAbgr = detail::packAbgr8(glm::vec3(0.98f, 0.81f, 0.38f), 0.99f);
+        const std::uint32_t selectedInnerAbgr = detail::packAbgr8(glm::vec3(0.84f, 0.63f, 0.18f), 0.99f);
+        const std::uint32_t xpTrackAbgr = detail::packAbgr8(glm::vec3(0.03f, 0.07f, 0.11f), 0.94f);
+        const std::uint32_t xpFillAbgr = detail::packAbgr8(glm::vec3(0.54f, 0.88f, 0.25f), 0.98f);
 
         const float slot = hotbarLayout.slotSize;
         const float gap = hotbarLayout.gap;
@@ -734,13 +784,13 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         return;
     }
 
-    const std::uint32_t dimAbgr = detail::packAbgr8(glm::vec3(0.02f, 0.03f, 0.04f), 0.52f);
-    const std::uint32_t panelOuterAbgr = detail::packAbgr8(glm::vec3(0.10f, 0.10f, 0.10f), 0.96f);
-    const std::uint32_t panelInnerAbgr = detail::packAbgr8(glm::vec3(0.19f, 0.19f, 0.19f), 0.96f);
-    const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.06f, 0.06f, 0.06f), 0.98f);
-    const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.24f, 0.24f, 0.24f), 0.97f);
-    const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.33f, 0.33f, 0.33f), 0.97f);
-    const std::uint32_t resultGlowAbgr = detail::packAbgr8(glm::vec3(0.40f, 0.65f, 0.24f), 0.55f);
+    const std::uint32_t dimAbgr = detail::packAbgr8(glm::vec3(0.02f, 0.03f, 0.05f), 0.52f);
+    const std::uint32_t panelOuterAbgr = detail::packAbgr8(glm::vec3(0.05f, 0.08f, 0.14f), 0.97f);
+    const std::uint32_t panelInnerAbgr = detail::packAbgr8(glm::vec3(0.11f, 0.17f, 0.27f), 0.96f);
+    const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.04f, 0.08f, 0.12f), 0.98f);
+    const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.16f, 0.25f, 0.38f), 0.97f);
+    const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.26f, 0.39f, 0.58f), 0.97f);
+    const std::uint32_t resultGlowAbgr = detail::packAbgr8(glm::vec3(0.93f, 0.79f, 0.32f), 0.55f);
     const std::uint32_t cursorOutlineAbgr = detail::packAbgr8(glm::vec3(1.0f, 1.0f, 1.0f), 0.95f);
 
     drawUiSolidRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), dimAbgr);
@@ -966,7 +1016,9 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     }
 }
 
-void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
+void Renderer::drawWorldPickupSprites(
+    const FrameDebugData& frameDebugData,
+    const CameraFrameData& cameraFrameData)
 {
     if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX)
     {
@@ -1023,13 +1075,43 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
             continue;
         }
 
-        constexpr float kHalfWidth = 0.18f;
-        constexpr float kHalfHeight = 0.18f;
+        const glm::vec3 center = pickup.worldPosition;
+        glm::vec3 toCamera = cameraFrameData.position - center;
+        const float distance = std::max(0.001f, glm::length(toCamera));
+        if (distance > 0.001f)
+        {
+            toCamera /= distance;
+        }
+        else
+        {
+            toCamera = -cameraFrameData.forward;
+        }
+
+        glm::vec3 right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), toCamera);
+        if (glm::dot(right, right) < 1.0e-6f)
+        {
+            right = glm::cross(cameraFrameData.up, toCamera);
+        }
+        if (glm::dot(right, right) < 1.0e-6f)
+        {
+            right = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
+        right = glm::normalize(right);
+        glm::vec3 up = glm::cross(toCamera, right);
+        if (glm::dot(up, up) < 1.0e-6f)
+        {
+            up = glm::vec3(0.0f, 1.0f, 0.0f);
+        }
+        up = glm::normalize(up);
+
         const float cosA = std::cos(pickup.spinRadians);
         const float sinA = std::sin(pickup.spinRadians);
-        const glm::vec3 right(cosA * kHalfWidth, 0.0f, sinA * kHalfWidth);
-        const glm::vec3 up(0.0f, kHalfHeight, 0.0f);
-        const glm::vec3 center = pickup.worldPosition;
+        const glm::vec3 rolledRight = glm::normalize(right * cosA + up * sinA);
+        const glm::vec3 rolledUp = glm::normalize(-right * sinA + up * cosA);
+        const float scale = glm::clamp(0.19f + 2.1f / std::max(distance, 3.2f), 0.19f, 0.28f);
+        right = rolledRight * scale;
+        up = rolledUp * (scale * 1.06f);
+        const std::uint32_t pickupAbgr = detail::packAbgr8(glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
 
         detail::ChunkVertex vertices[4] = {
             detail::ChunkVertex{
@@ -1041,7 +1123,7 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
                 .nz = 0.0f,
                 .u = minU,
                 .v = maxV,
-                .abgr = 0xffffffff},
+                .abgr = pickupAbgr},
             detail::ChunkVertex{
                 .x = center.x + right.x - up.x,
                 .y = center.y + right.y - up.y,
@@ -1051,7 +1133,7 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
                 .nz = 0.0f,
                 .u = maxU,
                 .v = maxV,
-                .abgr = 0xffffffff},
+                .abgr = pickupAbgr},
             detail::ChunkVertex{
                 .x = center.x + right.x + up.x,
                 .y = center.y + right.y + up.y,
@@ -1061,7 +1143,7 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
                 .nz = 0.0f,
                 .u = maxU,
                 .v = minV,
-                .abgr = 0xffffffff},
+                .abgr = pickupAbgr},
             detail::ChunkVertex{
                 .x = center.x - right.x + up.x,
                 .y = center.y - right.y + up.y,
@@ -1071,7 +1153,7 @@ void Renderer::drawWorldPickupSprites(const FrameDebugData& frameDebugData)
                 .nz = 0.0f,
                 .u = minU,
                 .v = minV,
-                .abgr = 0xffffffff},
+                .abgr = pickupAbgr},
         };
 
         bgfx::TransientVertexBuffer tvb{};
@@ -1132,12 +1214,23 @@ void Renderer::drawWorldBirdSprites(
             break;
         }
 
+        const float dist = std::sqrt(distanceSq);
+        // Softer pop-in / fade so flocks feel embedded in the scene depth.
+        float alpha = bird.alpha;
+        alpha *= glm::smoothstep(16.5f, 36.0f, dist);
+        alpha *= 1.0f - glm::smoothstep(168.0f, 218.0f, dist);
+        alpha = glm::clamp(alpha, 0.0f, 1.0f);
+        const float distScale = glm::clamp(0.86f + 38.0f / std::max(dist, 14.0f), 0.86f, 1.14f);
+
+        const float sp = std::sin(bird.flapPhase);
+        const float wingAsym = (sp < 0.0f) ? 1.14f : 0.93f;
+        const float wingSpan = std::abs(sp) * wingAsym;
         const float halfWidth = std::max(
             0.28f,
-            bird.halfWidth * (0.93f + std::abs(std::sin(bird.flapPhase)) * 0.14f));  // wing extension through the stroke
+            bird.halfWidth * distScale * (0.90f + wingSpan * 0.22f));
         const float halfHeight = std::max(
             0.14f,
-            bird.halfHeight * (1.02f - std::abs(std::cos(bird.flapPhase)) * 0.09f));
+            bird.halfHeight * distScale * (1.04f - std::abs(std::cos(bird.flapPhase)) * 0.11f));
 
         glm::vec3 fwd(bird.flightForwardXZ.x, 0.0f, bird.flightForwardXZ.y);
         const float fwdLenSq = glm::dot(fwd, fwd);
@@ -1170,7 +1263,10 @@ void Renderer::drawWorldBirdSprites(
         wingAxis = glm::normalize(wingAxis);
         const glm::vec3 bodyUp = glm::normalize(glm::cross(fwd, wingAxis));
 
-        const float roll = 0.48f * std::sin(bird.flapPhase);
+        const float roll = glm::clamp(
+            bird.bankAngle + 0.52f * std::sin(bird.flapPhase),
+            -0.92f,
+            0.92f);
         const float cr = std::cos(roll);
         const float sr = std::sin(roll);
         const glm::vec3 wingR = wingAxis * cr + bodyUp * sr;
@@ -1178,7 +1274,7 @@ void Renderer::drawWorldBirdSprites(
 
         const glm::vec3 right = wingR * halfWidth;
         const glm::vec3 up = upR * halfHeight;
-        const std::uint32_t abgr = detail::packAbgr8(bird.tint, bird.alpha);
+        const std::uint32_t abgr = detail::packAbgr8(bird.tint, alpha);
 
         detail::ChunkVertex vertices[4] = {
             detail::ChunkVertex{
@@ -1602,7 +1698,7 @@ void Renderer::drawWorldMobSprites(
             if (!submitCuboid(glm::vec3(2.0f, 6.0f, 0.2f - legSwing), glm::vec3(1.95f, 6.0f, 1.95f), uv.leg)) break;
             break;
         }
-        case MK::Sporegrazer:
+        case MK::Cow:
             if (!submitHorizontalBody(
                     glm::vec3(0.0f, 13.2f, 0.0f),
                     glm::vec3(6.4f, 8.4f, 4.8f),
@@ -1612,13 +1708,14 @@ void Renderer::drawWorldMobSprites(
             }
             if (!submitCuboid(glm::vec3(0.0f, 15.0f, 8.4f), glm::vec3(3.0f, 3.0f, 4.0f), uv.head)) break;
             if (!submitCuboid(glm::vec3(0.0f, 13.5f, 12.7f), glm::vec3(1.5f, 1.4f, 2.0f), uv.snout)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 18.8f, -0.8f), glm::vec3(1.8f, 2.2f, 4.6f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(-2.0f, 17.3f, 8.9f), glm::vec3(0.5f, 0.8f, 0.7f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(2.0f, 17.3f, 8.9f), glm::vec3(0.5f, 0.8f, 0.7f), uv.horn)) break;
             if (!submitCuboid(glm::vec3(-4.2f, 6.0f, 4.5f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(4.2f, 6.0f, 4.5f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(-4.2f, 6.0f, -4.8f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(4.2f, 6.0f, -4.8f), glm::vec3(1.6f, 6.0f, 1.6f), uv.leg)) break;
             break;
-        case MK::Burrower:
+        case MK::Pig:
             if (!submitHorizontalBody(
                     glm::vec3(0.0f, 7.8f, -0.8f),
                     glm::vec3(5.4f, 7.8f, 3.6f),
@@ -1627,44 +1724,35 @@ void Renderer::drawWorldMobSprites(
                 break;
             }
             if (!submitCuboid(glm::vec3(0.0f, 8.3f, 7.4f), glm::vec3(3.6f, 3.0f, 3.6f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(-4.3f, 7.2f, 8.4f), glm::vec3(1.0f, 0.9f, 2.0f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(4.3f, 7.2f, 8.4f), glm::vec3(1.0f, 0.9f, 2.0f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 7.8f, 11.2f), glm::vec3(1.6f, 1.0f, 1.2f), uv.snout)) break;
             if (!submitCuboid(glm::vec3(-2.6f, 2.8f, 4.4f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(2.6f, 2.8f, 4.4f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(-3.5f, 2.8f, -3.8f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(3.5f, 2.8f, -3.8f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
             break;
-        case MK::Shardback:
-            if (!submitOrientedCuboid(
-                    glm::vec3(0.0f, 9.0f, 0.0f),
-                    glm::vec3(4.0f * sx, 8.0f * sz, 3.0f * sy),
-                    right,
-                    forward,
-                    glm::vec3(0.0f, -1.0f, 0.0f),
+        case MK::Sheep:
+            if (!submitHorizontalBody(
+                    glm::vec3(0.0f, 10.0f, 0.0f),
+                    glm::vec3(6.0f, 8.0f, 4.0f),
                     uv.body))
             {
                 break;
             }
-            if (!submitCuboid(glm::vec3(0.0f, 9.5f, 6.5f), glm::vec3(2.7f, 2.9f, 4.2f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 14.2f, -1.0f), glm::vec3(1.0f, 3.5f, 1.0f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(-2.2f, 13.3f, 0.4f), glm::vec3(0.9f, 2.8f, 0.9f), uv.horn)) break;
-            if (!submitCuboid(glm::vec3(2.2f, 13.3f, 0.4f), glm::vec3(0.9f, 2.8f, 0.9f), uv.horn)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 11.0f, 7.4f), glm::vec3(2.5f, 3.1f, 3.5f), uv.head)) break;
             if (!submitCuboid(glm::vec3(-2.5f, 3.0f, 2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(2.5f, 3.0f, 2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(-2.5f, 3.0f, -2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             if (!submitCuboid(glm::vec3(2.5f, 3.0f, -2.0f), glm::vec3(2.0f, 3.0f, 2.0f), uv.leg)) break;
             break;
-        case MK::Skitterwing:
-            if (!submitCuboid(glm::vec3(0.0f, 6.7f, -0.5f), glm::vec3(2.4f, 3.2f, 2.4f), uv.body)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 9.9f, 4.2f), glm::vec3(1.8f, 2.4f, 1.7f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 7.8f, -4.8f), glm::vec3(0.7f, 0.7f, 2.0f), uv.wattle)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 9.2f, 6.6f), glm::vec3(1.2f, 0.7f, 1.4f), uv.beak)) break;
-            if (!submitCuboid(glm::vec3(-3.5f, 7.7f, -0.1f), glm::vec3(0.5f, 1.5f, 3.5f), uv.wing)) break;
-            if (!submitCuboid(glm::vec3(3.5f, 7.7f, -0.1f), glm::vec3(0.5f, 1.5f, 3.5f), uv.wing)) break;
-            if (!submitCuboid(glm::vec3(-1.7f, 2.4f, 1.2f), glm::vec3(0.35f, 2.4f, 0.35f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(1.7f, 2.4f, 1.2f), glm::vec3(0.35f, 2.4f, 0.35f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(-2.2f, 2.1f, -1.0f), glm::vec3(0.3f, 1.7f, 0.3f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(2.2f, 2.1f, -1.0f), glm::vec3(0.3f, 1.7f, 0.3f), uv.leg)) break;
+        case MK::Chicken:
+            if (!submitCuboid(glm::vec3(0.0f, 7.0f, -0.2f), glm::vec3(2.4f, 3.2f, 3.0f), uv.body)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 10.4f, 3.5f), glm::vec3(1.8f, 2.3f, 1.7f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 7.8f, -3.7f), glm::vec3(0.7f, 0.7f, 1.6f), uv.wattle)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 9.8f, 5.5f), glm::vec3(1.0f, 0.6f, 1.1f), uv.beak)) break;
+            if (!submitCuboid(glm::vec3(-2.8f, 7.6f, -0.1f), glm::vec3(0.45f, 1.7f, 2.8f), uv.wing)) break;
+            if (!submitCuboid(glm::vec3(2.8f, 7.6f, -0.1f), glm::vec3(0.45f, 1.7f, 2.8f), uv.wing)) break;
+            if (!submitCuboid(glm::vec3(-0.9f, 2.1f, 0.9f), glm::vec3(0.28f, 2.1f, 0.28f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(0.9f, 2.1f, 0.9f), glm::vec3(0.28f, 2.1f, 0.28f), uv.leg)) break;
             break;
         }
 
@@ -1903,21 +1991,407 @@ void Renderer::drawBlockBreakingOverlay(const FrameDebugData& frameDebugData)
     static_cast<void>(submitFace(lbb, rbb, rbf, lbf));
 }
 
+void Renderer::drawMainMenuChrome(
+    const FrameDebugData& frameDebugData,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight,
+    const int mainMenuTitleContentRowOffset)
+{
+    if (inventoryUiSolidProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
+        || chunkAtlasTextureHandle_ == UINT16_MAX || width_ == 0 || height_ == 0)
+    {
+        return;
+    }
+
+    float view[16];
+    bx::mtxIdentity(view);
+    float proj[16];
+    bx::mtxOrtho(
+        proj,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        0.0f,
+        0.0f,
+        1000.0f,
+        0.0f,
+        bgfx::getCaps()->homogeneousDepth);
+    bgfx::setViewTransform(detail::kUiView, view, proj);
+
+    const TextGridMetrics grid = makeTextGridMetrics(width_, height_, textWidth, textHeight);
+    const auto drawPanel = [&](const PixelRect& rect,
+                               const glm::vec3& fillTint,
+                               const glm::vec3& edgeTint,
+                               const glm::vec3& glowTint,
+                               const float fillAlpha)
+    {
+        const PixelRect shadow = expandedRect(rect, 12.0f);
+        const PixelRect outer = expandedRect(rect, 5.0f);
+        const PixelRect inner = expandedRect(rect, 2.0f);
+        drawUiSolidRect(shadow.x0, shadow.y0 + 6.0f, shadow.x1, shadow.y1 + 16.0f, detail::packAbgr8(glm::vec3(0.01f, 0.02f, 0.03f), 0.34f));
+        drawUiSolidRect(outer.x0, outer.y0, outer.x1, outer.y1, detail::packAbgr8(glowTint, 0.72f));
+        drawUiSolidRect(inner.x0, inner.y0, inner.x1, inner.y1, detail::packAbgr8(edgeTint, 0.96f));
+        drawUiSolidRect(rect.x0, rect.y0, rect.x1, rect.y1, detail::packAbgr8(fillTint, fillAlpha));
+        drawUiSolidRect(
+            rect.x0 + 3.0f,
+            rect.y0 + 3.0f,
+            rect.x1 - 3.0f,
+            rect.y0 + std::max(7.0f, (rect.y1 - rect.y0) * 0.18f),
+            detail::packAbgr8(glm::mix(fillTint, glm::vec3(1.0f), 0.14f), 0.30f));
+    };
+    const auto drawButtonPanel = [&](const PixelRect& rect, const bool hovered)
+    {
+        const glm::vec3 fillTint = hovered ? glm::vec3(0.36f, 0.28f, 0.12f) : glm::vec3(0.09f, 0.14f, 0.20f);
+        const glm::vec3 edgeTint = hovered ? glm::vec3(0.92f, 0.76f, 0.40f) : glm::vec3(0.32f, 0.46f, 0.58f);
+        const glm::vec3 glowTint = hovered ? glm::vec3(0.70f, 0.56f, 0.20f) : glm::vec3(0.14f, 0.24f, 0.34f);
+        drawPanel(rect, fillTint, edgeTint, glowTint, hovered ? 0.92f : 0.84f);
+    };
+
+    drawUiSolidRect(
+        0.0f,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        detail::packAbgr8(glm::vec3(0.02f, 0.07f, 0.10f), 0.16f));
+    drawUiSolidRect(
+        0.0f,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_) * 0.28f,
+        detail::packAbgr8(glm::vec3(0.04f, 0.09f, 0.16f), 0.28f));
+    drawUiSolidRect(
+        0.0f,
+        static_cast<float>(height_) * 0.72f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        detail::packAbgr8(glm::vec3(0.03f, 0.05f, 0.03f), 0.20f));
+
+    if (frameDebugData.mainMenuLoadingActive)
+    {
+        const int tw = static_cast<int>(textWidth);
+        const int th = static_cast<int>(textHeight);
+        const int panelWidth = std::clamp(tw - 12, 40, std::max(40, tw - 4));
+        const int panelHeight = std::min(13, std::max(11, th - 2));
+        const int panelCol = std::max(0, (tw - panelWidth) / 2);
+        const int panelRow = std::max(1, (th - panelHeight) / 2);
+        drawPanel(
+            gridRectFromChars(grid, panelCol, panelRow, panelWidth, panelHeight),
+            glm::vec3(0.08f, 0.12f, 0.18f),
+            glm::vec3(0.36f, 0.50f, 0.60f),
+            glm::vec3(0.84f, 0.74f, 0.34f),
+            0.90f);
+        return;
+    }
+
+    if (frameDebugData.mainMenuSoundSettingsActive)
+    {
+        constexpr int kWide = 96;
+        const int soundCenterCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+        drawPanel(
+            gridRectFromChars(grid, soundCenterCol - 3, 4, kWide + 6, 28),
+            glm::vec3(0.08f, 0.12f, 0.18f),
+            glm::vec3(0.34f, 0.46f, 0.56f),
+            glm::vec3(0.82f, 0.70f, 0.32f),
+            0.92f);
+        drawButtonPanel(gridRectFromChars(grid, soundCenterCol + 2, 10, kWide - 4, 3), frameDebugData.mainMenuSoundSettingsHoveredControl == 1 || frameDebugData.mainMenuSoundSettingsHoveredControl == 2);
+        drawButtonPanel(gridRectFromChars(grid, soundCenterCol + 2, 17, kWide - 4, 3), frameDebugData.mainMenuSoundSettingsHoveredControl == 3 || frameDebugData.mainMenuSoundSettingsHoveredControl == 4);
+        drawButtonPanel(gridRectFromChars(grid, soundCenterCol + 2, 26, kWide - 4, 3), frameDebugData.mainMenuSoundSettingsHoveredControl == 0);
+        return;
+    }
+
+    if (frameDebugData.mainMenuSingleplayerPanelActive)
+    {
+        constexpr int kWide = 72;
+        constexpr int kPanelHeight = 39;
+        const int panelCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+        const int panelRow = std::max(1, (static_cast<int>(textHeight) - kPanelHeight) / 2);
+        drawPanel(
+            gridRectFromChars(grid, panelCol, panelRow, kWide, kPanelHeight),
+            glm::vec3(0.08f, 0.12f, 0.18f),
+            glm::vec3(0.33f, 0.44f, 0.54f),
+            glm::vec3(0.80f, 0.70f, 0.34f),
+            0.92f);
+        for (int buttonRow : {panelRow + 13, panelRow + 20, panelRow + 27, panelRow + 34})
+        {
+            const int buttonId = (buttonRow - (panelRow + 13)) / 7;
+            drawButtonPanel(
+                gridRectFromChars(grid, panelCol + 3, buttonRow + 1, kWide - 6, 3),
+                frameDebugData.mainMenuSingleplayerHoveredControl == buttonId);
+        }
+        return;
+    }
+
+    if (frameDebugData.mainMenuMultiplayerPanel != FrameDebugData::MainMenuMultiplayerPanel::None)
+    {
+        const detail::MainMenuComputedLayout menu =
+            detail::computeMainMenuLayout(static_cast<int>(textWidth), static_cast<int>(textHeight), mainMenuTitleContentRowOffset);
+        const int joinPresetSlots = static_cast<int>(std::min<std::size_t>(frameDebugData.mainMenuJoinPresetButtonLabels.size(), 3));
+        const int rowShift = detail::MultiplayerMenuLayout::multiplayerMenuRowShift(
+            static_cast<int>(textHeight), frameDebugData.mainMenuMultiplayerPanel, joinPresetSlots, mainMenuTitleContentRowOffset);
+        int panelTopRow = 4 + rowShift;
+        int panelBottomRow = static_cast<int>(textHeight) - 3;
+        switch (frameDebugData.mainMenuMultiplayerPanel)
+        {
+        case FrameDebugData::MainMenuMultiplayerPanel::Hub:
+            panelTopRow = 4 + rowShift;
+            panelBottomRow = detail::MultiplayerMenuLayout::kHubBackRow + menu.buttonLineCount + rowShift + 1;
+            break;
+        case FrameDebugData::MainMenuMultiplayerPanel::Host:
+            panelTopRow = 4 + rowShift;
+            panelBottomRow = detail::MultiplayerMenuLayout::kHostBackRow + menu.buttonLineCount + rowShift + 1;
+            break;
+        case FrameDebugData::MainMenuMultiplayerPanel::Join:
+            panelTopRow = 4 + rowShift;
+            panelBottomRow = detail::MultiplayerMenuLayout::multiplayerJoinBottomRow(joinPresetSlots) + rowShift;
+            break;
+        case FrameDebugData::MainMenuMultiplayerPanel::None:
+        default:
+            break;
+        }
+        drawPanel(
+            gridRectFromChars(
+                grid,
+                menu.centerCol - 4,
+                panelTopRow,
+                menu.outerWidth + 8,
+                std::max(8, panelBottomRow - panelTopRow + 1)),
+            glm::vec3(0.08f, 0.12f, 0.18f),
+            glm::vec3(0.32f, 0.43f, 0.54f),
+            glm::vec3(0.78f, 0.72f, 0.36f),
+            0.92f);
+        return;
+    }
+
+    const detail::MainMenuComputedLayout menu =
+        detail::computeMainMenuLayout(static_cast<int>(textWidth), static_cast<int>(textHeight), mainMenuTitleContentRowOffset);
+    drawPanel(
+        gridRectFromChars(
+            grid,
+            menu.centerCol - 4,
+            menu.subtitleRow - 2,
+            menu.outerWidth + 8,
+            std::max(8, menu.iconHintsRow - menu.subtitleRow + 4)),
+        glm::vec3(0.08f, 0.12f, 0.18f),
+        glm::vec3(0.34f, 0.47f, 0.58f),
+        glm::vec3(0.82f, 0.72f, 0.34f),
+        0.90f);
+    drawPanel(
+        gridRectFromChars(
+            grid,
+            menu.centerCol + menu.outerWidth / 2 - 16,
+            menu.subtitleRow - 1,
+            32,
+            2),
+        glm::vec3(0.14f, 0.20f, 0.28f),
+        glm::vec3(0.56f, 0.68f, 0.78f),
+        glm::vec3(0.88f, 0.76f, 0.34f),
+        0.94f);
+
+    for (std::size_t buttonIndex = 0; buttonIndex < menu.buttonTopRows.size(); ++buttonIndex)
+    {
+        drawButtonPanel(
+            gridRectFromChars(
+                grid,
+                menu.centerCol + 3,
+                menu.buttonTopRows[buttonIndex] + 1,
+                menu.outerWidth - 6,
+                std::max(2, menu.buttonLineCount - 2)),
+            frameDebugData.mainMenuHoveredButton == static_cast<int>(buttonIndex));
+    }
+
+    if (menu.centerCol >= 8)
+    {
+        drawButtonPanel(
+            gridRectFromChars(grid, menu.centerCol - 8, menu.iconHintsRow - 1, 6, 2),
+            frameDebugData.mainMenuHoveredButton == 5);
+    }
+    drawButtonPanel(
+        gridRectFromChars(grid, menu.centerCol + menu.outerWidth + 2, menu.iconHintsRow - 1, 6, 2),
+        frameDebugData.mainMenuHoveredButton == 6);
+}
+
+void Renderer::drawPauseMenuChrome(
+    const FrameDebugData& frameDebugData,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    if (inventoryUiSolidProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
+        || chunkAtlasTextureHandle_ == UINT16_MAX || width_ == 0 || height_ == 0)
+    {
+        return;
+    }
+
+    float view[16];
+    bx::mtxIdentity(view);
+    float proj[16];
+    bx::mtxOrtho(
+        proj,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        0.0f,
+        0.0f,
+        1000.0f,
+        0.0f,
+        bgfx::getCaps()->homogeneousDepth);
+    bgfx::setViewTransform(detail::kUiView, view, proj);
+
+    const TextGridMetrics grid = makeTextGridMetrics(width_, height_, textWidth, textHeight);
+    const int th = static_cast<int>(textHeight);
+    constexpr int kWide = detail::PauseMenuLayout::kWideChars;
+    const int centerCol = std::max(0, (static_cast<int>(textWidth) - kWide) / 2);
+    const auto drawPanel = [&](const PixelRect& rect,
+                               const glm::vec3& fillTint,
+                               const glm::vec3& edgeTint,
+                               const glm::vec3& glowTint,
+                               const float fillAlpha)
+    {
+        const PixelRect shadow = expandedRect(rect, 14.0f);
+        const PixelRect outer = expandedRect(rect, 5.0f);
+        const PixelRect inner = expandedRect(rect, 2.0f);
+        drawUiSolidRect(shadow.x0, shadow.y0 + 8.0f, shadow.x1, shadow.y1 + 18.0f, detail::packAbgr8(glm::vec3(0.01f, 0.01f, 0.02f), 0.42f));
+        drawUiSolidRect(outer.x0, outer.y0, outer.x1, outer.y1, detail::packAbgr8(glowTint, 0.74f));
+        drawUiSolidRect(inner.x0, inner.y0, inner.x1, inner.y1, detail::packAbgr8(edgeTint, 0.97f));
+        drawUiSolidRect(rect.x0, rect.y0, rect.x1, rect.y1, detail::packAbgr8(fillTint, fillAlpha));
+        drawUiSolidRect(
+            rect.x0 + 3.0f,
+            rect.y0 + 3.0f,
+            rect.x1 - 3.0f,
+            rect.y0 + std::max(7.0f, (rect.y1 - rect.y0) * 0.16f),
+            detail::packAbgr8(glm::mix(fillTint, glm::vec3(1.0f), 0.12f), 0.28f));
+    };
+    const auto drawButtonPanel = [&](const int rowTop, const bool hovered)
+    {
+        const PixelRect rect = gridRectFromChars(
+            grid,
+            centerCol + 3,
+            rowTop + 1,
+            kWide - 6,
+            std::max(2, detail::PauseMenuLayout::kButtonRowSpan - 2));
+        const glm::vec3 fillTint = hovered ? glm::vec3(0.36f, 0.28f, 0.12f) : glm::vec3(0.09f, 0.14f, 0.21f);
+        const glm::vec3 edgeTint = hovered ? glm::vec3(0.92f, 0.76f, 0.40f) : glm::vec3(0.33f, 0.46f, 0.60f);
+        const glm::vec3 glowTint = hovered ? glm::vec3(0.72f, 0.54f, 0.20f) : glm::vec3(0.15f, 0.23f, 0.34f);
+        drawPanel(rect, fillTint, edgeTint, glowTint, hovered ? 0.94f : 0.86f);
+    };
+
+    drawUiSolidRect(
+        0.0f,
+        0.0f,
+        static_cast<float>(width_),
+        static_cast<float>(height_),
+        detail::packAbgr8(glm::vec3(0.02f, 0.05f, 0.09f), 0.44f));
+
+    int panelTopRow = 3;
+    int panelBottomRow = th - 3;
+    if (frameDebugData.pauseSoundSettingsActive)
+    {
+        panelTopRow = detail::PauseMenuLayout::pauseSoundTitleRow(th) - 2;
+        panelBottomRow = detail::PauseMenuLayout::pauseSoundBackButtonRow(th) + detail::PauseMenuLayout::kButtonRowSpan + 1;
+    }
+    else if (frameDebugData.pauseGameSettingsActive)
+    {
+        panelTopRow = detail::PauseMenuLayout::pauseGameTitleRow(th) - 2;
+        panelBottomRow = detail::PauseMenuLayout::pauseGameBackButtonRow(th) + detail::PauseMenuLayout::kButtonRowSpan + 1;
+    }
+    else
+    {
+        const int firstButtonRow = detail::PauseMenuLayout::mainPauseMenuFirstButtonRow(th);
+        panelTopRow = std::max(2, firstButtonRow - 4);
+        panelBottomRow = firstButtonRow + 4 * detail::PauseMenuLayout::kButtonPitch + detail::PauseMenuLayout::kButtonRowSpan + 1;
+    }
+
+    drawPanel(
+        gridRectFromChars(
+            grid,
+            centerCol - 4,
+            panelTopRow,
+            kWide + 8,
+            std::max(10, panelBottomRow - panelTopRow + 1)),
+        glm::vec3(0.08f, 0.12f, 0.18f),
+        glm::vec3(0.34f, 0.47f, 0.62f),
+        glm::vec3(0.84f, 0.74f, 0.36f),
+        0.93f);
+
+    if (frameDebugData.pauseSoundSettingsActive)
+    {
+        const int hovered = frameDebugData.pauseSoundSettingsHoveredControl;
+        drawButtonPanel(detail::PauseMenuLayout::pauseSoundMusicButtonRow(th), hovered == 1 || hovered == 2);
+        drawButtonPanel(detail::PauseMenuLayout::pauseSoundSfxButtonRow(th), hovered == 3 || hovered == 4);
+        drawButtonPanel(detail::PauseMenuLayout::pauseSoundBackButtonRow(th), hovered == 0);
+        return;
+    }
+
+    if (frameDebugData.pauseGameSettingsActive)
+    {
+        const int hovered = frameDebugData.pauseGameSettingsHoveredControl;
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameMobButtonRow(th), hovered == 1);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameBiomeButtonRow(th), hovered == 2);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameTravelButtonRow(th), hovered == 3);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameWeatherButtonRow(th), hovered == 4);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameBackButtonRow(th), hovered == 0);
+        return;
+    }
+
+    const int firstButtonRow = detail::PauseMenuLayout::mainPauseMenuFirstButtonRow(th);
+    const int hovered = frameDebugData.pauseMenuHoveredButton;
+    constexpr int kPitch = detail::PauseMenuLayout::kButtonPitch;
+    for (int buttonIndex = 0; buttonIndex < 5; ++buttonIndex)
+    {
+        drawButtonPanel(firstButtonRow + buttonIndex * kPitch, hovered == buttonIndex);
+    }
+}
+
 void Renderer::drawMainMenuBackground()
 {
+    static bool loggedReady = false;
+    static bool loggedSkipped = false;
     if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
         || mainMenuBackgroundTextureHandle_ == UINT16_MAX || width_ == 0 || height_ == 0
         || mainMenuBackgroundWidthPx_ == 0 || mainMenuBackgroundHeightPx_ == 0)
     {
+        if (!loggedSkipped)
+        {
+            core::logWarning(fmt::format(
+                "[menu-bg] skipped: program={} sampler={} texture={} win={}x{} tex={}x{}",
+                inventoryUiProgramHandle_,
+                inventoryUiSamplerHandle_,
+                mainMenuBackgroundTextureHandle_,
+                width_,
+                height_,
+                mainMenuBackgroundWidthPx_,
+                mainMenuBackgroundHeightPx_));
+            loggedSkipped = true;
+        }
         return;
     }
     if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
     {
+        if (!loggedSkipped)
+        {
+            core::logWarning("[menu-bg] skipped: transient vertex buffer unavailable");
+            loggedSkipped = true;
+        }
         return;
     }
     if (bgfx::getAvailTransientIndexBuffer(6) < 6)
     {
+        if (!loggedSkipped)
+        {
+            core::logWarning("[menu-bg] skipped: transient index buffer unavailable");
+            loggedSkipped = true;
+        }
         return;
+    }
+    if (!loggedReady)
+    {
+        core::logInfo(fmt::format(
+            "[menu-bg] drawing texture={} size={}x{} in window={}x{}",
+            mainMenuBackgroundTextureHandle_,
+            mainMenuBackgroundWidthPx_,
+            mainMenuBackgroundHeightPx_,
+            width_,
+            height_));
+        loggedReady = true;
     }
 
     const float winW = static_cast<float>(width_);
@@ -1957,7 +2431,7 @@ void Renderer::drawMainMenuBackground()
         1000.0f,
         0.0f,
         bgfx::getCaps()->homogeneousDepth);
-    bgfx::setViewTransform(detail::kMainView, view, proj);
+    bgfx::setViewTransform(detail::kUiView, view, proj);
 
     const float identity[16] = {
         1.0f, 0.0f, 0.0f, 0.0f,
@@ -1996,8 +2470,8 @@ void Renderer::drawMainMenuBackground()
         detail::toUniformHandle(inventoryUiSamplerHandle_),
         detail::toTextureHandle(mainMenuBackgroundTextureHandle_));
     bgfx::setState(
-        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_ALWAYS);
-    bgfx::submit(detail::kMainView, detail::toProgramHandle(inventoryUiProgramHandle_));
+        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
+    bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
 }
 
 void Renderer::drawMainMenuLogo()
@@ -2175,27 +2649,6 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
     const float rotationRadians = (baseRotationDeg - swingEase * 28.0f) * (3.1415926535f / 180.0f);
     const float cosA = std::cos(rotationRadians);
     const float sinA = std::sin(rotationRadians);
-    const auto rotatePoint = [centerX, centerY, cosA, sinA](const float x, const float y)
-    {
-        return glm::vec2{
-            centerX + x * cosA - y * sinA,
-            centerY + x * sinA + y * cosA,
-        };
-    };
-
-    const glm::vec2 p0 = rotatePoint(-halfW, -halfH);
-    const glm::vec2 p1 = rotatePoint(+halfW, -halfH);
-    const glm::vec2 p2 = rotatePoint(+halfW, +halfH);
-    const glm::vec2 p3 = rotatePoint(-halfW, +halfH);
-
-    if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
-    {
-        return;
-    }
-    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
-    {
-        return;
-    }
 
     float view[16];
     bx::mtxIdentity(view);
@@ -2219,37 +2672,71 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
         0.0f, 0.0f, 0.0f, 1.0f,
     };
     bgfx::setTransform(identity);
+    const auto submitLayer = [&](const float offsetX,
+                                 const float offsetY,
+                                 const float scaleX,
+                                 const float scaleY,
+                                 const std::uint32_t abgr)
+    {
+        if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
+        {
+            return false;
+        }
+        if (bgfx::getAvailTransientIndexBuffer(6) < 6)
+        {
+            return false;
+        }
 
-    detail::ChunkVertex vertices[4] = {
-        detail::ChunkVertex{.x = p0.x, .y = p0.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = minV, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = p1.x, .y = p1.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = minV, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = p2.x, .y = p2.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = maxV, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = p3.x, .y = p3.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = maxV, .abgr = 0xffffffff},
+        const auto rotatePoint = [centerX, centerY, cosA, sinA, offsetX, offsetY](const float x, const float y)
+        {
+            return glm::vec2{
+                centerX + offsetX + x * cosA - y * sinA,
+                centerY + offsetY + x * sinA + y * cosA,
+            };
+        };
+
+        const glm::vec2 p0 = rotatePoint(-halfW * scaleX, -halfH * scaleY);
+        const glm::vec2 p1 = rotatePoint(+halfW * scaleX, -halfH * scaleY);
+        const glm::vec2 p2 = rotatePoint(+halfW * scaleX, +halfH * scaleY);
+        const glm::vec2 p3 = rotatePoint(-halfW * scaleX, +halfH * scaleY);
+
+        detail::ChunkVertex vertices[4] = {
+            detail::ChunkVertex{.x = p0.x, .y = p0.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = minV, .abgr = abgr},
+            detail::ChunkVertex{.x = p1.x, .y = p1.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = minV, .abgr = abgr},
+            detail::ChunkVertex{.x = p2.x, .y = p2.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = maxV, .abgr = abgr},
+            detail::ChunkVertex{.x = p3.x, .y = p3.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = maxV, .abgr = abgr},
+        };
+
+        bgfx::TransientVertexBuffer tvb{};
+        bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
+        std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+        bgfx::TransientIndexBuffer tib{};
+        bgfx::allocTransientIndexBuffer(&tib, 6);
+        auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+        indices[0] = 0;
+        indices[1] = 1;
+        indices[2] = 2;
+        indices[3] = 0;
+        indices[4] = 2;
+        indices[5] = 3;
+
+        bgfx::setVertexBuffer(0, &tvb);
+        bgfx::setIndexBuffer(&tib);
+        bgfx::setTexture(
+            0,
+            detail::toUniformHandle(inventoryUiSamplerHandle_),
+            detail::toTextureHandle(textureHandle));
+        bgfx::setState(
+            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
+        bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
+        return true;
     };
 
-    bgfx::TransientVertexBuffer tvb{};
-    bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
-    std::memcpy(tvb.data, vertices, sizeof(vertices));
-
-    bgfx::TransientIndexBuffer tib{};
-    bgfx::allocTransientIndexBuffer(&tib, 6);
-    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
-    indices[0] = 0;
-    indices[1] = 1;
-    indices[2] = 2;
-    indices[3] = 0;
-    indices[4] = 2;
-    indices[5] = 3;
-
-    bgfx::setVertexBuffer(0, &tvb);
-    bgfx::setIndexBuffer(&tib);
-    bgfx::setTexture(
-        0,
-        detail::toUniformHandle(inventoryUiSamplerHandle_),
-        detail::toTextureHandle(textureHandle));
-    bgfx::setState(
-        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
-    bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
+    const bool usesSwordPose = selectedSlot.heldItemUsesSwordPose;
+    const float squashX = usesSwordPose ? 1.01f : 0.98f;
+    const float squashY = usesSwordPose ? 1.02f : 1.01f;
+    static_cast<void>(submitLayer(0.0f, 0.0f, squashX, squashY, 0xffffffff));
 }
 
 void Renderer::drawCrosshairOverlay()
