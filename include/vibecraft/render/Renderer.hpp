@@ -118,6 +118,9 @@ struct FrameDebugData
         vibecraft::world::BlockType blockType = vibecraft::world::BlockType::Air;
         std::uint32_t count = 0;
         HudItemKind itemKind = HudItemKind::None;
+        /// Damageable item durability (0/0 means no durability bar).
+        std::uint16_t durabilityRemaining = 0;
+        std::uint16_t durabilityMax = 0;
         /// True when the held item should use the first-person sword pose (all sword tiers).
         bool heldItemUsesSwordPose = false;
     };
@@ -208,6 +211,15 @@ struct FrameDebugData
     };
     std::vector<WorldBirdHud> worldBirds;
 
+    struct ChatLineHud
+    {
+        std::string text;
+        bool isError = false;
+    };
+    std::vector<ChatLineHud> chatLines;
+    bool chatOpen = false;
+    std::string chatInputLine;
+
     /// When true, the 3D view and in-game HUD are hidden and the title menu is drawn instead.
     bool mainMenuActive = false;
     /// Index of the menu control under the cursor, or -1 (ids match hitTestMainMenu).
@@ -259,6 +271,8 @@ struct FrameDebugData
     bool pauseGameSettingsActive = false;
     int pauseGameSettingsHoveredControl = -1;
     bool mobSpawningEnabled = true;
+    bool pauseCreativeModeEnabled = false;
+    std::string pauseDifficultyLabel;
     std::string pauseSpawnBiomeLabel;
     std::string pauseWeatherLabel;
     bool craftingMenuActive = false;
@@ -317,7 +331,7 @@ class Renderer
         std::uint16_t textWidth,
         std::uint16_t textHeight);
 
-    /// Pause game options: 0 Back, 1 Mob spawning toggle, 2 Spawn biome cycle, 3 Travel now, 4 Weather cycle.
+    /// Pause game options: 0 Back, 1 Mob spawning, 2 Creative mode, 3 Difficulty, 4 Spawn biome, 5 Travel now, 6 Weather.
     [[nodiscard]] static int hitTestPauseGameSettingsMenu(
         float mouseX,
         float mouseY,

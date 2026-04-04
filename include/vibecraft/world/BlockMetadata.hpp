@@ -43,6 +43,38 @@ struct BlockMetadata
 // Standard tiles are interpreted with Minecraft-style material semantics.
 [[nodiscard]] constexpr BlockMetadata blockMetadata(const BlockType blockType)
 {
+    if (const DoorFamily doorFamily = doorFamilyForBlockType(blockType);
+        doorFamily != DoorFamily::None)
+    {
+        std::uint8_t tileIndex = 108;
+        float hardness = 3.0f;
+        switch (doorFamily)
+        {
+        case DoorFamily::Oak:
+            tileIndex = isDoorUpperHalf(blockType) ? 109 : 108;
+            hardness = 3.0f;
+            break;
+        case DoorFamily::Jungle:
+            tileIndex = isDoorUpperHalf(blockType) ? 111 : 110;
+            hardness = 3.0f;
+            break;
+        case DoorFamily::Iron:
+            tileIndex = isDoorUpperHalf(blockType) ? 113 : 112;
+            hardness = 5.0f;
+            break;
+        case DoorFamily::None:
+        default:
+            break;
+        }
+
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = tileIndex, .bottom = tileIndex, .side = tileIndex},
+            .hardness = hardness,
+            .breakable = true,
+        };
+    }
+
     switch (blockType)
     {
     case BlockType::Grass:
@@ -298,10 +330,87 @@ struct BlockMetadata
             .breakable = true,
         };
     case BlockType::Torch:
+    case BlockType::TorchNorth:
+    case BlockType::TorchEast:
+    case BlockType::TorchSouth:
+    case BlockType::TorchWest:
         return {
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 36, .bottom = 36, .side = 36},
             .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::Ladder:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 107, .bottom = 107, .side = 107},
+            .hardness = 0.4f,
+            .breakable = true,
+        };
+    case BlockType::OakStairs:
+    case BlockType::OakStairsNorth:
+    case BlockType::OakStairsEast:
+    case BlockType::OakStairsSouth:
+    case BlockType::OakStairsWest:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 17, .bottom = 17, .side = 17},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
+    case BlockType::JungleStairs:
+    case BlockType::JungleStairsNorth:
+    case BlockType::JungleStairsEast:
+    case BlockType::JungleStairsSouth:
+    case BlockType::JungleStairsWest:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 65, .bottom = 65, .side = 65},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
+    case BlockType::CobblestoneStairs:
+    case BlockType::CobblestoneStairsNorth:
+    case BlockType::CobblestoneStairsEast:
+    case BlockType::CobblestoneStairsSouth:
+    case BlockType::CobblestoneStairsWest:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 18, .bottom = 18, .side = 18},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
+    case BlockType::StoneStairs:
+    case BlockType::StoneStairsNorth:
+    case BlockType::StoneStairsEast:
+    case BlockType::StoneStairsSouth:
+    case BlockType::StoneStairsWest:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 3, .bottom = 3, .side = 3},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
+    case BlockType::BrickStairs:
+    case BlockType::BrickStairsNorth:
+    case BlockType::BrickStairsEast:
+    case BlockType::BrickStairsSouth:
+    case BlockType::BrickStairsWest:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 41, .bottom = 41, .side = 41},
+            .hardness = 2.0f,
+            .breakable = true,
+        };
+    case BlockType::SandstoneStairs:
+    case BlockType::SandstoneStairsNorth:
+    case BlockType::SandstoneStairsEast:
+    case BlockType::SandstoneStairsSouth:
+    case BlockType::SandstoneStairsWest:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 89, .bottom = 90, .side = 19},
+            .hardness = 0.8f,
             .breakable = true,
         };
     case BlockType::TNT:

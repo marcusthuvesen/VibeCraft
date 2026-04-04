@@ -2,6 +2,7 @@
 
 #include <glm/vec3.hpp>
 
+#include <deque>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -72,6 +73,7 @@ class World
     [[nodiscard]] std::vector<ChunkCoord> dirtyChunkCoords() const;
     [[nodiscard]] std::uint32_t totalVisibleFaces() const;
     void tickFluids(std::size_t maxUpdates = 96);
+    void tickLeafDecay(std::size_t maxUpdates = 8);
 
     void rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher);
     void rebuildDirtyMeshes(
@@ -102,10 +104,28 @@ class World
         std::uint8_t horizontalDistance = 0;
     };
 
+    struct OrganicDecayCell
+    {
+        int x = 0;
+        int y = 0;
+        int z = 0;
+
+        bool operator==(const OrganicDecayCell&) const = default;
+    };
+
+    struct OrganicDecayCellHash
+    {
+        std::size_t operator()(const OrganicDecayCell& cell) const noexcept;
+    };
+
     Chunk& ensureChunk(const ChunkCoord& coord);
     void markChunkDirty(const ChunkCoord& coord);
     bool setBlockUnchecked(int worldX, int y, int worldZ, BlockType blockType);
     void scheduleFluidNeighborhood(int worldX, int y, int worldZ);
+    void enqueueLeafDecayCell(int worldX, int y, int worldZ);
+    void scheduleLeafDecayNeighborhood(int worldX, int y, int worldZ, BlockType removedType);
+    [[nodiscard]] bool leafHasRootSupport(int worldX, int y, int worldZ, BlockType leafType) const;
+    void processLeafDecayCell(const OrganicDecayCell& cell);
     void clearFluidStateForChunk(const ChunkCoord& coord);
     void registerFluidStateForChunk(const Chunk& chunk);
     void processFluidCell(const FluidCell& cell);
@@ -117,5 +137,7 @@ class World
     std::unordered_map<FluidCell, BlockType, FluidCellHash> fluidSources_;
     std::unordered_map<FluidCell, FlowingFluidState, FluidCellHash> flowingFluids_;
     std::unordered_set<FluidCell, FluidCellHash> activeFluidCells_;
+    std::deque<OrganicDecayCell> activeLeafDecayCells_;
+    std::unordered_set<OrganicDecayCell, OrganicDecayCellHash> queuedLeafDecayCells_;
 };
 }  // namespace vibecraft::world

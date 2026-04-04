@@ -339,6 +339,86 @@ TEST_CASE("crafting recipes cover inventory basics and workbench-only outputs")
     CHECK(bambooStickMatch->output.equippedItem == EquippedItem::Stick);
     CHECK(bambooStickMatch->output.count == 1);
 
+    CraftingGridSlots ladderGrid{};
+    ladderGrid[0].equippedItem = EquippedItem::Stick;
+    ladderGrid[0].count = 1;
+    ladderGrid[2].equippedItem = EquippedItem::Stick;
+    ladderGrid[2].count = 1;
+    ladderGrid[3].equippedItem = EquippedItem::Stick;
+    ladderGrid[3].count = 1;
+    ladderGrid[4].equippedItem = EquippedItem::Stick;
+    ladderGrid[4].count = 1;
+    ladderGrid[5].equippedItem = EquippedItem::Stick;
+    ladderGrid[5].count = 1;
+    ladderGrid[6].equippedItem = EquippedItem::Stick;
+    ladderGrid[6].count = 1;
+    ladderGrid[8].equippedItem = EquippedItem::Stick;
+    ladderGrid[8].count = 1;
+    const auto ladderNoBench = vibecraft::app::evaluateCraftingGrid(
+        ladderGrid,
+        CraftingMode::Inventory2x2);
+    CHECK_FALSE(ladderNoBench.has_value());
+    const auto ladderBench = vibecraft::app::evaluateCraftingGrid(
+        ladderGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(ladderBench.has_value());
+    CHECK(ladderBench->output.blockType == BlockType::Ladder);
+    CHECK(ladderBench->output.count == 3);
+
+    CraftingGridSlots oakDoorGrid{};
+    for (const std::size_t i : {std::size_t{0}, std::size_t{1}, std::size_t{3}, std::size_t{4}, std::size_t{6}, std::size_t{7}})
+    {
+        oakDoorGrid[i].blockType = BlockType::OakPlanks;
+        oakDoorGrid[i].count = 1;
+    }
+    const auto oakDoorNoBench = vibecraft::app::evaluateCraftingGrid(
+        oakDoorGrid,
+        CraftingMode::Inventory2x2);
+    CHECK_FALSE(oakDoorNoBench.has_value());
+    const auto oakDoorBench = vibecraft::app::evaluateCraftingGrid(
+        oakDoorGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(oakDoorBench.has_value());
+    CHECK(oakDoorBench->output.blockType == BlockType::OakDoor);
+    CHECK(oakDoorBench->output.count == 3);
+
+    CraftingGridSlots ironDoorGrid{};
+    for (const std::size_t i : {std::size_t{0}, std::size_t{1}, std::size_t{3}, std::size_t{4}, std::size_t{6}, std::size_t{7}})
+    {
+        ironDoorGrid[i].equippedItem = EquippedItem::IronIngot;
+        ironDoorGrid[i].count = 1;
+    }
+    const auto ironDoorBench = vibecraft::app::evaluateCraftingGrid(
+        ironDoorGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(ironDoorBench.has_value());
+    CHECK(ironDoorBench->output.blockType == BlockType::IronDoor);
+    CHECK(ironDoorBench->output.count == 3);
+
+    CraftingGridSlots stairsGrid{};
+    stairsGrid[0].blockType = BlockType::Cobblestone;
+    stairsGrid[0].count = 1;
+    stairsGrid[3].blockType = BlockType::Cobblestone;
+    stairsGrid[3].count = 1;
+    stairsGrid[4].blockType = BlockType::Cobblestone;
+    stairsGrid[4].count = 1;
+    stairsGrid[6].blockType = BlockType::Cobblestone;
+    stairsGrid[6].count = 1;
+    stairsGrid[7].blockType = BlockType::Cobblestone;
+    stairsGrid[7].count = 1;
+    stairsGrid[8].blockType = BlockType::Cobblestone;
+    stairsGrid[8].count = 1;
+    const auto stairsNoBench = vibecraft::app::evaluateCraftingGrid(
+        stairsGrid,
+        CraftingMode::Inventory2x2);
+    CHECK_FALSE(stairsNoBench.has_value());
+    const auto stairsBench = vibecraft::app::evaluateCraftingGrid(
+        stairsGrid,
+        CraftingMode::Workbench3x3);
+    REQUIRE(stairsBench.has_value());
+    CHECK(stairsBench->output.blockType == BlockType::CobblestoneStairs);
+    CHECK(stairsBench->output.count == 4);
+
     CraftingGridSlots bookshelfGrid{};
     for (const std::size_t i : {std::size_t{0}, std::size_t{1}, std::size_t{2}, std::size_t{6}, std::size_t{7}, std::size_t{8}})
     {

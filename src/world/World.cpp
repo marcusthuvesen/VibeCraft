@@ -22,6 +22,11 @@ namespace
 {
 constexpr int kWaterHorizontalReach = 7;
 constexpr int kLavaHorizontalReach = 3;
+constexpr int kLeafDecayQueueRadius = 6;
+constexpr int kLeafDecayQueueBelow = 2;
+constexpr int kLeafDecayQueueAbove = 8;
+constexpr int kLeafSupportSearchRadius = 7;
+constexpr std::size_t kLeafSupportTraversalLimit = 256;
 
 [[nodiscard]] bool isFluidReplaceable(const BlockType blockType)
 {
@@ -32,6 +37,11 @@ constexpr int kLavaHorizontalReach = 3;
 {
     return worldToChunkCoord(worldX, worldZ) == coord;
 }
+
+[[nodiscard]] bool isGroundedTreeSupport(const BlockType blockType)
+{
+    return blockType != BlockType::Air && !isFluid(blockType) && !isLeafBlock(blockType);
+}
 }  // namespace
 
 std::uint32_t World::generationSeed() const
@@ -40,6 +50,14 @@ std::uint32_t World::generationSeed() const
 }
 
 std::size_t World::FluidCellHash::operator()(const FluidCell& cell) const noexcept
+{
+    std::size_t seed = static_cast<std::size_t>(static_cast<std::uint32_t>(cell.x));
+    seed ^= static_cast<std::size_t>(static_cast<std::uint32_t>(cell.y + 0x9e3779b9U)) + (seed << 6U) + (seed >> 2U);
+    seed ^= static_cast<std::size_t>(static_cast<std::uint32_t>(cell.z + 0x85ebca6bU)) + (seed << 6U) + (seed >> 2U);
+    return seed;
+}
+
+std::size_t World::OrganicDecayCellHash::operator()(const OrganicDecayCell& cell) const noexcept
 {
     std::size_t seed = static_cast<std::size_t>(static_cast<std::uint32_t>(cell.x));
     seed ^= static_cast<std::size_t>(static_cast<std::uint32_t>(cell.y + 0x9e3779b9U)) + (seed << 6U) + (seed >> 2U);
@@ -145,6 +163,11 @@ bool World::applyEditCommand(const WorldEditCommand& command)
     if (!chunk.setBlock(localX, command.position.y, localZ, targetType))
     {
         return false;
+    }
+
+    if (command.action == WorldEditAction::Remove && isLogBlock(existingType))
+    {
+        scheduleLeafDecayNeighborhood(command.position.x, command.position.y, command.position.z, existingType);
     }
 
     const FluidCell cell{command.position.x, command.position.y, command.position.z};
@@ -348,6 +371,24 @@ void World::tickFluids(const std::size_t maxUpdates)
     }
 }
 
+void World::tickLeafDecay(const std::size_t maxUpdates)
+{
+    if (maxUpdates == 0 || activeLeafDecayCells_.empty())
+    {
+        return;
+    }
+
+    std::size_t processed = 0;
+    while (processed < maxUpdates && !activeLeafDecayCells_.empty())
+    {
+        const OrganicDecayCell cell = activeLeafDecayCells_.front();
+        activeLeafDecayCells_.pop_front();
+        queuedLeafDecayCells_.erase(cell);
+        processLeafDecayCell(cell);
+        ++processed;
+    }
+}
+
 void World::rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher)
 {
     const std::vector<ChunkCoord> dirtyCoords(dirtyChunks_.begin(), dirtyChunks_.end());
@@ -425,6 +466,8 @@ void World::replaceChunks(ChunkMap chunks)
     fluidSources_.clear();
     flowingFluids_.clear();
     activeFluidCells_.clear();
+    activeLeafDecayCells_.clear();
+    queuedLeafDecayCells_.clear();
 
     for (const auto& [coord, chunk] : chunks_)
     {
@@ -465,6 +508,144 @@ bool World::setBlockUnchecked(const int worldX, const int y, const int worldZ, c
         markChunkDirty(dirtyCoord);
     }
     return true;
+}
+
+void World::enqueueLeafDecayCell(const int worldX, const int y, const int worldZ)
+{
+    if (y < kWorldMinY || y > kWorldMaxY)
+    {
+        return;
+    }
+
+    const OrganicDecayCell cell{worldX, y, worldZ};
+    if (queuedLeafDecayCells_.insert(cell).second)
+    {
+        activeLeafDecayCells_.push_back(cell);
+    }
+}
+
+void World::scheduleLeafDecayNeighborhood(
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const BlockType removedType)
+{
+    const BlockType leafType = leafBlockForLog(removedType);
+    if (!isLeafBlock(leafType))
+    {
+        return;
+    }
+
+    for (int dy = -kLeafDecayQueueBelow; dy <= kLeafDecayQueueAbove; ++dy)
+    {
+        for (int dz = -kLeafDecayQueueRadius; dz <= kLeafDecayQueueRadius; ++dz)
+        {
+            for (int dx = -kLeafDecayQueueRadius; dx <= kLeafDecayQueueRadius; ++dx)
+            {
+                if (blockAt(worldX + dx, y + dy, worldZ + dz) == leafType)
+                {
+                    enqueueLeafDecayCell(worldX + dx, y + dy, worldZ + dz);
+                }
+            }
+        }
+    }
+}
+
+bool World::leafHasRootSupport(const int worldX, const int y, const int worldZ, const BlockType leafType) const
+{
+    const BlockType logType = logBlockForLeaf(leafType);
+    if (!isLogBlock(logType))
+    {
+        return true;
+    }
+
+    std::deque<OrganicDecayCell> pending;
+    std::unordered_set<OrganicDecayCell, OrganicDecayCellHash> visited;
+    const OrganicDecayCell origin{worldX, y, worldZ};
+    pending.push_back(origin);
+    visited.insert(origin);
+
+    constexpr std::array<std::array<int, 3>, 6> kNeighborOffsets{{
+        {{1, 0, 0}},
+        {{-1, 0, 0}},
+        {{0, 1, 0}},
+        {{0, -1, 0}},
+        {{0, 0, 1}},
+        {{0, 0, -1}},
+    }};
+
+    while (!pending.empty() && visited.size() <= kLeafSupportTraversalLimit)
+    {
+        const OrganicDecayCell cell = pending.front();
+        pending.pop_front();
+        const BlockType blockType = blockAt(cell.x, cell.y, cell.z);
+        if (blockType != leafType && blockType != logType)
+        {
+            continue;
+        }
+
+        if (blockType == logType)
+        {
+            const BlockType below = blockAt(cell.x, cell.y - 1, cell.z);
+            if (below != logType && isGroundedTreeSupport(below))
+            {
+                return true;
+            }
+        }
+
+        for (const auto& offset : kNeighborOffsets)
+        {
+            const OrganicDecayCell neighbor{
+                cell.x + offset[0],
+                cell.y + offset[1],
+                cell.z + offset[2],
+            };
+            if (std::abs(neighbor.x - worldX) > kLeafSupportSearchRadius
+                || std::abs(neighbor.y - y) > kLeafSupportSearchRadius
+                || std::abs(neighbor.z - worldZ) > kLeafSupportSearchRadius)
+            {
+                continue;
+            }
+            if (visited.insert(neighbor).second)
+            {
+                pending.push_back(neighbor);
+            }
+        }
+    }
+
+    return false;
+}
+
+void World::processLeafDecayCell(const OrganicDecayCell& cell)
+{
+    const BlockType leafType = blockAt(cell.x, cell.y, cell.z);
+    if (!isLeafBlock(leafType) || leafHasRootSupport(cell.x, cell.y, cell.z, leafType))
+    {
+        return;
+    }
+
+    if (!setBlockUnchecked(cell.x, cell.y, cell.z, BlockType::Air))
+    {
+        return;
+    }
+
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+        for (int dz = -1; dz <= 1; ++dz)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                if (dx == 0 && dy == 0 && dz == 0)
+                {
+                    continue;
+                }
+                if (blockAt(cell.x + dx, cell.y + dy, cell.z + dz) == leafType)
+                {
+                    enqueueLeafDecayCell(cell.x + dx, cell.y + dy, cell.z + dz);
+                }
+            }
+        }
+    }
 }
 
 void World::scheduleFluidNeighborhood(const int worldX, const int y, const int worldZ)

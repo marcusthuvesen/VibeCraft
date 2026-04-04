@@ -149,7 +149,7 @@ constexpr int kButtonGapRows = 2;
 constexpr int kButtonPitch = kButtonRowSpan + kButtonGapRows;
 constexpr int kMainButtonCount = 5;
 constexpr int kPauseSoundButtonCount = 3;
-constexpr int kPauseGameButtonCount = 5;
+constexpr int kPauseGameButtonCount = 7;
 
 [[nodiscard]] inline int mainPauseMenuTotalRows()
 {
@@ -217,9 +217,19 @@ constexpr int kPauseGameButtonCount = 5;
     return pauseGameFirstButtonRow(textHeight);
 }
 
-[[nodiscard]] inline int pauseGameBiomeButtonRow(const int textHeight)
+[[nodiscard]] inline int pauseGameCreativeButtonRow(const int textHeight)
 {
     return pauseGameMobButtonRow(textHeight) + kButtonPitch;
+}
+
+[[nodiscard]] inline int pauseGameDifficultyButtonRow(const int textHeight)
+{
+    return pauseGameCreativeButtonRow(textHeight) + kButtonPitch;
+}
+
+[[nodiscard]] inline int pauseGameBiomeButtonRow(const int textHeight)
+{
+    return pauseGameDifficultyButtonRow(textHeight) + kButtonPitch;
 }
 
 [[nodiscard]] inline int pauseGameTravelButtonRow(const int textHeight)
@@ -247,7 +257,8 @@ constexpr int kSoundSliderFillChars = 18;
 
 constexpr int kGameTitleRow = 3;
 constexpr int kGameMobButtonRow = 6;
-constexpr int kGameBiomeButtonRow = kGameMobButtonRow + kButtonPitch;
+constexpr int kGameDifficultyButtonRow = kGameMobButtonRow + kButtonPitch;
+constexpr int kGameBiomeButtonRow = kGameDifficultyButtonRow + kButtonPitch;
 constexpr int kGameTravelButtonRow = kGameBiomeButtonRow + kButtonPitch;
 constexpr int kGameWeatherButtonRow = kGameTravelButtonRow + kButtonPitch;
 constexpr int kGameBackButtonRow = kGameWeatherButtonRow + kButtonPitch;
@@ -264,6 +275,16 @@ struct MainMenuComputedLayout
     std::array<int, 5> buttonTopRows{};
     int iconHintsRow = 1;
 };
+
+/// Pixel sizing for the title logo; keep in sync with `Renderer::drawMainMenuLogo`.
+namespace MainMenuLogoDraw
+{
+inline constexpr float kMarginTopPx = 28.0f;
+inline constexpr float kMaxWidthFrac = 0.94f;
+inline constexpr float kMaxWidthCapPx = 1120.0f;
+inline constexpr float kMaxHeightFrac = 0.38f;
+inline constexpr float kMaxHeightCapPx = 400.0f;
+}  // namespace MainMenuLogoDraw
 
 /// Dbg-text rows consumed by `drawMainMenuLogo` (plus one gap); 0 if no logo.
 [[nodiscard]] int mainMenuLogoReservedDbgRows(
@@ -390,6 +411,7 @@ void drawBagHud(
     std::uint16_t row1,
     std::uint16_t row2,
     const FrameDebugData& frameDebugData);
+void drawChatOverlay(const FrameDebugData& frameDebugData, std::uint16_t textWidth, std::uint16_t textHeight);
 
 void drawMainMenuOverlay(
     const FrameDebugData& frameDebugData,

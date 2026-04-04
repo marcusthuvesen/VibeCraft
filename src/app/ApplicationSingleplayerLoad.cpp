@@ -45,6 +45,7 @@ void Application::beginSingleplayerLoad()
     mainMenuSoundSettingsOpen_ = false;
     mainMenuNotice_.clear();
     window_.setTextInputActive(false);
+    chatState_ = {};
     mouseCaptured_ = false;
     window_.setRelativeMouseMode(false);
     inputState_.clearMouseMotion();
@@ -160,6 +161,10 @@ void Application::beginSingleplayerLoad()
     }
     else
     {
+        if (creativeModeEnabled_)
+        {
+            applyCreativeInventoryLoadout(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+        }
         mainMenuNotice_ = fmt::format("Entering {}.", activeSingleplayerWorldDisplayName_);
     }
 }

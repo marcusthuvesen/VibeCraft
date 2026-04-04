@@ -55,9 +55,9 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
         || blockType == BlockType::BlueOrchid || blockType == BlockType::Allium
         || blockType == BlockType::OxeyeDaisy || blockType == BlockType::BrownMushroom
         || blockType == BlockType::RedMushroom || blockType == BlockType::Vines
+        || blockType == BlockType::Ladder
         || blockType == BlockType::Bamboo
         || blockType == BlockType::Fern
-        || blockType == BlockType::Torch
         || blockType == BlockType::GrassTuft || blockType == BlockType::FlowerTuft
         || blockType == BlockType::DryTuft || blockType == BlockType::LushTuft
         || blockType == BlockType::FrostTuft || blockType == BlockType::SparseTuft
@@ -70,9 +70,9 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
     {
         return 0.33f;
     }
-    if (blockType == BlockType::Torch)
+    if (blockType == BlockType::Ladder)
     {
-        return 0.40f;
+        return 0.42f;
     }
     return 0.18f;
 }
@@ -88,6 +88,14 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
         || blockType == BlockType::Poppy || blockType == BlockType::BlueOrchid
         || blockType == BlockType::Allium || blockType == BlockType::OxeyeDaisy
         || blockType == BlockType::BrownMushroom || blockType == BlockType::RedMushroom;
+}
+
+[[nodiscard]] constexpr bool usesTuftTriCrossMesh(const BlockType blockType)
+{
+    return blockType == BlockType::GrassTuft || blockType == BlockType::FlowerTuft
+        || blockType == BlockType::DryTuft || blockType == BlockType::LushTuft
+        || blockType == BlockType::FrostTuft || blockType == BlockType::SparseTuft
+        || blockType == BlockType::CloverTuft || blockType == BlockType::SproutTuft;
 }
 
 [[nodiscard]] std::uint32_t hash32(const int x, const int y, const int z, const std::uint32_t seed)
@@ -333,15 +341,40 @@ struct TorchEmitter
             {
                 for (int y = vibecraft::world::kWorldMinY; y <= vibecraft::world::kWorldMaxY; ++y)
                 {
-                    if (blockFromStorage(storage, localX, y, localZ) != BlockType::Torch)
+                    const BlockType torchBlockType = blockFromStorage(storage, localX, y, localZ);
+                    if (!vibecraft::world::isTorchBlock(torchBlockType))
                     {
                         continue;
                     }
-
+                    float emitterOffsetX = 0.5f;
+                    float emitterOffsetY = 0.72f;
+                    float emitterOffsetZ = 0.5f;
+                    switch (torchBlockType)
+                    {
+                    case BlockType::TorchNorth:
+                        emitterOffsetZ = 0.30f;
+                        emitterOffsetY = 0.80f;
+                        break;
+                    case BlockType::TorchEast:
+                        emitterOffsetX = 0.70f;
+                        emitterOffsetY = 0.80f;
+                        break;
+                    case BlockType::TorchSouth:
+                        emitterOffsetZ = 0.70f;
+                        emitterOffsetY = 0.80f;
+                        break;
+                    case BlockType::TorchWest:
+                        emitterOffsetX = 0.30f;
+                        emitterOffsetY = 0.80f;
+                        break;
+                    case BlockType::Torch:
+                    default:
+                        break;
+                    }
                     emitters.push_back(TorchEmitter{
-                        .x = static_cast<float>(chunkBaseX + localX) + 0.5f,
-                        .y = static_cast<float>(y) + 0.7f,
-                        .z = static_cast<float>(chunkBaseZ + localZ) + 0.5f,
+                        .x = static_cast<float>(chunkBaseX + localX) + emitterOffsetX,
+                        .y = static_cast<float>(y) + emitterOffsetY,
+                        .z = static_cast<float>(chunkBaseZ + localZ) + emitterOffsetZ,
                     });
                 }
             }
@@ -413,6 +446,585 @@ void appendCustomQuad(
     meshData.indices.push_back(baseIndex + 2);
     meshData.indices.push_back(baseIndex + 3);
     ++meshData.faceCount;
+}
+
+enum class StairFacing : std::uint8_t
+{
+    North = 0,
+    East,
+    South,
+    West
+};
+
+enum class TorchFacing : std::uint8_t
+{
+    Standing = 0,
+    North,
+    East,
+    South,
+    West
+};
+
+[[nodiscard]] TorchFacing torchFacingForBlockType(const BlockType blockType)
+{
+    switch (blockType)
+    {
+    case BlockType::TorchNorth:
+        return TorchFacing::North;
+    case BlockType::TorchEast:
+        return TorchFacing::East;
+    case BlockType::TorchSouth:
+        return TorchFacing::South;
+    case BlockType::TorchWest:
+        return TorchFacing::West;
+    case BlockType::Torch:
+    default:
+        return TorchFacing::Standing;
+    }
+}
+
+[[nodiscard]] StairFacing stairFacingForBlockType(const BlockType blockType)
+{
+    switch (blockType)
+    {
+    case BlockType::OakStairsNorth:
+    case BlockType::CobblestoneStairsNorth:
+    case BlockType::StoneStairsNorth:
+    case BlockType::BrickStairsNorth:
+    case BlockType::SandstoneStairsNorth:
+    case BlockType::JungleStairsNorth:
+        return StairFacing::North;
+    case BlockType::OakStairsEast:
+    case BlockType::CobblestoneStairsEast:
+    case BlockType::StoneStairsEast:
+    case BlockType::BrickStairsEast:
+    case BlockType::SandstoneStairsEast:
+    case BlockType::JungleStairsEast:
+        return StairFacing::East;
+    case BlockType::OakStairsWest:
+    case BlockType::CobblestoneStairsWest:
+    case BlockType::StoneStairsWest:
+    case BlockType::BrickStairsWest:
+    case BlockType::SandstoneStairsWest:
+    case BlockType::JungleStairsWest:
+        return StairFacing::West;
+    case BlockType::OakStairs:
+    case BlockType::OakStairsSouth:
+    case BlockType::CobblestoneStairs:
+    case BlockType::CobblestoneStairsSouth:
+    case BlockType::StoneStairs:
+    case BlockType::StoneStairsSouth:
+    case BlockType::BrickStairs:
+    case BlockType::BrickStairsSouth:
+    case BlockType::SandstoneStairs:
+    case BlockType::SandstoneStairsSouth:
+    case BlockType::JungleStairs:
+    case BlockType::JungleStairsSouth:
+    default:
+        return StairFacing::South;
+    }
+}
+
+void appendBoxQuads(
+    ChunkMeshData& meshData,
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const float x0,
+    const float x1,
+    const float y0,
+    const float y1,
+    const float z0,
+    const float z1,
+    const std::uint8_t topTile,
+    const std::uint8_t bottomTile,
+    const std::uint8_t sideTile,
+    const std::uint32_t abgr)
+{
+    constexpr std::array<std::array<float, 2>, 4> kUv{{
+        {0.0f, 1.0f},
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+        {1.0f, 1.0f},
+    }};
+    const float wx = static_cast<float>(worldX);
+    const float wy = static_cast<float>(y);
+    const float wz = static_cast<float>(worldZ);
+
+    appendCustomQuad(
+        meshData,
+        {{{wx + x1, wy + y0, wz + z0}, {wx + x1, wy + y1, wz + z0}, {wx + x1, wy + y1, wz + z1}, {wx + x1, wy + y0, wz + z1}}},
+        kUv,
+        {1.0f, 0.0f, 0.0f},
+        sideTile,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + x0, wy + y0, wz + z1}, {wx + x0, wy + y1, wz + z1}, {wx + x0, wy + y1, wz + z0}, {wx + x0, wy + y0, wz + z0}}},
+        kUv,
+        {-1.0f, 0.0f, 0.0f},
+        sideTile,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + x0, wy + y1, wz + z1}, {wx + x1, wy + y1, wz + z1}, {wx + x1, wy + y1, wz + z0}, {wx + x0, wy + y1, wz + z0}}},
+        kUv,
+        {0.0f, 1.0f, 0.0f},
+        topTile,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + x0, wy + y0, wz + z0}, {wx + x1, wy + y0, wz + z0}, {wx + x1, wy + y0, wz + z1}, {wx + x0, wy + y0, wz + z1}}},
+        kUv,
+        {0.0f, -1.0f, 0.0f},
+        bottomTile,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + x1, wy + y0, wz + z1}, {wx + x1, wy + y1, wz + z1}, {wx + x0, wy + y1, wz + z1}, {wx + x0, wy + y0, wz + z1}}},
+        kUv,
+        {0.0f, 0.0f, 1.0f},
+        sideTile,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + x0, wy + y0, wz + z0}, {wx + x0, wy + y1, wz + z0}, {wx + x1, wy + y1, wz + z0}, {wx + x1, wy + y0, wz + z0}}},
+        kUv,
+        {0.0f, 0.0f, -1.0f},
+        sideTile,
+        abgr);
+}
+
+void appendStairsGeometry(
+    ChunkMeshData& meshData,
+    const BlockType blockType,
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const std::uint32_t abgr)
+{
+    const vibecraft::world::BlockMetadata metadata = vibecraft::world::blockMetadata(blockType);
+    const std::uint8_t topTile = metadata.textureTiles.top;
+    const std::uint8_t bottomTile = metadata.textureTiles.bottom;
+    const std::uint8_t sideTile = metadata.textureTiles.side;
+
+    // Bottom half-slab.
+    appendBoxQuads(
+        meshData,
+        worldX,
+        y,
+        worldZ,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.5f,
+        0.0f,
+        1.0f,
+        topTile,
+        bottomTile,
+        sideTile,
+        abgr);
+
+    switch (stairFacingForBlockType(blockType))
+    {
+    case StairFacing::North:
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.0f,
+            1.0f,
+            0.5f,
+            1.0f,
+            0.0f,
+            0.5f,
+            topTile,
+            bottomTile,
+            sideTile,
+            abgr);
+        break;
+    case StairFacing::East:
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.5f,
+            1.0f,
+            0.5f,
+            1.0f,
+            0.0f,
+            1.0f,
+            topTile,
+            bottomTile,
+            sideTile,
+            abgr);
+        break;
+    case StairFacing::South:
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.0f,
+            1.0f,
+            0.5f,
+            1.0f,
+            0.5f,
+            1.0f,
+            topTile,
+            bottomTile,
+            sideTile,
+            abgr);
+        break;
+    case StairFacing::West:
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.0f,
+            0.5f,
+            0.5f,
+            1.0f,
+            0.0f,
+            1.0f,
+            topTile,
+            bottomTile,
+            sideTile,
+            abgr);
+        break;
+    }
+}
+
+void appendTorchGeometry(
+    ChunkMeshData& meshData,
+    const BlockType blockType,
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const std::uint32_t baseAbgr)
+{
+    const vibecraft::world::BlockMetadata metadata = vibecraft::world::blockMetadata(blockType);
+    const std::uint8_t tileIndex = metadata.textureTiles.side;
+    const std::uint32_t flameAbgr = modulateAbgrRgb(baseAbgr, 1.35f);
+    const TorchFacing facing = torchFacingForBlockType(blockType);
+    constexpr float kStemHalfWidth = 1.0f / 16.0f;
+    constexpr float kCoreHalfWidth = 1.5f / 16.0f;
+    constexpr float kFlameHalfWidth = 2.0f / 16.0f;
+
+    if (facing == TorchFacing::Standing)
+    {
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.5f - kStemHalfWidth,
+            0.5f + kStemHalfWidth,
+            0.0f,
+            0.60f,
+            0.5f - kStemHalfWidth,
+            0.5f + kStemHalfWidth,
+            tileIndex,
+            tileIndex,
+            tileIndex,
+            baseAbgr);
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.5f - kCoreHalfWidth,
+            0.5f + kCoreHalfWidth,
+            0.60f,
+            0.78f,
+            0.5f - kCoreHalfWidth,
+            0.5f + kCoreHalfWidth,
+            tileIndex,
+            tileIndex,
+            tileIndex,
+            baseAbgr);
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.5f - kFlameHalfWidth,
+            0.5f + kFlameHalfWidth,
+            0.78f,
+            0.92f,
+            0.5f - kFlameHalfWidth,
+            0.5f + kFlameHalfWidth,
+            tileIndex,
+            tileIndex,
+            tileIndex,
+            flameAbgr);
+        return;
+    }
+
+    auto appendWallTorch = [&](const bool negativeDirection, const bool alongZAxis)
+    {
+        if (alongZAxis)
+        {
+            const float baseZ = negativeDirection ? 0.84f : 0.16f;
+            const float midZ = negativeDirection ? 0.67f : 0.33f;
+            const float tipZ = negativeDirection ? 0.50f : 0.50f;
+            const float flameCenterZ = negativeDirection ? 0.39f : 0.61f;
+            appendBoxQuads(
+                meshData,
+                worldX,
+                y,
+                worldZ,
+                0.5f - kStemHalfWidth,
+                0.5f + kStemHalfWidth,
+                0.18f,
+                0.36f,
+                std::min(baseZ, midZ) - kStemHalfWidth,
+                std::max(baseZ, midZ) + kStemHalfWidth,
+                tileIndex,
+                tileIndex,
+                tileIndex,
+                baseAbgr);
+            appendBoxQuads(
+                meshData,
+                worldX,
+                y,
+                worldZ,
+                0.5f - kStemHalfWidth,
+                0.5f + kStemHalfWidth,
+                0.36f,
+                0.56f,
+                std::min(midZ, tipZ) - kStemHalfWidth,
+                std::max(midZ, tipZ) + kStemHalfWidth,
+                tileIndex,
+                tileIndex,
+                tileIndex,
+                baseAbgr);
+            appendBoxQuads(
+                meshData,
+                worldX,
+                y,
+                worldZ,
+                0.5f - kCoreHalfWidth,
+                0.5f + kCoreHalfWidth,
+                0.56f,
+                0.74f,
+                std::min(tipZ, flameCenterZ) - kCoreHalfWidth,
+                std::max(tipZ, flameCenterZ) + kCoreHalfWidth,
+                tileIndex,
+                tileIndex,
+                tileIndex,
+                baseAbgr);
+            appendBoxQuads(
+                meshData,
+                worldX,
+                y,
+                worldZ,
+                0.5f - kFlameHalfWidth,
+                0.5f + kFlameHalfWidth,
+                0.74f,
+                0.90f,
+                flameCenterZ - kFlameHalfWidth,
+                flameCenterZ + kFlameHalfWidth,
+                tileIndex,
+                tileIndex,
+                tileIndex,
+                flameAbgr);
+            return;
+        }
+
+        const float baseX = negativeDirection ? 0.84f : 0.16f;
+        const float midX = negativeDirection ? 0.67f : 0.33f;
+        const float tipX = 0.50f;
+        const float flameCenterX = negativeDirection ? 0.39f : 0.61f;
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            std::min(baseX, midX) - kStemHalfWidth,
+            std::max(baseX, midX) + kStemHalfWidth,
+            0.18f,
+            0.36f,
+            0.5f - kStemHalfWidth,
+            0.5f + kStemHalfWidth,
+            tileIndex,
+            tileIndex,
+            tileIndex,
+            baseAbgr);
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            std::min(midX, tipX) - kStemHalfWidth,
+            std::max(midX, tipX) + kStemHalfWidth,
+            0.36f,
+            0.56f,
+            0.5f - kStemHalfWidth,
+            0.5f + kStemHalfWidth,
+            tileIndex,
+            tileIndex,
+            tileIndex,
+            baseAbgr);
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            std::min(tipX, flameCenterX) - kCoreHalfWidth,
+            std::max(tipX, flameCenterX) + kCoreHalfWidth,
+            0.56f,
+            0.74f,
+            0.5f - kCoreHalfWidth,
+            0.5f + kCoreHalfWidth,
+            tileIndex,
+            tileIndex,
+            tileIndex,
+            baseAbgr);
+        appendBoxQuads(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            flameCenterX - kFlameHalfWidth,
+            flameCenterX + kFlameHalfWidth,
+            0.74f,
+            0.90f,
+            0.5f - kFlameHalfWidth,
+            0.5f + kFlameHalfWidth,
+            tileIndex,
+            tileIndex,
+            tileIndex,
+            flameAbgr);
+    };
+
+    switch (facing)
+    {
+    case TorchFacing::East:
+        appendWallTorch(false, false);
+        break;
+    case TorchFacing::West:
+        appendWallTorch(true, false);
+        break;
+    case TorchFacing::South:
+        appendWallTorch(false, true);
+        break;
+    case TorchFacing::North:
+        appendWallTorch(true, true);
+        break;
+    case TorchFacing::Standing:
+    default:
+        break;
+    }
+}
+
+void appendDoorGeometry(
+    ChunkMeshData& meshData,
+    const BlockType blockType,
+    const int worldX,
+    const int y,
+    const int worldZ,
+    const std::uint32_t abgr)
+{
+    const vibecraft::world::BlockMetadata metadata = vibecraft::world::blockMetadata(blockType);
+    const vibecraft::world::BlockCollisionBox box = vibecraft::world::collisionBoxForBlockType(blockType);
+    const std::uint8_t tileIndex = metadata.textureTiles.side;
+    constexpr std::array<std::array<float, 2>, 4> kUv{{
+        {0.0f, 1.0f},
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+        {1.0f, 1.0f},
+    }};
+    const float wx = static_cast<float>(worldX);
+    const float wy = static_cast<float>(y);
+    const float wz = static_cast<float>(worldZ);
+    const vibecraft::world::DoorFacing facing = vibecraft::world::doorFacingForBlockType(blockType);
+    const bool xAxisPlane = vibecraft::world::doorUsesXAxisPlane(facing);
+    const bool handleOnPositiveSide = facing == vibecraft::world::DoorFacing::North
+        || facing == vibecraft::world::DoorFacing::East;
+    const auto maybeFlipHorizontal =
+        [&](const std::array<std::array<float, 2>, 4>& baseUv, const bool flip)
+    {
+        auto uv = baseUv;
+        if (!flip)
+        {
+            return uv;
+        }
+        for (auto& coord : uv)
+        {
+            coord[0] = 1.0f - coord[0];
+        }
+        return uv;
+    };
+
+    const auto eastUv = maybeFlipHorizontal(kUv, xAxisPlane && !handleOnPositiveSide);
+    const auto westUv = maybeFlipHorizontal(kUv, xAxisPlane && handleOnPositiveSide);
+    const auto southUv = maybeFlipHorizontal(kUv, !xAxisPlane && !handleOnPositiveSide);
+    const auto northUv = maybeFlipHorizontal(kUv, !xAxisPlane && handleOnPositiveSide);
+
+    appendCustomQuad(
+        meshData,
+        {{{wx + box.maxX, wy + box.minY, wz + box.minZ},
+          {wx + box.maxX, wy + box.maxY, wz + box.minZ},
+          {wx + box.maxX, wy + box.maxY, wz + box.maxZ},
+          {wx + box.maxX, wy + box.minY, wz + box.maxZ}}},
+        eastUv,
+        {1.0f, 0.0f, 0.0f},
+        tileIndex,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + box.minX, wy + box.minY, wz + box.maxZ},
+          {wx + box.minX, wy + box.maxY, wz + box.maxZ},
+          {wx + box.minX, wy + box.maxY, wz + box.minZ},
+          {wx + box.minX, wy + box.minY, wz + box.minZ}}},
+        westUv,
+        {-1.0f, 0.0f, 0.0f},
+        tileIndex,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + box.minX, wy + box.maxY, wz + box.maxZ},
+          {wx + box.maxX, wy + box.maxY, wz + box.maxZ},
+          {wx + box.maxX, wy + box.maxY, wz + box.minZ},
+          {wx + box.minX, wy + box.maxY, wz + box.minZ}}},
+        kUv,
+        {0.0f, 1.0f, 0.0f},
+        tileIndex,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + box.minX, wy + box.minY, wz + box.minZ},
+          {wx + box.maxX, wy + box.minY, wz + box.minZ},
+          {wx + box.maxX, wy + box.minY, wz + box.maxZ},
+          {wx + box.minX, wy + box.minY, wz + box.maxZ}}},
+        kUv,
+        {0.0f, -1.0f, 0.0f},
+        tileIndex,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + box.maxX, wy + box.minY, wz + box.maxZ},
+          {wx + box.maxX, wy + box.maxY, wz + box.maxZ},
+          {wx + box.minX, wy + box.maxY, wz + box.maxZ},
+          {wx + box.minX, wy + box.minY, wz + box.maxZ}}},
+        southUv,
+        {0.0f, 0.0f, 1.0f},
+        tileIndex,
+        abgr);
+    appendCustomQuad(
+        meshData,
+        {{{wx + box.minX, wy + box.minY, wz + box.minZ},
+          {wx + box.minX, wy + box.maxY, wz + box.minZ},
+          {wx + box.maxX, wy + box.maxY, wz + box.minZ},
+          {wx + box.maxX, wy + box.minY, wz + box.minZ}}},
+        northUv,
+        {0.0f, 0.0f, -1.0f},
+        tileIndex,
+        abgr);
 }
 
 void appendBookshelfInsetFace(
@@ -590,6 +1202,60 @@ ChunkMeshData ChunkMesher::buildMesh(
                     continue;
                 }
 
+                if (vibecraft::world::isTorchBlock(blockType))
+                {
+                    const auto metadata = vibecraft::world::blockMetadata(blockType);
+                    const float torchLight = torchLightMultiplierAt(
+                        static_cast<float>(worldX) + 0.5f,
+                        static_cast<float>(y) + 0.5f,
+                        static_cast<float>(worldZ) + 0.5f,
+                        torchEmitters);
+                    appendTorchGeometry(
+                        meshData,
+                        blockType,
+                        worldX,
+                        y,
+                        worldZ,
+                        modulateAbgrRgb(metadata.debugColor, torchLight));
+                    continue;
+                }
+
+                if (vibecraft::world::isStairBlock(blockType))
+                {
+                    const auto metadata = vibecraft::world::blockMetadata(blockType);
+                    const float torchLight = torchLightMultiplierAt(
+                        static_cast<float>(worldX) + 0.5f,
+                        static_cast<float>(y) + 0.5f,
+                        static_cast<float>(worldZ) + 0.5f,
+                        torchEmitters);
+                    appendStairsGeometry(
+                        meshData,
+                        blockType,
+                        worldX,
+                        y,
+                        worldZ,
+                        modulateAbgrRgb(metadata.debugColor, torchLight));
+                    continue;
+                }
+
+                if (vibecraft::world::isDoorVariantBlock(blockType))
+                {
+                    const auto metadata = vibecraft::world::blockMetadata(blockType);
+                    const float torchLight = torchLightMultiplierAt(
+                        static_cast<float>(worldX) + 0.5f,
+                        static_cast<float>(y) + 0.5f,
+                        static_cast<float>(worldZ) + 0.5f,
+                        torchEmitters);
+                    appendDoorGeometry(
+                        meshData,
+                        blockType,
+                        worldX,
+                        y,
+                        worldZ,
+                        modulateAbgrRgb(metadata.debugColor, torchLight));
+                    continue;
+                }
+
                 if (usesCrossPlantMesh(blockType))
                 {
                     // Flora meshes are crossed billboards instead of cubes. Dense flora uses tri-cross quads
@@ -605,28 +1271,20 @@ ChunkMeshData ChunkMesher::buildMesh(
                     const std::uint8_t tileIndex =
                         vibecraft::world::textureTileIndex(blockType, vibecraft::world::BlockFace::Side);
                     const bool denseFlora = usesDenseFloraMesh(blockType);
+                    const bool tuftTriCross = usesTuftTriCrossMesh(blockType);
                     const bool bamboo = blockType == BlockType::Bamboo;
-                    const bool torch = blockType == BlockType::Torch;
                     const float randomA = hash01(worldX, y, worldZ, 0x31a67c59u);
                     const float randomB = hash01(worldX, y, worldZ, 0x7f4a7c15u);
                     const float baseInset = crossPlantInset(blockType);
                     float halfWidth = 0.5f - baseInset;
-                    if (torch)
+                    if (!bamboo && denseFlora)
                     {
-                        halfWidth = 0.10f;
-                    }
-                    else if (!bamboo && denseFlora)
-                    {
-                        halfWidth = 0.27f + randomA * 0.10f;
+                        halfWidth = tuftTriCross ? (0.18f + randomA * 0.05f) : (0.24f + randomA * 0.08f);
                     }
                     halfWidth = std::clamp(halfWidth, 0.10f, 0.49f);
 
                     float heightScale = 1.0f;
-                    if (torch)
-                    {
-                        heightScale = 1.08f;
-                    }
-                    else if (!bamboo)
+                    if (!bamboo)
                     {
                         if (blockType == BlockType::BrownMushroom || blockType == BlockType::RedMushroom)
                         {
@@ -637,7 +1295,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                             || blockType == BlockType::FrostTuft || blockType == BlockType::SparseTuft
                             || blockType == BlockType::CloverTuft || blockType == BlockType::SproutTuft)
                         {
-                            heightScale = 0.54f + randomB * 0.12f;
+                            heightScale = 0.68f + randomB * 0.10f;
                         }
                         else if (denseFlora)
                         {
@@ -645,9 +1303,9 @@ ChunkMeshData ChunkMesher::buildMesh(
                         }
                     }
 
-                    const std::size_t quadCount = torch ? 3u : 2u;
+                    const std::size_t quadCount = tuftTriCross ? 3u : 2u;
                     constexpr float kPi = 3.14159265358979323846f;
-                    const float startAngle = torch ? 0.0f : (bamboo ? (kPi * 0.25f) : (randomA * kPi));
+                    const float startAngle = bamboo ? (kPi * 0.25f) : (tuftTriCross ? (randomA * (kPi / 3.0f)) : (randomA * kPi));
                     const float angleStep = kPi / static_cast<float>(quadCount);
                     for (std::size_t quadIndex = 0; quadIndex < quadCount; ++quadIndex)
                     {
@@ -664,17 +1322,9 @@ ChunkMeshData ChunkMesher::buildMesh(
                         float nx = dirZ;
                         float ny = 0.0f;
                         float nz = -dirX;
-                        if (torch)
+                        if (!bamboo)
                         {
-                            ny = 0.32f;
-                            const float invLength = 1.0f / std::sqrt(nx * nx + ny * ny + nz * nz);
-                            nx *= invLength;
-                            ny *= invLength;
-                            nz *= invLength;
-                        }
-                        else if (!bamboo)
-                        {
-                            ny = denseFlora ? 0.24f : 0.15f;
+                            ny = tuftTriCross ? 0.12f : (denseFlora ? 0.24f : 0.15f);
                             const float invLength = 1.0f / std::sqrt(nx * nx + ny * ny + nz * nz);
                             nx *= invLength;
                             ny *= invLength;

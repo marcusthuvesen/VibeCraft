@@ -13,6 +13,7 @@
 
 #include "vibecraft/app/ApplicationConfig.hpp"
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
+#include "vibecraft/app/WaterMovement.hpp"
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
 
@@ -116,9 +117,11 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     const game::EnvironmentalHazards movementHazardsBeforeStep =
         samplePlayerHazards(world_, playerFeetPosition_, colliderHeight, eyeHeight);
     const bool inWaterForMovement = movementHazardsBeforeStep.bodyInWater;
+    const bool headSubmergedInWater = movementHazardsBeforeStep.headSubmergedInWater;
     if (inWaterForMovement)
     {
-        currentMoveSpeed *= kPlayerMovementSettings.waterMoveSpeedMultiplier;
+        currentMoveSpeed *= headSubmergedInWater ? kPlayerMovementSettings.waterSubmergedMoveSpeedMultiplier
+                                                 : kPlayerMovementSettings.waterSurfaceMoveSpeedMultiplier;
     }
 
     glm::vec3 localMotion(0.0f);
@@ -165,27 +168,15 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     float swimVerticalFromLook = 0.0f;
     if (inWaterForMovement)
     {
-        glm::vec3 swimForward = camera_.forward();
-        if (glm::dot(swimForward, swimForward) > kFloatEpsilon)
-        {
-            swimForward = glm::normalize(swimForward);
-        }
-        else
-        {
-            swimForward = glm::vec3(0.0f, 0.0f, -1.0f);
-        }
-        glm::vec3 swimRight = camera_.right();
-        if (glm::dot(swimRight, swimRight) > kFloatEpsilon)
-        {
-            swimRight = glm::normalize(swimRight);
-        }
-        else
-        {
-            swimRight = glm::vec3(1.0f, 0.0f, 0.0f);
-        }
-        const glm::vec3 swimWish = swimForward * localMotion.z + swimRight * localMotion.x;
-        swimVerticalFromLook = swimWish.y;
-        horizontalDisplacement = glm::vec3(swimWish.x, 0.0f, swimWish.z);
+        WaterSwimInput swimIn{};
+        swimIn.cameraForward = camera_.forward();
+        swimIn.cameraRight = camera_.right();
+        swimIn.localMotion = localMotion;
+        swimIn.headSubmergedInWater = headSubmergedInWater;
+        WaterSwimOutput swimOut{};
+        computeWaterSwimDisplacement(swimIn, swimOut);
+        horizontalDisplacement = swimOut.horizontalDisplacement;
+        swimVerticalFromLook = swimOut.swimVerticalFromLook;
     }
     else
     {
@@ -270,25 +261,18 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     const game::Aabb playerBodyForVines = playerAabbAt(playerFeetPosition_, colliderHeight);
     const bool touchingClimbableVines =
         !inWaterForMovement
-        && aabbTouchesBlockType(world_, playerBodyForVines, world::BlockType::Vines);
+        && (aabbTouchesBlockType(world_, playerBodyForVines, world::BlockType::Vines)
+            || aabbTouchesBlockType(world_, playerBodyForVines, world::BlockType::Ladder));
 
     if (inWaterForMovement)
     {
-        verticalVelocity_ += kPlayerMovementSettings.waterBuoyancyAcceleration * deltaTimeSeconds;
-        if (jumpHeld)
-        {
-            verticalVelocity_ += kPlayerMovementSettings.waterSwimUpAcceleration * deltaTimeSeconds;
-        }
-        if (sneaking)
-        {
-            verticalVelocity_ -= kPlayerMovementSettings.waterSinkAcceleration * deltaTimeSeconds;
-        }
-        verticalVelocity_ -= kPlayerMovementSettings.waterGravity * deltaTimeSeconds;
-        verticalVelocity_ = std::clamp(
-            verticalVelocity_,
-            -kPlayerMovementSettings.waterTerminalFallVelocity,
-            kPlayerMovementSettings.waterTerminalRiseVelocity);
-        verticalVelocity_ *= std::exp(-kPlayerMovementSettings.waterVerticalDrag * deltaTimeSeconds);
+        WaterVerticalInput waterVert{};
+        waterVert.settings = &kPlayerMovementSettings;
+        waterVert.headSubmergedInWater = headSubmergedInWater;
+        waterVert.jumpHeld = jumpHeld;
+        waterVert.sneaking = sneaking;
+        waterVert.deltaTimeSeconds = deltaTimeSeconds;
+        integrateWaterVerticalVelocity(verticalVelocity_, waterVert);
     }
     else if (touchingClimbableVines)
     {
@@ -353,10 +337,14 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     playerHazards_ = samplePlayerHazards(world_, playerFeetPosition_, colliderHeight, eyeHeight);
     const bool bodyInClimbableVines =
         !playerHazards_.bodyInWater
-        && aabbTouchesBlockType(
-            world_,
-            playerAabbAt(playerFeetPosition_, colliderHeight),
-            world::BlockType::Vines);
+        && (aabbTouchesBlockType(
+                world_,
+                playerAabbAt(playerFeetPosition_, colliderHeight),
+                world::BlockType::Vines)
+            || aabbTouchesBlockType(
+                world_,
+                playerAabbAt(playerFeetPosition_, colliderHeight),
+                world::BlockType::Ladder));
     if (!previousHazards.bodyInWater && playerHazards_.bodyInWater)
     {
         soundEffects_.playWaterEnter();

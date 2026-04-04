@@ -21,6 +21,9 @@ namespace vibecraft::render
 {
 namespace
 {
+constexpr float kTileInsetU = 0.5f / static_cast<float>(kChunkAtlasWidthPx);
+constexpr float kTileInsetV = 0.5f / static_cast<float>(kChunkAtlasHeightPx);
+
 struct CuboidUvSet
 {
     TextureUvRect front{};
@@ -443,6 +446,46 @@ void Renderer::drawInventoryItemIcons(
     {
         return hudItemKindTextureHandle(itemKind);
     };
+    const auto drawStairAtlasIconInRect = [&](const float x0,
+                                              const float y0,
+                                              const float x1,
+                                              const float y1,
+                                              const std::uint8_t tileIndex)
+    {
+        const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
+        const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
+        const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
+        const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
+        const TextureUvRect uvRect{
+            .minU = tileX * tileWidth + kTileInsetU,
+            .maxU = (tileX + 1.0f) * tileWidth - kTileInsetU,
+            .minV = tileY * tileHeight + kTileInsetV,
+            .maxV = (tileY + 1.0f) * tileHeight - kTileInsetV,
+        };
+        const float w = std::max(1.0f, x1 - x0);
+        const float h = std::max(1.0f, y1 - y0);
+        const float pad = std::max(1.0f, std::round(std::min(w, h) * 0.06f));
+        const float iconX0 = x0 + pad;
+        const float iconY0 = y0 + pad;
+        const float iconX1 = x1 - pad;
+        const float iconY1 = y1 - pad;
+        const float iconW = iconX1 - iconX0;
+        const float iconH = iconY1 - iconY0;
+        drawUiTextureRectUv(
+            iconX0,
+            iconY0 + iconH * 0.50f,
+            iconX1,
+            iconY1,
+            chunkAtlasTextureHandle_,
+            uvRect);
+        drawUiTextureRectUv(
+            iconX0 + iconW * 0.44f,
+            iconY0 + iconH * 0.16f,
+            iconX1,
+            iconY0 + iconH * 0.50f,
+            chunkAtlasTextureHandle_,
+            uvRect);
+    };
     const auto drawHudSlotIconInRect = [&](const FrameDebugData::HotbarSlotHud& slotHud,
                                            const float x0,
                                            const float y0,
@@ -475,11 +518,49 @@ void Renderer::drawInventoryItemIcons(
         const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
             slotHud.blockType,
             vibecraft::world::BlockFace::Side);
+        if (vibecraft::world::isStairBlock(slotHud.blockType))
+        {
+            drawStairAtlasIconInRect(ix0, iy0, ix1, iy1, tileIndex);
+            return;
+        }
         drawAtlasIcon(
             std::floor((ix0 + ix1) * 0.5f),
             std::floor((iy0 + iy1) * 0.5f),
             std::max(1.0f, std::min(ix1 - ix0, iy1 - iy0)),
             tileIndex);
+    };
+    const auto drawDurabilityBar = [&](const FrameDebugData::HotbarSlotHud& slotHud,
+                                       const float x0,
+                                       const float y0,
+                                       const float x1,
+                                       const float y1)
+    {
+        if (slotHud.durabilityMax == 0 || slotHud.count == 0)
+        {
+            return;
+        }
+
+        const float fraction = std::clamp(
+            static_cast<float>(slotHud.durabilityRemaining) / static_cast<float>(slotHud.durabilityMax),
+            0.0f,
+            1.0f);
+        const float trackHeight = std::max(3.0f, std::round((y1 - y0) * 0.08f));
+        const float insetX = std::max(2.0f, std::round((x1 - x0) * 0.12f));
+        const float barX0 = x0 + insetX;
+        const float barX1 = x1 - insetX;
+        const float barY1 = y1 - std::max(2.0f, std::round((y1 - y0) * 0.06f));
+        const float barY0 = barY1 - trackHeight;
+        const std::uint32_t trackAbgr = detail::packAbgr8(glm::vec3(0.05f, 0.05f, 0.06f), 0.92f);
+        const glm::vec3 durabilityColor = glm::mix(
+            glm::vec3(0.85f, 0.20f, 0.14f),
+            glm::vec3(0.32f, 0.90f, 0.22f),
+            fraction);
+        const std::uint32_t fillAbgr = detail::packAbgr8(durabilityColor, 0.96f);
+        drawUiSolidRect(barX0, barY0, barX1, barY1, trackAbgr);
+        if (fraction > 0.001f)
+        {
+            drawUiSolidRect(barX0, barY0, barX0 + (barX1 - barX0) * fraction, barY1, fillAbgr);
+        }
     };
 
     if (canDrawSolid && hotbarLayout.slotSize > 0.0f)
@@ -627,6 +708,7 @@ void Renderer::drawInventoryItemIcons(
                 centerY - iconHalf,
                 centerX + iconHalf,
                 centerY + iconHalf);
+            drawDurabilityBar(slotHud, ox + static_cast<float>(slotIndex) * (slot + gap), sy0, ox + static_cast<float>(slotIndex) * (slot + gap) + slot, sy0 + slot);
         }
     }
     else
@@ -800,6 +882,46 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.26f, 0.39f, 0.58f), 0.97f);
     const std::uint32_t resultGlowAbgr = detail::packAbgr8(glm::vec3(0.93f, 0.79f, 0.32f), 0.55f);
     const std::uint32_t cursorOutlineAbgr = detail::packAbgr8(glm::vec3(1.0f, 1.0f, 1.0f), 0.95f);
+    const auto drawStairAtlasIconInRect = [&](const float x0,
+                                              const float y0,
+                                              const float x1,
+                                              const float y1,
+                                              const std::uint8_t tileIndex)
+    {
+        const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
+        const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
+        const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
+        const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
+        const TextureUvRect uvRect{
+            .minU = tileX * tileWidth + kTileInsetU,
+            .maxU = (tileX + 1.0f) * tileWidth - kTileInsetU,
+            .minV = tileY * tileHeight + kTileInsetV,
+            .maxV = (tileY + 1.0f) * tileHeight - kTileInsetV,
+        };
+        const float w = std::max(1.0f, x1 - x0);
+        const float h = std::max(1.0f, y1 - y0);
+        const float pad = std::max(1.0f, std::round(std::min(w, h) * 0.06f));
+        const float iconX0 = x0 + pad;
+        const float iconY0 = y0 + pad;
+        const float iconX1 = x1 - pad;
+        const float iconY1 = y1 - pad;
+        const float iconW = iconX1 - iconX0;
+        const float iconH = iconY1 - iconY0;
+        drawUiTextureRectUv(
+            iconX0,
+            iconY0 + iconH * 0.50f,
+            iconX1,
+            iconY1,
+            chunkAtlasTextureHandle_,
+            uvRect);
+        drawUiTextureRectUv(
+            iconX0 + iconW * 0.44f,
+            iconY0 + iconH * 0.16f,
+            iconX1,
+            iconY0 + iconH * 0.50f,
+            chunkAtlasTextureHandle_,
+            uvRect);
+    };
 
     drawUiSolidRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), dimAbgr);
     drawUiSolidRect(layout.panelLeft - 2.0f, layout.panelTop - 2.0f, layout.panelRight + 2.0f, layout.panelBottom + 2.0f, panelOuterAbgr);
@@ -853,18 +975,51 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
             const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
                 slotHud.blockType,
                 vibecraft::world::BlockFace::Side);
-            drawAtlasIcon(centerX, centerY, iconSize, tileIndex);
+            if (vibecraft::world::isStairBlock(slotHud.blockType))
+            {
+                drawStairAtlasIconInRect(iconMinX, iconMinY, iconMaxX, iconMaxY, tileIndex);
+            }
+            else
+            {
+                drawAtlasIcon(centerX, centerY, iconSize, tileIndex);
+            }
         }
 
         if (slotHud.count > 1)
         {
             const std::string digits = fmt::format("{}", std::min(slotHud.count, 99u));
-            int col = static_cast<int>(std::floor((x + layout.slotSize - charWidthPx * 0.45f) / charWidthPx))
+            const float textX1 = x + layout.slotSize - std::max(2.0f, layout.slotSize * 0.05f);
+            const float textY1 = y + layout.slotSize - std::max(2.0f, layout.slotSize * 0.05f);
+            int col = static_cast<int>(std::floor((textX1 - charWidthPx * 0.55f) / charWidthPx))
                 - static_cast<int>(digits.size()) + 1;
-            int row = static_cast<int>(std::floor((y + layout.slotSize - charHeightPx * 1.05f) / charHeightPx));
+            int row = static_cast<int>(std::floor((textY1 - charHeightPx * 0.95f) / charHeightPx));
             col = std::clamp(col, 0, static_cast<int>(textWidth) - static_cast<int>(digits.size()));
             row = std::clamp(row, 0, static_cast<int>(textHeight) - 1);
             bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), 0x0f, "%s", digits.c_str());
+        }
+
+        if (slotHud.durabilityMax > 0)
+        {
+            const float fraction = std::clamp(
+                static_cast<float>(slotHud.durabilityRemaining) / static_cast<float>(slotHud.durabilityMax),
+                0.0f,
+                1.0f);
+            const float trackH = std::max(3.0f, std::round(layout.slotSize * 0.08f));
+            const float trackX0 = x + std::max(2.0f, std::round(layout.slotSize * 0.10f));
+            const float trackX1 = x + layout.slotSize - std::max(2.0f, std::round(layout.slotSize * 0.10f));
+            const float trackY1 = y + layout.slotSize - std::max(2.0f, std::round(layout.slotSize * 0.08f));
+            const float trackY0 = trackY1 - trackH;
+            const std::uint32_t trackAbgr = detail::packAbgr8(glm::vec3(0.04f, 0.05f, 0.06f), 0.95f);
+            const glm::vec3 fillColor = glm::mix(
+                glm::vec3(0.86f, 0.19f, 0.14f),
+                glm::vec3(0.33f, 0.89f, 0.22f),
+                fraction);
+            const std::uint32_t fillAbgr = detail::packAbgr8(fillColor, 0.98f);
+            drawUiSolidRect(trackX0, trackY0, trackX1, trackY1, trackAbgr);
+            if (fraction > 0.001f)
+            {
+                drawUiSolidRect(trackX0, trackY0, trackX0 + (trackX1 - trackX0) * fraction, trackY1, fillAbgr);
+            }
         }
     };
 
@@ -2121,12 +2276,6 @@ void Renderer::drawMainMenuChrome(
         detail::packAbgr8(glm::vec3(0.02f, 0.07f, 0.10f), 0.16f));
     drawUiSolidRect(
         0.0f,
-        0.0f,
-        static_cast<float>(width_),
-        static_cast<float>(height_) * 0.28f,
-        detail::packAbgr8(glm::vec3(0.04f, 0.09f, 0.16f), 0.28f));
-    drawUiSolidRect(
-        0.0f,
         static_cast<float>(height_) * 0.72f,
         static_cast<float>(width_),
         static_cast<float>(height_),
@@ -2391,9 +2540,11 @@ void Renderer::drawPauseMenuChrome(
     {
         const int hovered = frameDebugData.pauseGameSettingsHoveredControl;
         drawButtonPanel(detail::PauseMenuLayout::pauseGameMobButtonRow(th), hovered == 1);
-        drawButtonPanel(detail::PauseMenuLayout::pauseGameBiomeButtonRow(th), hovered == 2);
-        drawButtonPanel(detail::PauseMenuLayout::pauseGameTravelButtonRow(th), hovered == 3);
-        drawButtonPanel(detail::PauseMenuLayout::pauseGameWeatherButtonRow(th), hovered == 4);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameCreativeButtonRow(th), hovered == 2);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameDifficultyButtonRow(th), hovered == 3);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameBiomeButtonRow(th), hovered == 4);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameTravelButtonRow(th), hovered == 5);
+        drawButtonPanel(detail::PauseMenuLayout::pauseGameWeatherButtonRow(th), hovered == 6);
         drawButtonPanel(detail::PauseMenuLayout::pauseGameBackButtonRow(th), hovered == 0);
         return;
     }
@@ -2561,11 +2712,11 @@ void Renderer::drawMainMenuLogo()
 
     const float aspect =
         static_cast<float>(logoWidthPx_) / static_cast<float>(logoHeightPx_);
-    constexpr float kMarginTop = 32.0f;
-    const float maxWidth = std::min(640.0f, static_cast<float>(width_) * 0.82f);
+    using namespace detail::MainMenuLogoDraw;
+    const float maxWidth = std::min(kMaxWidthCapPx, static_cast<float>(width_) * kMaxWidthFrac);
     float drawW = maxWidth;
     float drawH = drawW / aspect;
-    const float maxHeight = std::min(static_cast<float>(height_) * 0.17f, 200.0f);
+    const float maxHeight = std::min(static_cast<float>(height_) * kMaxHeightFrac, kMaxHeightCapPx);
     if (drawH > maxHeight)
     {
         drawH = maxHeight;
@@ -2573,7 +2724,7 @@ void Renderer::drawMainMenuLogo()
     }
 
     const float x0 = (static_cast<float>(width_) - drawW) * 0.5f;
-    const float y0 = kMarginTop;
+    const float y0 = kMarginTopPx;
     const float x1 = x0 + drawW;
     const float y1 = y0 + drawH;
 

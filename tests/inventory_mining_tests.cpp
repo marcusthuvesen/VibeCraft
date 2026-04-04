@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <set>
+
 #include "vibecraft/app/Inventory.hpp"
 #include "vibecraft/app/Mining.hpp"
 
@@ -11,7 +13,9 @@ using vibecraft::app::HotbarSlots;
 using vibecraft::app::InventorySelectionBehavior;
 using vibecraft::app::addBlockToInventory;
 using vibecraft::app::addEquippedItemToInventory;
+using vibecraft::app::applyCreativeInventoryLoadout;
 using vibecraft::app::consumeEquippedItemDurability;
+using vibecraft::app::durabilityUseAmountForEquippedItem;
 using vibecraft::app::isDamageableEquippedItem;
 using vibecraft::app::maxDurabilityForEquippedItem;
 using vibecraft::app::miningDurationSeconds;
@@ -49,6 +53,59 @@ TEST_CASE("inventory pickup can preserve the selected hotbar slot")
     CHECK(selectedHotbarIndex == 4);
     CHECK(hotbarSlots[1].equippedItem == EquippedItem::Coal);
     CHECK(hotbarSlots[1].count == 1);
+}
+
+TEST_CASE("creative inventory loadout exposes each normalized placeable block once")
+{
+    HotbarSlots hotbarSlots{};
+    BagSlots bagSlots{};
+    std::size_t selectedHotbarIndex = 5;
+
+    applyCreativeInventoryLoadout(hotbarSlots, bagSlots, selectedHotbarIndex);
+
+    CHECK(selectedHotbarIndex == 0);
+
+    std::set<BlockType> expectedBlocks;
+    for (std::uint16_t rawBlockIndex = 1;
+         rawBlockIndex <= static_cast<std::uint16_t>(BlockType::IronDoorUpperWestOpen);
+         ++rawBlockIndex)
+    {
+        const BlockType normalizedBlock =
+            vibecraft::world::normalizePlaceVariantBlockType(static_cast<BlockType>(rawBlockIndex));
+        if (normalizedBlock != BlockType::Air)
+        {
+            expectedBlocks.insert(normalizedBlock);
+        }
+    }
+
+    std::set<BlockType> actualBlocks;
+    const auto collectBlocks = [&actualBlocks](const auto& slots)
+    {
+        for (const vibecraft::app::InventorySlot& slot : slots)
+        {
+            if (slot.count == 0)
+            {
+                continue;
+            }
+
+            CHECK(slot.blockType != BlockType::Air);
+            CHECK(slot.equippedItem == EquippedItem::None);
+            CHECK(slot.count == vibecraft::app::kMaxStackSize);
+            actualBlocks.insert(slot.blockType);
+        }
+    };
+
+    collectBlocks(hotbarSlots);
+    collectBlocks(bagSlots);
+
+    CHECK(actualBlocks == expectedBlocks);
+    CHECK(actualBlocks.contains(BlockType::Torch));
+    CHECK(actualBlocks.contains(BlockType::Furnace));
+    CHECK(actualBlocks.contains(BlockType::OakDoor));
+    CHECK(actualBlocks.contains(BlockType::IronDoor));
+    CHECK_FALSE(actualBlocks.contains(BlockType::TorchNorth));
+    CHECK_FALSE(actualBlocks.contains(BlockType::FurnaceEast));
+    CHECK_FALSE(actualBlocks.contains(BlockType::OakDoorUpperNorth));
 }
 
 TEST_CASE("pickaxe mining speed scales by pickaxe material for stone and ore")
@@ -130,4 +187,24 @@ TEST_CASE("durability decreases on use and breaks tools")
     CHECK(slot.count == 0);
     CHECK(slot.equippedItem == EquippedItem::None);
     CHECK(slot.blockType == BlockType::Air);
+}
+
+TEST_CASE("sword durability wear scales by material")
+{
+    CHECK(durabilityUseAmountForEquippedItem(EquippedItem::DiamondSword) == 1);
+    CHECK(durabilityUseAmountForEquippedItem(EquippedItem::IronSword) == 2);
+    CHECK(durabilityUseAmountForEquippedItem(EquippedItem::StoneSword) == 3);
+    CHECK(durabilityUseAmountForEquippedItem(EquippedItem::WoodSword) == 4);
+    CHECK(durabilityUseAmountForEquippedItem(EquippedItem::GoldSword) == 5);
+
+    vibecraft::app::InventorySlot goldSword{
+        .blockType = BlockType::Air,
+        .count = 1,
+        .equippedItem = EquippedItem::GoldSword,
+        .durabilityRemaining = 6,
+    };
+    CHECK_FALSE(consumeEquippedItemDurability(
+        goldSword,
+        durabilityUseAmountForEquippedItem(goldSword.equippedItem)));
+    CHECK(goldSword.durabilityRemaining == 1);
 }

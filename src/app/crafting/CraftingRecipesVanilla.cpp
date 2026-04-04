@@ -111,6 +111,125 @@ void appendVanillaBlockRecipes(std::vector<RecipeDefinition>& r)
         },
     });
 
+    // Ladder: seven sticks in the vanilla "H" pattern -> 3 ladders.
+    r.push_back(RecipeDefinition{
+        .width = 3,
+        .height = 3,
+        .requiresWorkbench = true,
+        .pattern = {
+            ingredientItem(EquippedItem::Stick),
+            InventorySlot{},
+            ingredientItem(EquippedItem::Stick),
+            ingredientItem(EquippedItem::Stick),
+            ingredientItem(EquippedItem::Stick),
+            ingredientItem(EquippedItem::Stick),
+            ingredientItem(EquippedItem::Stick),
+            InventorySlot{},
+            ingredientItem(EquippedItem::Stick),
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::Ladder,
+            .count = 3,
+            .equippedItem = EquippedItem::None,
+        },
+    });
+
+    const auto addWoodDoorRecipe = [&r](const BlockType plankBlock, const BlockType doorBlock)
+    {
+        r.push_back(RecipeDefinition{
+            .width = 2,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(plankBlock),
+                ingredientBlock(plankBlock),
+                ingredientBlock(plankBlock),
+                ingredientBlock(plankBlock),
+                ingredientBlock(plankBlock),
+                ingredientBlock(plankBlock),
+            },
+            .output = InventorySlot{
+                .blockType = doorBlock,
+                .count = 3,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+    };
+    addWoodDoorRecipe(BlockType::OakPlanks, BlockType::OakDoor);
+    addWoodDoorRecipe(BlockType::JunglePlanks, BlockType::JungleDoor);
+
+    r.push_back(RecipeDefinition{
+        .width = 2,
+        .height = 3,
+        .requiresWorkbench = true,
+        .pattern = {
+            ingredientItem(EquippedItem::IronIngot),
+            ingredientItem(EquippedItem::IronIngot),
+            ingredientItem(EquippedItem::IronIngot),
+            ingredientItem(EquippedItem::IronIngot),
+            ingredientItem(EquippedItem::IronIngot),
+            ingredientItem(EquippedItem::IronIngot),
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::IronDoor,
+            .count = 3,
+            .equippedItem = EquippedItem::None,
+        },
+    });
+
+    const auto addStairsRecipes = [&r](const BlockType material, const BlockType stairs)
+    {
+        const InventorySlot empty{};
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                ingredientBlock(material),
+                empty,
+                empty,
+                ingredientBlock(material),
+                ingredientBlock(material),
+                empty,
+                ingredientBlock(material),
+                ingredientBlock(material),
+                ingredientBlock(material),
+            },
+            .output = InventorySlot{
+                .blockType = stairs,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+        r.push_back(RecipeDefinition{
+            .width = 3,
+            .height = 3,
+            .requiresWorkbench = true,
+            .pattern = {
+                empty,
+                empty,
+                ingredientBlock(material),
+                empty,
+                ingredientBlock(material),
+                ingredientBlock(material),
+                ingredientBlock(material),
+                ingredientBlock(material),
+                ingredientBlock(material),
+            },
+            .output = InventorySlot{
+                .blockType = stairs,
+                .count = 4,
+                .equippedItem = EquippedItem::None,
+            },
+        });
+    };
+    addStairsRecipes(BlockType::OakPlanks, BlockType::OakStairs);
+    addStairsRecipes(BlockType::JunglePlanks, BlockType::JungleStairs);
+    addStairsRecipes(BlockType::Cobblestone, BlockType::CobblestoneStairs);
+    addStairsRecipes(BlockType::Stone, BlockType::StoneStairs);
+    addStairsRecipes(BlockType::Bricks, BlockType::BrickStairs);
+    addStairsRecipes(BlockType::Sandstone, BlockType::SandstoneStairs);
+
     // Bamboo planks equivalent: 2x2 bamboo -> crafting table (same role as wood planks).
     r.push_back(RecipeDefinition{
         .width = 2,

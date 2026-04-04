@@ -1,6 +1,7 @@
 #include "vibecraft/app/Inventory.hpp"
 
 #include <algorithm>
+#include <array>
 
 namespace vibecraft::app
 {
@@ -181,6 +182,26 @@ std::uint16_t maxDurabilityForEquippedItem(const EquippedItem equippedItem)
     }
 }
 
+std::uint16_t durabilityUseAmountForEquippedItem(const EquippedItem equippedItem)
+{
+    switch (equippedItem)
+    {
+    case EquippedItem::DiamondSword:
+        return 1;
+    case EquippedItem::IronSword:
+        return 2;
+    case EquippedItem::StoneSword:
+        return 3;
+    case EquippedItem::WoodSword:
+        return 4;
+    case EquippedItem::GoldSword:
+        return 5;
+    case EquippedItem::None:
+    default:
+        return 1;
+    }
+}
+
 std::uint32_t inventorySlotStackLimit(const InventorySlot& slot)
 {
     return isDamageableEquippedItem(slot.equippedItem) ? 1U : kMaxStackSize;
@@ -233,6 +254,19 @@ void compactBagSlots(BagSlots& bagSlots)
 
 const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
 {
+    switch (vibecraft::world::doorFamilyForBlockType(blockType))
+    {
+    case vibecraft::world::DoorFamily::Oak:
+        return "Oak Door";
+    case vibecraft::world::DoorFamily::Jungle:
+        return "Jungle Door";
+    case vibecraft::world::DoorFamily::Iron:
+        return "Iron Door";
+    case vibecraft::world::DoorFamily::None:
+    default:
+        break;
+    }
+
     switch (blockType)
     {
     case vibecraft::world::BlockType::Grass:
@@ -307,6 +341,10 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
     case vibecraft::world::BlockType::OxygenGenerator:
         return "Industrial Relay";
     case vibecraft::world::BlockType::Torch:
+    case vibecraft::world::BlockType::TorchNorth:
+    case vibecraft::world::BlockType::TorchEast:
+    case vibecraft::world::BlockType::TorchSouth:
+    case vibecraft::world::BlockType::TorchWest:
         return "Torch";
     case vibecraft::world::BlockType::TNT:
         return "TNT";
@@ -364,6 +402,44 @@ const char* blockTypeLabel(const vibecraft::world::BlockType blockType)
         return "Sprout Tuft";
     case vibecraft::world::BlockType::Vines:
         return "Vines";
+    case vibecraft::world::BlockType::Ladder:
+        return "Ladder";
+    case vibecraft::world::BlockType::OakStairs:
+    case vibecraft::world::BlockType::OakStairsNorth:
+    case vibecraft::world::BlockType::OakStairsEast:
+    case vibecraft::world::BlockType::OakStairsSouth:
+    case vibecraft::world::BlockType::OakStairsWest:
+        return "Oak Stairs";
+    case vibecraft::world::BlockType::JungleStairs:
+    case vibecraft::world::BlockType::JungleStairsNorth:
+    case vibecraft::world::BlockType::JungleStairsEast:
+    case vibecraft::world::BlockType::JungleStairsSouth:
+    case vibecraft::world::BlockType::JungleStairsWest:
+        return "Jungle Stairs";
+    case vibecraft::world::BlockType::CobblestoneStairs:
+    case vibecraft::world::BlockType::CobblestoneStairsNorth:
+    case vibecraft::world::BlockType::CobblestoneStairsEast:
+    case vibecraft::world::BlockType::CobblestoneStairsSouth:
+    case vibecraft::world::BlockType::CobblestoneStairsWest:
+        return "Cobblestone Stairs";
+    case vibecraft::world::BlockType::StoneStairs:
+    case vibecraft::world::BlockType::StoneStairsNorth:
+    case vibecraft::world::BlockType::StoneStairsEast:
+    case vibecraft::world::BlockType::StoneStairsSouth:
+    case vibecraft::world::BlockType::StoneStairsWest:
+        return "Stone Stairs";
+    case vibecraft::world::BlockType::BrickStairs:
+    case vibecraft::world::BlockType::BrickStairsNorth:
+    case vibecraft::world::BlockType::BrickStairsEast:
+    case vibecraft::world::BlockType::BrickStairsSouth:
+    case vibecraft::world::BlockType::BrickStairsWest:
+        return "Brick Stairs";
+    case vibecraft::world::BlockType::SandstoneStairs:
+    case vibecraft::world::BlockType::SandstoneStairsNorth:
+    case vibecraft::world::BlockType::SandstoneStairsEast:
+    case vibecraft::world::BlockType::SandstoneStairsSouth:
+    case vibecraft::world::BlockType::SandstoneStairsWest:
+        return "Sandstone Stairs";
     case vibecraft::world::BlockType::CocoaPod:
         return "Cocoa Pod";
     case vibecraft::world::BlockType::Melon:
@@ -599,6 +675,62 @@ bool addEquippedItemToInventory(
         equippedItem,
         nullptr,
         InventorySelectionBehavior::PreserveCurrent);
+}
+
+void applyCreativeInventoryLoadout(
+    HotbarSlots& hotbarSlots,
+    BagSlots& bagSlots,
+    std::size_t& selectedHotbarIndex)
+{
+    hotbarSlots.fill({});
+    bagSlots.fill({});
+
+    constexpr std::size_t kLastBlockType = static_cast<std::size_t>(world::BlockType::IronDoorUpperWestOpen);
+    std::array<bool, kLastBlockType + 1> seenBlockTypes{};
+    std::size_t nextSlotIndex = 0;
+
+    const auto assignSlot = [](InventorySlot& slot, const world::BlockType blockType)
+    {
+        slot.blockType = blockType;
+        slot.count = kMaxStackSize;
+        slot.equippedItem = EquippedItem::None;
+        slot.durabilityRemaining = 0;
+    };
+
+    for (std::size_t rawBlockIndex = 1; rawBlockIndex <= kLastBlockType; ++rawBlockIndex)
+    {
+        const world::BlockType rawBlockType = static_cast<world::BlockType>(rawBlockIndex);
+        const world::BlockType blockType = world::normalizePlaceVariantBlockType(rawBlockType);
+        if (blockType == world::BlockType::Air)
+        {
+            continue;
+        }
+
+        const std::size_t normalizedIndex = static_cast<std::size_t>(blockType);
+        if (seenBlockTypes[normalizedIndex])
+        {
+            continue;
+        }
+        seenBlockTypes[normalizedIndex] = true;
+
+        if (nextSlotIndex < hotbarSlots.size())
+        {
+            assignSlot(hotbarSlots[nextSlotIndex], blockType);
+        }
+        else
+        {
+            const std::size_t bagIndex = nextSlotIndex - hotbarSlots.size();
+            if (bagIndex >= bagSlots.size())
+            {
+                break;
+            }
+            assignSlot(bagSlots[bagIndex], blockType);
+        }
+
+        ++nextSlotIndex;
+    }
+
+    selectedHotbarIndex = 0;
 }
 
 void consumeSelectedHotbarSlot(HotbarSlots& hotbarSlots, BagSlots& bagSlots, const std::size_t selectedHotbarIndex)

@@ -328,6 +328,7 @@ void Application::unloadActiveSingleplayerWorld()
     activeSingleplayerWorldDisplayName_.clear();
     autosaveAccumulatorSeconds_ = 0.0f;
     sessionPlayTimeSeconds_ = 0.0f;
+    chatState_ = {};
 }
 
 std::filesystem::path Application::multiplayerPrefsPath() const

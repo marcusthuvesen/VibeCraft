@@ -70,6 +70,14 @@ enum class SpawnBiomeTarget : std::uint8_t
     Jungle,
 };
 
+enum class DifficultyGrade : std::uint8_t
+{
+    Easy = 0,
+    Normal,
+    Hard,
+    Nightmare,
+};
+
 class Application
 {
   public:
@@ -151,6 +159,19 @@ class Application
         std::uint16_t port = 41234;
     };
 
+    struct ChatLine
+    {
+        std::string text;
+        bool isError = false;
+    };
+
+    struct ChatState
+    {
+        bool open = false;
+        std::string inputBuffer;
+        std::vector<ChatLine> history;
+    };
+
     struct CraftingMenuState
     {
         enum class Mode : std::uint8_t
@@ -188,6 +209,12 @@ class Application
     [[nodiscard]] std::filesystem::path audioPrefsPath() const;
     void refreshDetectedLanAddress();
     void processJoinMenuTextInput();
+    void processPlayingChatInput(bool submitPressed);
+    void openChat(const std::string& initialText = {});
+    void closeChat(bool clearInput);
+    void appendChatLine(const std::string& text, bool isError);
+    void submitChatInput();
+    void teleportPlayerToFeetPosition(const glm::vec3& feetPosition);
     void tryStartHostFromMenu();
     void tryConnectFromJoinMenu();
     void beginClientJoinLoad();
@@ -312,6 +339,7 @@ class Application
     bool pauseSoundSettingsOpen_ = false;
     bool pauseGameSettingsOpen_ = false;
     bool mobSpawningEnabled_ = true;
+    DifficultyGrade difficultyGrade_ = DifficultyGrade::Normal;
     SpawnBiomeTarget spawnBiomeTarget_ = SpawnBiomeTarget::Temperate;
     bool mainMenuSoundSettingsOpen_ = false;
     bool creativeModeEnabled_ = false;
@@ -319,6 +347,9 @@ class Application
     float musicVolume_ = 0.85f;
     float sfxVolume_ = 1.0f;
     bool creativeToggleKeyWasDown_ = false;
+    bool chatOpenKeyWasDown_ = false;
+    bool chatSlashKeyWasDown_ = false;
+    bool chatSubmitKeyWasDown_ = false;
     bool previousWorldKeyWasDown_ = false;
     bool newWorldKeyWasDown_ = false;
     bool nextWorldKeyWasDown_ = false;
@@ -354,6 +385,7 @@ class Application
     int craftingDragLastHit_ = -1;
     bool showWorldOriginGuides_ = false;
     bool debugF3KeyWasDown_ = false;
+    ChatState chatState_{};
     struct MobAudioState
     {
         glm::vec3 lastFeetPosition{0.0f};

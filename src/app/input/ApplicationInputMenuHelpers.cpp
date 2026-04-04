@@ -112,6 +112,72 @@ SpawnBiomeTarget nextSpawnBiomeTarget(const SpawnBiomeTarget target)
     }
 }
 
+const char* difficultyGradeLabel(const DifficultyGrade difficulty)
+{
+    switch (difficulty)
+    {
+    case DifficultyGrade::Easy:
+        return "Easy";
+    case DifficultyGrade::Hard:
+        return "Hard";
+    case DifficultyGrade::Nightmare:
+        return "Nightmare";
+    case DifficultyGrade::Normal:
+    default:
+        return "Normal";
+    }
+}
+
+DifficultyGrade nextDifficultyGrade(const DifficultyGrade difficulty)
+{
+    switch (difficulty)
+    {
+    case DifficultyGrade::Easy:
+        return DifficultyGrade::Normal;
+    case DifficultyGrade::Normal:
+        return DifficultyGrade::Hard;
+    case DifficultyGrade::Hard:
+        return DifficultyGrade::Nightmare;
+    case DifficultyGrade::Nightmare:
+    default:
+        return DifficultyGrade::Easy;
+    }
+}
+
+game::MobSpawnSettings mobSpawnSettingsForDifficulty(const DifficultyGrade difficulty)
+{
+    game::MobSpawnSettings settings{};
+    switch (difficulty)
+    {
+    case DifficultyGrade::Easy:
+        settings.maxHostileMobsNearPlayer = 5;
+        settings.maxPassiveMobsNearPlayer = 10;
+        settings.spawnAttemptIntervalSeconds = 3.6f;
+        settings.hostileTorchExclusionRadius = 12.0f;
+        break;
+    case DifficultyGrade::Hard:
+        settings.maxHostileMobsNearPlayer = 18;
+        settings.maxPassiveMobsNearPlayer = 16;
+        settings.spawnAttemptIntervalSeconds = 1.55f;
+        settings.despawnHorizontalDistance = 84.0f;
+        settings.hostileTorchExclusionRadius = 8.0f;
+        break;
+    case DifficultyGrade::Nightmare:
+        settings.maxHostileMobsNearPlayer = 30;
+        settings.maxPassiveMobsNearPlayer = 18;
+        settings.spawnAttemptIntervalSeconds = 0.8f;
+        settings.spawnMinHorizontalDistance = 14.0f;
+        settings.spawnMaxHorizontalDistance = 56.0f;
+        settings.despawnHorizontalDistance = 96.0f;
+        settings.hostileTorchExclusionRadius = 5.0f;
+        break;
+    case DifficultyGrade::Normal:
+    default:
+        break;
+    }
+    return settings;
+}
+
 glm::vec3 preferredBiomePreviewProbePosition(
     const SpawnBiomeTarget target,
     const glm::vec3& fallbackCameraPosition)

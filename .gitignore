@@ -11,3 +11,5 @@ assets/saves/worlds/
 third_party/HyAssets/
 third_party/minecraft-assets/
 tmp_menu*.png
+tmp_debug/
+.cursor/

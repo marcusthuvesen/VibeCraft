@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Packs selected materials into chunk_atlas.png (128x224, 16x16 tiles, 8x14 grid)
+# Packs selected materials into chunk_atlas.png (128x240, 16x16 tiles, 8x15 grid)
 # and chunk_atlas.bgra for the renderer. Tile order must match BlockMetadata tile indices in code.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -188,6 +188,13 @@ BROWN_MUSHROOM_SRC="${MAT}/brown_mushroom.png"
 RED_MUSHROOM_SRC="${MAT}/red_mushroom.png"
 DEAD_BUSH_SRC="$(pick_first_existing "${MAT}/dead_bush.png" "${MAT}/deadbush.png")"
 VINE_SRC="${MAT}/vine.png"
+LADDER_SRC="${MAT}/ladder.png"
+OAK_DOOR_LOWER_SRC="$(pick_first_existing "${MAT}/door_wood_lower.png" "${MAT}/oak_door_lower.png" "${MAT}/oak_door_bottom.png")"
+OAK_DOOR_UPPER_SRC="$(pick_first_existing "${MAT}/door_wood_upper.png" "${MAT}/oak_door_upper.png" "${MAT}/oak_door_top.png")"
+JUNGLE_DOOR_LOWER_SRC="$(pick_first_existing "${MAT}/door_jungle_lower.png" "${MAT}/jungle_door_lower.png" "${MAT}/jungle_door_bottom.png")"
+JUNGLE_DOOR_UPPER_SRC="$(pick_first_existing "${MAT}/door_jungle_upper.png" "${MAT}/jungle_door_upper.png" "${MAT}/jungle_door_top.png")"
+IRON_DOOR_LOWER_SRC="$(pick_first_existing "${MAT}/door_iron_lower.png" "${MAT}/iron_door_lower.png" "${MAT}/iron_door_bottom.png")"
+IRON_DOOR_UPPER_SRC="$(pick_first_existing "${MAT}/door_iron_upper.png" "${MAT}/iron_door_upper.png" "${MAT}/iron_door_top.png")"
 COCOA_SRC="${MAT}/cocoa_stage2.png"
 MELON_SIDE_SRC="${MAT}/melon_side.png"
 BAMBOO_STALK_SRC="${MAT}/bamboo_stalk.png"
@@ -350,15 +357,25 @@ preserve_alpha_tint_tile "${DARK_OAK_LEAVES_SRC}" "${TMP}/t101.png" "${TEMPERATE
 cutout_tint_tile "${SHORT_GRASS_SRC}" "${TMP}/t102.png" "${TEMPERATE_GRASS_DARK}" "${FOREST_GRASS_LIGHT}"
 cutout_tint_tile "${SHORT_GRASS_SRC}" "${TMP}/t103.png" "${DRY_GRASS_DARK}" "${DRY_GRASS_LIGHT}"
 
-# Row 14: cave-biome support and reserved tail tiles.
+# Row 14: cave-biome support, ladder, and door tiles.
 resize_tile "${SCULK_SRC}" "${TMP}/t104.png"
 resize_tile "${DRIPSTONE_BLOCK_SRC}" "${TMP}/t105.png"
 resize_tile "${MOSS_BLOCK_SRC}" "${TMP}/t106.png"
-cutout_tint_tile "${VINE_SRC}" "${TMP}/t107.png" "${TEMPERATE_FOLIAGE_DARK}" "${TEMPERATE_FOLIAGE_LIGHT}"
-resize_tile "${MAT}/deepslate.png" "${TMP}/t108.png"
-resize_tile "${MAT}/stone.png" "${TMP}/t109.png"
-resize_tile "${MOSSY_COBBLE_SRC}" "${TMP}/t110.png"
-resize_tile "${COARSE_DIRT_SRC}" "${TMP}/t111.png"
+decorative_cutout_tile "${LADDER_SRC}" "${TMP}/t107.png"
+decorative_cutout_tile "${OAK_DOOR_LOWER_SRC}" "${TMP}/t108.png"
+decorative_cutout_tile "${OAK_DOOR_UPPER_SRC}" "${TMP}/t109.png"
+decorative_cutout_tile "${JUNGLE_DOOR_LOWER_SRC}" "${TMP}/t110.png"
+decorative_cutout_tile "${JUNGLE_DOOR_UPPER_SRC}" "${TMP}/t111.png"
+
+# Row 15: iron door plus reserved tail tiles.
+decorative_cutout_tile "${IRON_DOOR_LOWER_SRC}" "${TMP}/t112.png"
+decorative_cutout_tile "${IRON_DOOR_UPPER_SRC}" "${TMP}/t113.png"
+resize_tile "${MAT}/deepslate.png" "${TMP}/t114.png"
+resize_tile "${MAT}/stone.png" "${TMP}/t115.png"
+resize_tile "${MOSSY_COBBLE_SRC}" "${TMP}/t116.png"
+resize_tile "${COARSE_DIRT_SRC}" "${TMP}/t117.png"
+resize_tile "${MOSS_BLOCK_SRC}" "${TMP}/t118.png"
+resize_tile "${LADDER_SRC}" "${TMP}/t119.png"
 
 magick montage \
   "${TMP}/t00.png" "${TMP}/t01.png" "${TMP}/t02.png" "${TMP}/t03.png" "${TMP}/t04.png" "${TMP}/t05.png" \
@@ -375,8 +392,9 @@ magick montage \
   "${TMP}/t88.png" "${TMP}/t89.png" "${TMP}/t90.png" "${TMP}/t91.png" "${TMP}/t92.png" "${TMP}/t93.png" "${TMP}/t94.png" "${TMP}/t95.png" \
   "${TMP}/t96.png" "${TMP}/t97.png" "${TMP}/t98.png" "${TMP}/t99.png" "${TMP}/t100.png" "${TMP}/t101.png" "${TMP}/t102.png" "${TMP}/t103.png" \
   "${TMP}/t104.png" "${TMP}/t105.png" "${TMP}/t106.png" "${TMP}/t107.png" "${TMP}/t108.png" "${TMP}/t109.png" "${TMP}/t110.png" "${TMP}/t111.png" \
-  -tile 8x14 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
+  "${TMP}/t112.png" "${TMP}/t113.png" "${TMP}/t114.png" "${TMP}/t115.png" "${TMP}/t116.png" "${TMP}/t117.png" "${TMP}/t118.png" "${TMP}/t119.png" \
+  -tile 8x15 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
 
 magick "${OUT}/chunk_atlas.png" -depth 8 "BGRA:${OUT}/chunk_atlas.bgra"
 rm -rf "${TMP}"
-echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*224*4)) bytes)"
+echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*240*4)) bytes)"

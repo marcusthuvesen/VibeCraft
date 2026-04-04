@@ -174,6 +174,44 @@ TEST_CASE("world fluids fall spread and lava cools against water")
     CHECK(isExpectedCooledBlock);
 }
 
+TEST_CASE("tree crown leaves decay after the rooted trunk base is removed")
+{
+    using vibecraft::world::BlockType;
+    using vibecraft::world::World;
+    using vibecraft::world::WorldEditAction;
+    using vibecraft::world::WorldEditCommand;
+
+    World world;
+    REQUIRE(world.applyEditCommand({.action = WorldEditAction::Place, .position = {0, 9, 0}, .blockType = BlockType::Dirt}));
+    REQUIRE(world.applyEditCommand({.action = WorldEditAction::Place, .position = {0, 10, 0}, .blockType = BlockType::OakLog}));
+    REQUIRE(world.applyEditCommand({.action = WorldEditAction::Place, .position = {0, 11, 0}, .blockType = BlockType::OakLog}));
+
+    constexpr std::array<glm::ivec3, 5> kCrownLeaves{{
+        {0, 12, 0},
+        {1, 12, 0},
+        {-1, 12, 0},
+        {0, 12, 1},
+        {0, 12, -1},
+    }};
+    for (const glm::ivec3& pos : kCrownLeaves)
+    {
+        REQUIRE(world.applyEditCommand({.action = WorldEditAction::Place, .position = pos, .blockType = BlockType::OakLeaves}));
+    }
+
+    REQUIRE(world.applyEditCommand({.action = WorldEditAction::Remove, .position = {0, 10, 0}, .blockType = BlockType::Air}));
+    CHECK(world.blockAt(0, 12, 0) == BlockType::OakLeaves);
+
+    for (int i = 0; i < 24; ++i)
+    {
+        world.tickLeafDecay(2);
+    }
+
+    for (const glm::ivec3& pos : kCrownLeaves)
+    {
+        CHECK(world.blockAt(pos.x, pos.y, pos.z) == BlockType::Air);
+    }
+}
+
 TEST_CASE("terrain generator keeps common layers broad and clusters rare ore")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
@@ -283,6 +321,10 @@ TEST_CASE("block metadata exposes stable texture tile indices for current block 
     CHECK(vibecraft::world::textureTileIndex(BlockType::JunglePlanks, BlockFace::Side) == 65);
     CHECK(vibecraft::world::textureTileIndex(BlockType::MossBlock, BlockFace::Top) == 66);
     CHECK(vibecraft::world::textureTileIndex(BlockType::MossyCobblestone, BlockFace::Side) == 67);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::OakDoor, BlockFace::Side) == 108);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::OakDoorUpperNorth, BlockFace::Side) == 109);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::JungleDoor, BlockFace::Side) == 110);
+    CHECK(vibecraft::world::textureTileIndex(BlockType::IronDoorUpperNorth, BlockFace::Side) == 113);
     CHECK(vibecraft::world::blockMetadata(BlockType::CoalOre).debugColor == 0xffffffff);
 }
 
@@ -304,6 +346,35 @@ TEST_CASE("chunk mesher emits axis-aligned face normals")
         const float axisMagnitude = std::abs(vertex.nx) + std::abs(vertex.ny) + std::abs(vertex.nz);
         CHECK(axisMagnitude == doctest::Approx(1.0f));
     }
+}
+
+TEST_CASE("door collision slabs rotate when the door opens")
+{
+    using vibecraft::world::BlockType;
+
+    const vibecraft::world::BlockCollisionBox closedBox =
+        vibecraft::world::collisionBoxForBlockType(BlockType::OakDoorLowerNorth);
+    const vibecraft::world::BlockCollisionBox openBox =
+        vibecraft::world::collisionBoxForBlockType(BlockType::OakDoorLowerNorthOpen);
+
+    CHECK(closedBox.maxZ - closedBox.minZ < 0.25f);
+    CHECK(closedBox.maxX - closedBox.minX == doctest::Approx(1.0f));
+    CHECK(openBox.maxX - openBox.minX < 0.25f);
+    CHECK(openBox.maxZ - openBox.minZ == doctest::Approx(1.0f));
+}
+
+TEST_CASE("door facing variants preserve axis and provide mirrored pairing states")
+{
+    using vibecraft::world::DoorFacing;
+
+    CHECK(vibecraft::world::doorUsesXAxisPlane(DoorFacing::East));
+    CHECK(vibecraft::world::doorUsesXAxisPlane(DoorFacing::West));
+    CHECK_FALSE(vibecraft::world::doorUsesXAxisPlane(DoorFacing::North));
+    CHECK_FALSE(vibecraft::world::doorUsesXAxisPlane(DoorFacing::South));
+    CHECK(vibecraft::world::oppositeDoorFacingWithinAxis(DoorFacing::North) == DoorFacing::South);
+    CHECK(vibecraft::world::oppositeDoorFacingWithinAxis(DoorFacing::South) == DoorFacing::North);
+    CHECK(vibecraft::world::oppositeDoorFacingWithinAxis(DoorFacing::East) == DoorFacing::West);
+    CHECK(vibecraft::world::oppositeDoorFacingWithinAxis(DoorFacing::West) == DoorFacing::East);
 }
 
 TEST_CASE("deeper block families are harder and bedrock is unbreakable")

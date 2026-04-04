@@ -140,9 +140,11 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/app/ApplicationChunkStreaming.hpp
     include/vibecraft/app/ApplicationCombat.hpp
     include/vibecraft/app/ApplicationConfig.hpp
+    include/vibecraft/app/WaterMovement.hpp
     include/vibecraft/app/ApplicationEquipment.hpp
     include/vibecraft/app/ApplicationMultiplayerLog.hpp
     include/vibecraft/app/ApplicationMovementHelpers.hpp
+    include/vibecraft/app/ChatCommands.hpp
     include/vibecraft/app/Furnace.hpp
     include/vibecraft/app/Mining.hpp
     include/vibecraft/app/ApplicationSpawnHelpers.hpp
@@ -164,6 +166,10 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/multiplayer/UdpTransport.hpp
     include/vibecraft/game/Camera.hpp
     include/vibecraft/game/CollisionHelpers.hpp
+    include/vibecraft/game/MobNavigation.hpp
+    include/vibecraft/game/mobs/MobBreeding.hpp
+    include/vibecraft/game/mobs/MobSpecies.hpp
+    include/vibecraft/game/mobs/MobTargeting.hpp
     include/vibecraft/game/MobTypes.hpp
     include/vibecraft/game/MobSpawnSystem.hpp
     include/vibecraft/game/PlayerVitals.hpp
@@ -200,6 +206,7 @@ set(VIBECRAFT_SOURCES
     src/app/ApplicationChunkStreaming.cpp
     src/app/ApplicationCombat.cpp
     src/app/ApplicationCraftingMenu.cpp
+    src/app/ApplicationChat.cpp
     src/app/ApplicationDroppedItems.cpp
     src/app/ApplicationEquipment.cpp
     src/app/runtime/ApplicationFrameDebug.cpp
@@ -207,6 +214,7 @@ set(VIBECRAFT_SOURCES
     src/app/ApplicationMultiplayerSession.cpp
     src/app/ApplicationMultiplayerRuntime.cpp
     src/app/ApplicationMovementHelpers.cpp
+    src/app/WaterMovement.cpp
     src/app/Furnace.cpp
     src/app/Mining.cpp
     src/app/ApplicationPlayerLifecycle.cpp
@@ -216,10 +224,12 @@ set(VIBECRAFT_SOURCES
     src/app/ApplicationTerraformingRuntime.cpp
     src/app/ApplicationWorldSync.cpp
     src/app/ApplicationSurvival.cpp
+    src/app/ChatCommands.cpp
     src/app/crafting/Crafting.cpp
     src/app/crafting/CraftingRecipesCatalog.cpp
     src/app/crafting/CraftingRecipesVanilla.cpp
     src/app/input/ApplicationInputPlayingMovement.cpp
+    src/app/input/ApplicationInputRouter.cpp
     src/app/input/ApplicationInputMainMenu.cpp
     src/app/input/ApplicationInputPlayingActions.cpp
     src/app/input/ApplicationInputPaused.cpp
@@ -235,6 +245,11 @@ set(VIBECRAFT_SOURCES
     src/core/Logger.cpp
     src/game/Camera.cpp
     src/game/CollisionHelpers.cpp
+    src/game/MobNavigation.cpp
+    src/game/mobs/MobBreeding.cpp
+    src/game/mobs/MobCombat.cpp
+    src/game/mobs/MobSpawning.cpp
+    src/game/mobs/MobTargeting.cpp
     src/game/MobSpawnSystem.cpp
     src/game/PlayerVitals.cpp
     src/multiplayer/Protocol.cpp
@@ -244,6 +259,7 @@ set(VIBECRAFT_SOURCES
     src/platform/LocalNetworkAddress.cpp
     src/platform/Window.cpp
     src/render/Renderer.cpp
+    src/render/RendererChatDbgText.cpp
     src/render/RendererCulling.cpp
     src/render/RendererDbgText.cpp
     src/render/RendererDebugOverlay.cpp
@@ -329,8 +345,10 @@ endif()
 add_executable(vibecraft_tests
     tests/armor_equipment_tests.cpp
     tests/botany_runtime_tests.cpp
+    tests/chat_command_tests.cpp
     tests/crafting/crafting_tests.cpp
     tests/furnace_tests.cpp
+    tests/game/mob_breeding_tests.cpp
     tests/game/player_vitals_smoke_tests.cpp
     tests/multiplayer/multiplayer_smoke_tests.cpp
     tests/multiplayer_dropped_item_tests.cpp
@@ -351,12 +369,18 @@ add_executable(vibecraft_tests
     src/app/ApplicationEquipment.cpp
     src/app/ApplicationAmbientLife.cpp
     src/app/ApplicationBotanyRuntime.cpp
+    src/app/ChatCommands.cpp
     src/app/Furnace.cpp
     src/app/Mining.cpp
     src/app/ApplicationTerraformingRuntime.cpp
     src/app/SingleplayerSave.cpp
     src/app/ApplicationSurvival.cpp
     src/game/CollisionHelpers.cpp
+    src/game/MobNavigation.cpp
+    src/game/mobs/MobBreeding.cpp
+    src/game/mobs/MobCombat.cpp
+    src/game/mobs/MobSpawning.cpp
+    src/game/mobs/MobTargeting.cpp
     src/game/MobSpawnSystem.cpp
     src/game/PlayerVitals.cpp
     src/multiplayer/Protocol.cpp

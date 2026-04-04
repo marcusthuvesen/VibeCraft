@@ -169,7 +169,7 @@ constexpr std::array<SampleOffset, 24> kTerraformSampleOffsets{{
     {
         const std::uint32_t hash = terraformHash(worldX, worldZ, safeZone.generatorCount);
         const float roll = static_cast<float>(hash & 0xffffu) / 65535.0f;
-        const float tuftChance = std::min(0.92f, 0.28f + static_cast<float>(safeZone.generatorCount) * 0.12f);
+        const float tuftChance = std::min(0.48f, 0.14f + static_cast<float>(safeZone.generatorCount) * 0.06f);
         if (roll < tuftChance)
         {
             const vibecraft::world::BlockType tuftBlock = safeZone.generatorCount >= 3

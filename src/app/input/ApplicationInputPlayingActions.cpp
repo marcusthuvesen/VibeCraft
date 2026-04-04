@@ -14,6 +14,7 @@
 #include "vibecraft/app/ApplicationEquipment.hpp"
 #include "vibecraft/app/Mining.hpp"
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
+#include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
 namespace vibecraft::app
@@ -37,6 +38,155 @@ namespace
         return cameraForward.x >= 0.0f ? world::BlockType::FurnaceWest : world::BlockType::FurnaceEast;
     }
     return cameraForward.z >= 0.0f ? world::BlockType::FurnaceNorth : world::BlockType::Furnace;
+}
+
+[[nodiscard]] world::BlockType stairsBlockFacingPlayer(
+    const world::BlockType stairsBaseBlock,
+    const glm::vec3& cameraForward)
+{
+    const bool xDominant = std::abs(cameraForward.x) >= std::abs(cameraForward.z);
+    switch (world::normalizeStairBlockType(stairsBaseBlock))
+    {
+    case world::BlockType::OakStairs:
+        if (xDominant)
+        {
+            return cameraForward.x >= 0.0f ? world::BlockType::OakStairsEast : world::BlockType::OakStairsWest;
+        }
+        return cameraForward.z >= 0.0f ? world::BlockType::OakStairsSouth : world::BlockType::OakStairsNorth;
+    case world::BlockType::CobblestoneStairs:
+        if (xDominant)
+        {
+            return cameraForward.x >= 0.0f ? world::BlockType::CobblestoneStairsEast
+                                           : world::BlockType::CobblestoneStairsWest;
+        }
+        return cameraForward.z >= 0.0f ? world::BlockType::CobblestoneStairsSouth
+                                       : world::BlockType::CobblestoneStairsNorth;
+    case world::BlockType::StoneStairs:
+        if (xDominant)
+        {
+            return cameraForward.x >= 0.0f ? world::BlockType::StoneStairsEast : world::BlockType::StoneStairsWest;
+        }
+        return cameraForward.z >= 0.0f ? world::BlockType::StoneStairsSouth : world::BlockType::StoneStairsNorth;
+    case world::BlockType::BrickStairs:
+        if (xDominant)
+        {
+            return cameraForward.x >= 0.0f ? world::BlockType::BrickStairsEast : world::BlockType::BrickStairsWest;
+        }
+        return cameraForward.z >= 0.0f ? world::BlockType::BrickStairsSouth : world::BlockType::BrickStairsNorth;
+    case world::BlockType::SandstoneStairs:
+        if (xDominant)
+        {
+            return cameraForward.x >= 0.0f ? world::BlockType::SandstoneStairsEast
+                                           : world::BlockType::SandstoneStairsWest;
+        }
+        return cameraForward.z >= 0.0f ? world::BlockType::SandstoneStairsSouth
+                                       : world::BlockType::SandstoneStairsNorth;
+    case world::BlockType::JungleStairs:
+        if (xDominant)
+        {
+            return cameraForward.x >= 0.0f ? world::BlockType::JungleStairsEast : world::BlockType::JungleStairsWest;
+        }
+        return cameraForward.z >= 0.0f ? world::BlockType::JungleStairsSouth : world::BlockType::JungleStairsNorth;
+    default:
+        return stairsBaseBlock;
+    }
+}
+
+[[nodiscard]] world::BlockType torchBlockForPlacement(
+    const world::BlockType torchBaseBlock,
+    const glm::ivec3& solidBlock,
+    const glm::ivec3& buildTarget)
+{
+    if (!world::isTorchBlock(torchBaseBlock))
+    {
+        return torchBaseBlock;
+    }
+
+    const glm::ivec3 delta = buildTarget - solidBlock;
+    if (delta.y != 0)
+    {
+        // Top/bottom face placement uses standing torch.
+        return world::BlockType::Torch;
+    }
+    if (delta.x > 0)
+    {
+        return world::BlockType::TorchEast;
+    }
+    if (delta.x < 0)
+    {
+        return world::BlockType::TorchWest;
+    }
+    if (delta.z > 0)
+    {
+        return world::BlockType::TorchSouth;
+    }
+    if (delta.z < 0)
+    {
+        return world::BlockType::TorchNorth;
+    }
+    return world::BlockType::Torch;
+}
+
+[[nodiscard]] bool isValidTorchPlacementFace(
+    const glm::ivec3& solidBlock,
+    const glm::ivec3& buildTarget)
+{
+    const glm::ivec3 delta = buildTarget - solidBlock;
+    // Minecraft-style: torches place on top or on vertical sides, not on undersides.
+    return delta.y >= 0;
+}
+
+[[nodiscard]] world::DoorFacing doorFacingPlayer(const glm::vec3& cameraForward)
+{
+    if (std::abs(cameraForward.x) >= std::abs(cameraForward.z))
+    {
+        return cameraForward.x >= 0.0f ? world::DoorFacing::East : world::DoorFacing::West;
+    }
+    return cameraForward.z >= 0.0f ? world::DoorFacing::South : world::DoorFacing::North;
+}
+
+[[nodiscard]] world::DoorFacing pairedDoorFacingForPlacement(
+    const world::World& worldState,
+    const glm::ivec3& lowerDoorPosition,
+    const world::BlockType doorItemBlock,
+    const world::DoorFacing fallbackFacing)
+{
+    const world::DoorFamily family = world::doorFamilyForBlockType(doorItemBlock);
+    const bool xAxisPlane = world::doorUsesXAxisPlane(fallbackFacing);
+    const std::array<glm::ivec3, 2> neighborOffsets = xAxisPlane
+        ? std::array<glm::ivec3, 2>{glm::ivec3{0, 0, -1}, glm::ivec3{0, 0, 1}}
+        : std::array<glm::ivec3, 2>{glm::ivec3{-1, 0, 0}, glm::ivec3{1, 0, 0}};
+
+    for (const glm::ivec3& offset : neighborOffsets)
+    {
+        const glm::ivec3 neighborLower = lowerDoorPosition + offset;
+        const world::BlockType neighborBlock =
+            worldState.blockAt(neighborLower.x, neighborLower.y, neighborLower.z);
+        if (!world::isDoorVariantBlock(neighborBlock) || world::isDoorUpperHalf(neighborBlock))
+        {
+            continue;
+        }
+        if (world::doorFamilyForBlockType(neighborBlock) != family)
+        {
+            continue;
+        }
+
+        const world::DoorFacing neighborFacing = world::doorFacingForBlockType(neighborBlock);
+        if (world::doorUsesXAxisPlane(neighborFacing) != xAxisPlane)
+        {
+            continue;
+        }
+
+        return world::oppositeDoorFacingWithinAxis(neighborFacing);
+    }
+
+    return fallbackFacing;
+}
+
+[[nodiscard]] bool canReplaceDoorCell(const world::BlockType blockType)
+{
+    return blockType == world::BlockType::Air
+        || (!world::isSolid(blockType) && world::blockMetadata(blockType).breakable);
 }
 }  // namespace
 
@@ -101,7 +251,10 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
     {
         if (!creativeModeEnabled_)
         {
-            consumeEquippedItemDurability(hotbarSlots_[selectedHotbarIndex_]);
+            InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+            consumeEquippedItemDurability(
+                selectedSlot,
+                durabilityUseAmountForEquippedItem(selectedSlot.equippedItem));
         }
         return;
     }
@@ -111,6 +264,50 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
         activeMiningState_.elapsedSeconds = 0.0f;
         return;
     }
+
+    const auto relayWorldEdit = [this](const world::WorldEditCommand& command)
+    {
+        if (hostSession_ != nullptr && hostSession_->running())
+        {
+            hostSession_->broadcastBlockEdit({
+                .authorClientId = localClientId_,
+                .action = command.action,
+                .x = command.position.x,
+                .y = command.position.y,
+                .z = command.position.z,
+                .blockType = command.blockType,
+            });
+        }
+        if (clientSession_ != nullptr && clientSession_->connected())
+        {
+            multiplayer::protocol::ClientInputMessage input{
+                .clientId = clientSession_->clientId(),
+                .positionX = playerFeetPosition_.x,
+                .positionY = playerFeetPosition_.y,
+                .positionZ = playerFeetPosition_.z,
+                .yawDelta = camera_.yawDegrees(),
+                .pitchDelta = camera_.pitchDegrees(),
+                .health = playerVitals_.health(),
+                .air = playerVitals_.air(),
+                .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
+                .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
+                .targetX = command.position.x,
+                .targetY = command.position.y,
+                .targetZ = command.position.z,
+                .selectedHotbarIndex = static_cast<std::uint8_t>(selectedHotbarIndex_),
+                .placeBlockType = command.blockType,
+            };
+            if (command.action == world::WorldEditAction::Remove)
+            {
+                input.breakBlock = true;
+            }
+            else
+            {
+                input.placeBlock = true;
+            }
+            clientSession_->sendInput(input, networkServerTick_);
+        }
+    };
 
     const std::uint32_t mouseButtons = SDL_GetMouseState(nullptr, nullptr);
     const bool leftMouseHeld = (mouseButtons & SDL_BUTTON_LMASK) != 0U;
@@ -157,12 +354,43 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
 
         if (activeMiningState_.elapsedSeconds >= activeMiningState_.requiredSeconds)
         {
-            const world::WorldEditCommand command{
+            std::vector<world::WorldEditCommand> commands;
+            commands.push_back(world::WorldEditCommand{
                 .action = world::WorldEditAction::Remove,
                 .position = raycastHit->solidBlock,
                 .blockType = world::BlockType::Air,
-            };
-            if (world_.applyEditCommand(command))
+            });
+            if (world::isDoorVariantBlock(raycastHit->blockType))
+            {
+                const glm::ivec3 counterpartPosition = raycastHit->solidBlock
+                    + (world::isDoorUpperHalf(raycastHit->blockType) ? glm::ivec3(0, -1, 0)
+                                                                     : glm::ivec3(0, 1, 0));
+                const world::BlockType counterpartType = world_.blockAt(
+                    counterpartPosition.x,
+                    counterpartPosition.y,
+                    counterpartPosition.z);
+                if (world::isDoorVariantBlock(counterpartType)
+                    && world::doorFamilyForBlockType(counterpartType)
+                        == world::doorFamilyForBlockType(raycastHit->blockType))
+                {
+                    commands.push_back(world::WorldEditCommand{
+                        .action = world::WorldEditAction::Remove,
+                        .position = counterpartPosition,
+                        .blockType = world::BlockType::Air,
+                    });
+                }
+            }
+
+            std::vector<world::WorldEditCommand> appliedCommands;
+            appliedCommands.reserve(commands.size());
+            for (const world::WorldEditCommand& command : commands)
+            {
+                if (world_.applyEditCommand(command))
+                {
+                    appliedCommands.push_back(command);
+                }
+            }
+            if (!appliedCommands.empty())
             {
                 if (raycastHit->blockType == world::BlockType::Chest)
                 {
@@ -223,43 +451,21 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
                 }
                 if (!creativeModeEnabled_)
                 {
-                    consumeEquippedItemDurability(hotbarSlots_[selectedHotbarIndex_]);
+                    InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
+                    consumeEquippedItemDurability(
+                        selectedSlot,
+                        durabilityUseAmountForEquippedItem(selectedSlot.equippedItem));
+                    const glm::ivec3 dropPosition = world::isDoorUpperHalf(raycastHit->blockType)
+                        ? raycastHit->solidBlock + glm::ivec3(0, -1, 0)
+                        : raycastHit->solidBlock;
                     spawnDroppedItem(
-                        world::normalizeFurnaceBlockType(raycastHit->blockType),
-                        raycastHit->solidBlock);
+                        world::normalizePlaceVariantBlockType(raycastHit->blockType),
+                        dropPosition);
                 }
                 soundEffects_.playBlockBreak(raycastHit->blockType);
-                if (hostSession_ != nullptr && hostSession_->running())
+                for (const world::WorldEditCommand& command : appliedCommands)
                 {
-                    hostSession_->broadcastBlockEdit({
-                        .authorClientId = localClientId_,
-                        .action = command.action,
-                        .x = command.position.x,
-                        .y = command.position.y,
-                        .z = command.position.z,
-                        .blockType = command.blockType,
-                    });
-                }
-                if (clientSession_ != nullptr && clientSession_->connected())
-                {
-                    clientSession_->sendInput(
-                        {
-                            .clientId = clientSession_->clientId(),
-                            .positionX = playerFeetPosition_.x,
-                            .positionY = playerFeetPosition_.y,
-                            .positionZ = playerFeetPosition_.z,
-                            .yawDelta = camera_.yawDegrees(),
-                            .pitchDelta = camera_.pitchDegrees(),
-                            .health = playerVitals_.health(),
-                            .air = playerVitals_.air(),
-                            .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
-                            .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
-                            .breakBlock = true,
-                            .targetX = command.position.x,
-                            .targetY = command.position.y,
-                            .targetZ = command.position.z,
-                        },
-                        networkServerTick_);
+                    relayWorldEdit(command);
                 }
             }
             activeMiningState_.active = false;
@@ -269,6 +475,49 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
 
     if (!inputState_.rightMousePressed)
     {
+        return;
+    }
+    if (world::isDoorVariantBlock(raycastHit->blockType))
+    {
+        const glm::ivec3 lowerPosition = world::isDoorUpperHalf(raycastHit->blockType)
+            ? raycastHit->solidBlock + glm::ivec3(0, -1, 0)
+            : raycastHit->solidBlock;
+        const glm::ivec3 upperPosition = lowerPosition + glm::ivec3(0, 1, 0);
+        std::vector<world::WorldEditCommand> toggleCommands;
+        const world::BlockType lowerType = world_.blockAt(lowerPosition.x, lowerPosition.y, lowerPosition.z);
+        const world::BlockType upperType = world_.blockAt(upperPosition.x, upperPosition.y, upperPosition.z);
+        if (world::isDoorVariantBlock(lowerType))
+        {
+            toggleCommands.push_back(world::WorldEditCommand{
+                .action = world::WorldEditAction::Place,
+                .position = lowerPosition,
+                .blockType = world::toggleDoorBlockType(lowerType),
+            });
+        }
+        if (world::isDoorVariantBlock(upperType)
+            && world::doorFamilyForBlockType(upperType) == world::doorFamilyForBlockType(lowerType))
+        {
+            toggleCommands.push_back(world::WorldEditCommand{
+                .action = world::WorldEditAction::Place,
+                .position = upperPosition,
+                .blockType = world::toggleDoorBlockType(upperType),
+            });
+        }
+
+        bool toggledDoor = false;
+        for (const world::WorldEditCommand& command : toggleCommands)
+        {
+            if (!world_.applyEditCommand(command))
+            {
+                continue;
+            }
+            toggledDoor = true;
+            relayWorldEdit(command);
+        }
+        if (toggledDoor)
+        {
+            soundEffects_.playBlockPlace(raycastHit->blockType);
+        }
         return;
     }
     if (raycastHit->blockType == world::BlockType::CraftingTable)
@@ -294,10 +543,20 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
         return;
     }
 
-    const world::BlockType placedBlockType =
-        world::normalizeFurnaceBlockType(selectedSlot.blockType) == world::BlockType::Furnace
+    const world::BlockType selectedBaseBlock = world::normalizePlaceVariantBlockType(selectedSlot.blockType);
+    if (world::isTorchBlock(selectedBaseBlock)
+        && !isValidTorchPlacementFace(raycastHit->solidBlock, raycastHit->buildTarget))
+    {
+        respawnNotice_ = "Torches must be placed on top or wall faces.";
+        return;
+    }
+    const world::BlockType placedBlockType = world::isFurnaceBlock(selectedBaseBlock)
         ? furnaceBlockFacingPlayer(camera_.forward())
-        : selectedSlot.blockType;
+        : world::isStairBlock(selectedBaseBlock)
+            ? stairsBlockFacingPlayer(selectedBaseBlock, camera_.forward())
+            : world::isTorchBlock(selectedBaseBlock)
+                ? torchBlockForPlacement(selectedBaseBlock, raycastHit->solidBlock, raycastHit->buildTarget)
+                : selectedBaseBlock;
     const world::WorldEditCommand command{
         .action = world::WorldEditAction::Place,
         .position = raycastHit->buildTarget,
@@ -306,7 +565,7 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
     const BotanyPlacementResult botanyPlacement = validateBotanyBlockPlacement(
         world_,
         command.position,
-        world::normalizeFurnaceBlockType(selectedSlot.blockType),
+        selectedBaseBlock,
         playerFeetPosition_,
         creativeModeEnabled_);
     if (!botanyPlacement.allowed)
@@ -314,6 +573,63 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
         respawnNotice_ = botanyPlacement.failureReason;
         return;
     }
+
+    if (world::isDoorItemBlock(selectedBaseBlock))
+    {
+        const glm::ivec3 upperPosition = command.position + glm::ivec3(0, 1, 0);
+        if (upperPosition.y > world::kWorldMaxY)
+        {
+            respawnNotice_ = "Doors need two blocks of height.";
+            return;
+        }
+        if (!world::isSolid(world_.blockAt(command.position.x, command.position.y - 1, command.position.z)))
+        {
+            respawnNotice_ = "Doors need a solid block underneath.";
+            return;
+        }
+        const world::BlockType lowerExisting =
+            world_.blockAt(command.position.x, command.position.y, command.position.z);
+        const world::BlockType upperExisting =
+            world_.blockAt(upperPosition.x, upperPosition.y, upperPosition.z);
+        if (!canReplaceDoorCell(lowerExisting) || !canReplaceDoorCell(upperExisting))
+        {
+            respawnNotice_ = "Doors need two empty blocks.";
+            return;
+        }
+
+        const world::DoorFacing facing = pairedDoorFacingForPlacement(
+            world_,
+            command.position,
+            selectedBaseBlock,
+            doorFacingPlayer(camera_.forward()));
+        const std::array<world::WorldEditCommand, 2> doorCommands{{
+            {
+                .action = world::WorldEditAction::Place,
+                .position = command.position,
+                .blockType = world::placedDoorLowerBlockType(selectedBaseBlock, facing),
+            },
+            {
+                .action = world::WorldEditAction::Place,
+                .position = upperPosition,
+                .blockType = world::placedDoorUpperBlockType(selectedBaseBlock, facing),
+            },
+        }};
+
+        if (world_.applyEditCommand(doorCommands[0]) && world_.applyEditCommand(doorCommands[1]))
+        {
+            if (!creativeModeEnabled_)
+            {
+                consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+            }
+            soundEffects_.playBlockPlace(selectedBaseBlock);
+            for (const world::WorldEditCommand& doorCommand : doorCommands)
+            {
+                relayWorldEdit(doorCommand);
+            }
+        }
+        return;
+    }
+
     if (world_.applyEditCommand(command))
     {
         if (!creativeModeEnabled_)
@@ -321,40 +637,7 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
             consumeSelectedHotbarSlot(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
         }
         soundEffects_.playBlockPlace(command.blockType);
-        if (hostSession_ != nullptr && hostSession_->running())
-        {
-            hostSession_->broadcastBlockEdit({
-                .authorClientId = localClientId_,
-                .action = command.action,
-                .x = command.position.x,
-                .y = command.position.y,
-                .z = command.position.z,
-                .blockType = command.blockType,
-            });
-        }
-        if (clientSession_ != nullptr && clientSession_->connected())
-        {
-            clientSession_->sendInput(
-                {
-                    .clientId = clientSession_->clientId(),
-                    .positionX = playerFeetPosition_.x,
-                    .positionY = playerFeetPosition_.y,
-                    .positionZ = playerFeetPosition_.z,
-                    .yawDelta = camera_.yawDegrees(),
-                    .pitchDelta = camera_.pitchDegrees(),
-                    .health = playerVitals_.health(),
-                    .air = playerVitals_.air(),
-                    .selectedEquippedItem = hotbarSlots_[selectedHotbarIndex_].equippedItem,
-                    .selectedBlockType = hotbarSlots_[selectedHotbarIndex_].blockType,
-                    .placeBlock = true,
-                    .targetX = command.position.x,
-                    .targetY = command.position.y,
-                    .targetZ = command.position.z,
-                    .selectedHotbarIndex = static_cast<std::uint8_t>(selectedHotbarIndex_),
-                    .placeBlockType = command.blockType,
-                },
-                networkServerTick_);
-        }
+        relayWorldEdit(command);
     }
 }
 }  // namespace vibecraft::app

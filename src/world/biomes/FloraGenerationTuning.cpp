@@ -128,70 +128,70 @@ GrassTuftTuning grassTuftTuning(const FloraGenerationFamily family)
     {
     case FloraGenerationFamily::Plains:
         return GrassTuftTuning{
-            .baseChance = 0.013,
+            .baseChance = 0.0065,
             .primaryTuft = BlockType::GrassTuft,
             .secondaryTuft = BlockType::FlowerTuft,
             .primaryFraction = 0.94,
         };
     case FloraGenerationFamily::SunflowerPlains:
         return GrassTuftTuning{
-            .baseChance = 0.011,
+            .baseChance = 0.0055,
             .primaryTuft = BlockType::FlowerTuft,
             .secondaryTuft = BlockType::GrassTuft,
             .primaryFraction = 0.72,
         };
     case FloraGenerationFamily::Meadow:
         return GrassTuftTuning{
-            .baseChance = 0.014,
+            .baseChance = 0.007,
             .primaryTuft = BlockType::FlowerTuft,
             .secondaryTuft = BlockType::CloverTuft,
             .primaryFraction = 0.68,
         };
     case FloraGenerationFamily::Savanna:
         return GrassTuftTuning{
-            .baseChance = 0.012,
+            .baseChance = 0.006,
             .primaryTuft = BlockType::DryTuft,
             .secondaryTuft = BlockType::SparseTuft,
             .primaryFraction = 0.74,
         };
     case FloraGenerationFamily::Forest:
         return GrassTuftTuning{
-            .baseChance = 0.021,
+            .baseChance = 0.0105,
             .primaryTuft = BlockType::GrassTuft,
             .secondaryTuft = BlockType::CloverTuft,
             .primaryFraction = 0.78,
         };
     case FloraGenerationFamily::FlowerForest:
         return GrassTuftTuning{
-            .baseChance = 0.020,
+            .baseChance = 0.010,
             .primaryTuft = BlockType::FlowerTuft,
             .secondaryTuft = BlockType::CloverTuft,
             .primaryFraction = 0.64,
         };
     case FloraGenerationFamily::BirchForest:
         return GrassTuftTuning{
-            .baseChance = 0.023,
+            .baseChance = 0.0115,
             .primaryTuft = BlockType::GrassTuft,
             .secondaryTuft = BlockType::CloverTuft,
             .primaryFraction = 0.76,
         };
     case FloraGenerationFamily::DarkForest:
         return GrassTuftTuning{
-            .baseChance = 0.004,
+            .baseChance = 0.002,
             .primaryTuft = BlockType::SparseTuft,
             .secondaryTuft = BlockType::SparseTuft,
             .primaryFraction = 1.0,
         };
     case FloraGenerationFamily::Taiga:
         return GrassTuftTuning{
-            .baseChance = 0.008,
+            .baseChance = 0.004,
             .primaryTuft = BlockType::SparseTuft,
             .secondaryTuft = BlockType::SparseTuft,
             .primaryFraction = 1.0,
         };
     case FloraGenerationFamily::WindsweptHills:
         return GrassTuftTuning{
-            .baseChance = 0.007,
+            .baseChance = 0.0035,
             .primaryTuft = BlockType::SparseTuft,
             .secondaryTuft = BlockType::DryTuft,
             .primaryFraction = 0.70,
@@ -200,7 +200,7 @@ GrassTuftTuning grassTuftTuning(const FloraGenerationFamily family)
     case FloraGenerationFamily::SparseJungle:
     case FloraGenerationFamily::BambooJungle:
         return GrassTuftTuning{
-            .baseChance = 0.012,
+            .baseChance = 0.006,
             .primaryTuft = BlockType::LushTuft,
             .secondaryTuft = BlockType::LushTuft,
             .primaryFraction = 1.0,
@@ -209,21 +209,21 @@ GrassTuftTuning grassTuftTuning(const FloraGenerationFamily family)
     case FloraGenerationFamily::IcePlains:
     case FloraGenerationFamily::SnowyTaiga:
         return GrassTuftTuning{
-            .baseChance = 0.004,
+            .baseChance = 0.002,
             .primaryTuft = BlockType::FrostTuft,
             .secondaryTuft = BlockType::FrostTuft,
             .primaryFraction = 1.0,
         };
     case FloraGenerationFamily::Swamp:
         return GrassTuftTuning{
-            .baseChance = 0.016,
+            .baseChance = 0.008,
             .primaryTuft = BlockType::LushTuft,
             .secondaryTuft = BlockType::SproutTuft,
             .primaryFraction = 0.70,
         };
     case FloraGenerationFamily::MushroomField:
         return GrassTuftTuning{
-            .baseChance = 0.003,
+            .baseChance = 0.0015,
             .primaryTuft = BlockType::SparseTuft,
             .secondaryTuft = BlockType::SparseTuft,
             .primaryFraction = 1.0,

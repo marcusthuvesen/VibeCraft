@@ -42,14 +42,26 @@ struct PlayerMovementSettings
     float gravity = 32.0f;
     float jumpVelocity = 9.0f;
     float terminalFallVelocity = 45.0f;
-    float waterMoveSpeedMultiplier = 0.30f;
-    float waterGravity = 10.0f;
-    float waterBuoyancyAcceleration = 10.0f;
-    float waterTerminalFallVelocity = 4.2f;
-    float waterTerminalRiseVelocity = 4.0f;
-    float waterSwimUpAcceleration = 15.0f;
-    float waterSinkAcceleration = 6.0f;
-    float waterVerticalDrag = 4.0f;
+    /// Horizontal speed while wading (eyes above water); Minecraft is a bit faster than deep swim.
+    float waterSurfaceMoveSpeedMultiplier = 0.40f;
+    /// Horizontal speed while fully underwater (eyes in water).
+    float waterSubmergedMoveSpeedMultiplier = 0.30f;
+    /// Surface: strong float, space to swim up, sneak to sink — matches Minecraft bobbing at the surface.
+    float waterSurfaceGravity = 7.0f;
+    float waterSurfaceBuoyancyAcceleration = 16.0f;
+    float waterSurfaceTerminalFallVelocity = 3.8f;
+    float waterSurfaceTerminalRiseVelocity = 5.2f;
+    float waterSurfaceSwimUpAcceleration = 20.0f;
+    float waterSurfaceSinkAcceleration = 12.0f;
+    float waterSurfaceVerticalDrag = 5.5f;
+    /// Submerged: neutral-ish buoyancy, full swim up/down.
+    float waterSubmergedGravity = 10.0f;
+    float waterSubmergedBuoyancyAcceleration = 9.0f;
+    float waterSubmergedTerminalFallVelocity = 4.2f;
+    float waterSubmergedTerminalRiseVelocity = 4.0f;
+    float waterSubmergedSwimUpAcceleration = 15.0f;
+    float waterSubmergedSinkAcceleration = 6.0f;
+    float waterSubmergedVerticalDrag = 4.0f;
     float maxStepHeight = 1.0f;
     float collisionSweepStep = 0.2f;
     float groundProbeDistance = 0.05f;

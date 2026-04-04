@@ -62,10 +62,21 @@ namespace
 
 [[nodiscard]] render::FrameDebugData::HotbarSlotHud makeHudSlot(const InventorySlot& slot)
 {
+    const std::uint16_t maxDurability = maxDurabilityForEquippedItem(slot.equippedItem);
+    const std::uint16_t normalizedDurability =
+        maxDurability == 0
+        ? 0
+        : static_cast<std::uint16_t>(
+              std::clamp<std::uint32_t>(
+                  slot.durabilityRemaining == 0 ? maxDurability : slot.durabilityRemaining,
+                  0U,
+                  maxDurability));
     return render::FrameDebugData::HotbarSlotHud{
         .blockType = slot.blockType,
         .count = slot.count,
         .itemKind = hudItemKindForEquippedItem(slot.equippedItem),
+        .durabilityRemaining = normalizedDurability,
+        .durabilityMax = maxDurability,
         .heldItemUsesSwordPose = isSwordItem(slot.equippedItem),
     };
 }
@@ -161,6 +172,17 @@ void Application::buildFrameDebugData(
         safeFrameTimeMs,
         smoothedFps,
         respawnNotice_.empty() ? "" : fmt::format("  {}", respawnNotice_));
+    frameDebugData.chatLines.clear();
+    frameDebugData.chatLines.reserve(chatState_.history.size());
+    for (const ChatLine& line : chatState_.history)
+    {
+        frameDebugData.chatLines.push_back(render::FrameDebugData::ChatLineHud{
+            .text = line.text,
+            .isError = line.isError,
+        });
+    }
+    frameDebugData.chatOpen = chatState_.open;
+    frameDebugData.chatInputLine = chatState_.inputBuffer;
     for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
     {
         frameDebugData.hotbarSlots[slotIndex] = makeHudSlot(hotbarSlots_[slotIndex]);
@@ -555,6 +577,8 @@ void Application::buildFrameDebugData(
         {
             frameDebugData.pauseGameSettingsActive = true;
             frameDebugData.mobSpawningEnabled = mobSpawningEnabled_;
+            frameDebugData.pauseCreativeModeEnabled = creativeModeEnabled_;
+            frameDebugData.pauseDifficultyLabel = difficultyGradeLabel(difficultyGrade_);
             frameDebugData.pauseSpawnBiomeLabel = spawnBiomeTargetLabel(spawnBiomeTarget_);
             frameDebugData.pauseWeatherLabel = weatherLabel(weatherSample.type);
             frameDebugData.pauseGameSettingsHoveredControl = render::Renderer::hitTestPauseGameSettingsMenu(

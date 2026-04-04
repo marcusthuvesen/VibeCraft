@@ -31,6 +31,9 @@ struct MenuUiMetrics
 [[nodiscard]] const char* spawnPresetLabel(SpawnPreset preset);
 [[nodiscard]] const char* spawnBiomeTargetLabel(SpawnBiomeTarget target);
 [[nodiscard]] SpawnBiomeTarget nextSpawnBiomeTarget(SpawnBiomeTarget target);
+[[nodiscard]] const char* difficultyGradeLabel(DifficultyGrade difficulty);
+[[nodiscard]] DifficultyGrade nextDifficultyGrade(DifficultyGrade difficulty);
+[[nodiscard]] game::MobSpawnSettings mobSpawnSettingsForDifficulty(DifficultyGrade difficulty);
 [[nodiscard]] glm::vec3 preferredBiomePreviewProbePosition(
     SpawnBiomeTarget target,
     const glm::vec3& fallbackCameraPosition);

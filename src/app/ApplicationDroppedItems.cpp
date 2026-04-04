@@ -9,13 +9,17 @@ void Application::spawnDroppedItem(
     const world::BlockType blockType,
     const glm::ivec3& blockPosition)
 {
-    if (blockType == world::BlockType::Air || blockType == world::BlockType::Water
-        || blockType == world::BlockType::Lava)
+    const world::BlockType normalizedBlock = world::normalizePlaceVariantBlockType(blockType);
+    const world::BlockType dropBlockType =
+        normalizedBlock == world::BlockType::Stone ? world::BlockType::Cobblestone : normalizedBlock;
+
+    if (dropBlockType == world::BlockType::Air || dropBlockType == world::BlockType::Water
+        || dropBlockType == world::BlockType::Lava)
     {
         return;
     }
 
-    if (blockType == world::BlockType::CoalOre)
+    if (dropBlockType == world::BlockType::CoalOre)
     {
         spawnDroppedItemAtPosition(
             EquippedItem::Coal,
@@ -27,7 +31,7 @@ void Application::spawnDroppedItem(
     }
 
     spawnDroppedItemAtPosition(
-        blockType,
+        dropBlockType,
         glm::vec3(
             static_cast<float>(blockPosition.x) + 0.5f,
             static_cast<float>(blockPosition.y) + 0.2f,

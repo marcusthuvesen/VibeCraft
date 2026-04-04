@@ -44,6 +44,11 @@ struct MiningToolProfile
 
 [[nodiscard]] bool isStoneOrOreBlockType(const world::BlockType blockType)
 {
+    if (world::isMetalDoorBlock(blockType))
+    {
+        return true;
+    }
+
     switch (blockType)
     {
     case world::BlockType::Stone:
@@ -54,13 +59,33 @@ struct MiningToolProfile
     case world::BlockType::DiamondOre:
     case world::BlockType::EmeraldOre:
     case world::BlockType::Cobblestone:
+    case world::BlockType::CobblestoneStairs:
+    case world::BlockType::CobblestoneStairsNorth:
+    case world::BlockType::CobblestoneStairsEast:
+    case world::BlockType::CobblestoneStairsSouth:
+    case world::BlockType::CobblestoneStairsWest:
     case world::BlockType::MossyCobblestone:
     case world::BlockType::Sandstone:
+    case world::BlockType::SandstoneStairs:
+    case world::BlockType::SandstoneStairsNorth:
+    case world::BlockType::SandstoneStairsEast:
+    case world::BlockType::SandstoneStairsSouth:
+    case world::BlockType::SandstoneStairsWest:
+    case world::BlockType::StoneStairs:
+    case world::BlockType::StoneStairsNorth:
+    case world::BlockType::StoneStairsEast:
+    case world::BlockType::StoneStairsSouth:
+    case world::BlockType::StoneStairsWest:
     case world::BlockType::Furnace:
     case world::BlockType::FurnaceNorth:
     case world::BlockType::FurnaceEast:
     case world::BlockType::FurnaceWest:
     case world::BlockType::Bricks:
+    case world::BlockType::BrickStairs:
+    case world::BlockType::BrickStairsNorth:
+    case world::BlockType::BrickStairsEast:
+    case world::BlockType::BrickStairsSouth:
+    case world::BlockType::BrickStairsWest:
     case world::BlockType::Glowstone:
     case world::BlockType::Obsidian:
     case world::BlockType::Glass:
@@ -73,10 +98,21 @@ struct MiningToolProfile
 
 [[nodiscard]] bool isWoodFamilyBlockType(const world::BlockType blockType)
 {
+    if (world::isWoodDoorBlock(blockType))
+    {
+        return true;
+    }
+
     return blockType == world::BlockType::OakLog || blockType == world::BlockType::OakLeaves
         || blockType == world::BlockType::JungleLog || blockType == world::BlockType::JungleLeaves
         || blockType == world::BlockType::SpruceLog || blockType == world::BlockType::SpruceLeaves
-        || blockType == world::BlockType::Bookshelf || blockType == world::BlockType::JunglePlanks;
+        || blockType == world::BlockType::Bookshelf || blockType == world::BlockType::JunglePlanks
+        || blockType == world::BlockType::OakStairs || blockType == world::BlockType::OakStairsNorth
+        || blockType == world::BlockType::OakStairsEast || blockType == world::BlockType::OakStairsSouth
+        || blockType == world::BlockType::OakStairsWest
+        || blockType == world::BlockType::JungleStairs || blockType == world::BlockType::JungleStairsNorth
+        || blockType == world::BlockType::JungleStairsEast || blockType == world::BlockType::JungleStairsSouth
+        || blockType == world::BlockType::JungleStairsWest;
 }
 
 [[nodiscard]] bool isPickaxeEffectiveTarget(const world::BlockType targetBlockType)

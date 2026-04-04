@@ -210,7 +210,16 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 [[nodiscard]] std::vector<std::string> blockBreakOptions(const vibecraft::world::BlockType blockType)
 {
     using vibecraft::world::BlockType;
-    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
+    if (vibecraft::world::isWoodDoorBlock(blockType))
+    {
+        return woodBreakClips();
+    }
+    if (vibecraft::world::isMetalDoorBlock(blockType))
+    {
+        return stoneBreakClips();
+    }
+
+    switch (vibecraft::world::normalizePlaceVariantBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:
@@ -284,7 +293,16 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 [[nodiscard]] std::vector<std::string> blockHitOptions(const vibecraft::world::BlockType blockType)
 {
     using vibecraft::world::BlockType;
-    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
+    if (vibecraft::world::isWoodDoorBlock(blockType))
+    {
+        return woodHitClips();
+    }
+    if (vibecraft::world::isMetalDoorBlock(blockType))
+    {
+        return stoneHitClips();
+    }
+
+    switch (vibecraft::world::normalizePlaceVariantBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:
@@ -359,7 +377,16 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 {
     using vibecraft::world::BlockType;
     std::vector<std::string> step;
-    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
+    if (vibecraft::world::isWoodDoorBlock(blockType))
+    {
+        return woodStepClips();
+    }
+    if (vibecraft::world::isMetalDoorBlock(blockType))
+    {
+        return stoneStepClips();
+    }
+
+    switch (vibecraft::world::normalizePlaceVariantBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:
@@ -445,7 +472,16 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 [[nodiscard]] std::vector<std::string> blockPlaceOptions(const vibecraft::world::BlockType blockType)
 {
     using vibecraft::world::BlockType;
-    switch (vibecraft::world::normalizeFurnaceBlockType(blockType))
+    if (vibecraft::world::isWoodDoorBlock(blockType))
+    {
+        return woodPlaceClips();
+    }
+    if (vibecraft::world::isMetalDoorBlock(blockType))
+    {
+        return stonePlaceClips();
+    }
+
+    switch (vibecraft::world::normalizePlaceVariantBlockType(blockType))
     {
     case BlockType::Grass:
     case BlockType::SnowGrass:

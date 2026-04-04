@@ -25,18 +25,19 @@ namespace vibecraft::render::detail
     }
 
     const float aspect = static_cast<float>(logoWidthPx) / static_cast<float>(logoHeightPx);
-    constexpr float kMarginTop = 32.0f;
-    const float maxWidth = std::min(640.0f, static_cast<float>(windowWidth) * 0.82f);
+    using namespace MainMenuLogoDraw;
+    const float maxWidth =
+        std::min(kMaxWidthCapPx, static_cast<float>(windowWidth) * kMaxWidthFrac);
     float drawW = maxWidth;
     float drawH = drawW / aspect;
-    const float maxHeight = std::min(static_cast<float>(windowHeight) * 0.17f, 200.0f);
+    const float maxHeight = std::min(static_cast<float>(windowHeight) * kMaxHeightFrac, kMaxHeightCapPx);
     if (drawH > maxHeight)
     {
         drawH = maxHeight;
         drawW = drawH * aspect;
     }
 
-    const float logoBottomPx = kMarginTop + drawH;
+    const float logoBottomPx = kMarginTopPx + drawH;
     const float cellHeightPx = static_cast<float>(windowHeight) / static_cast<float>(textHeight);
     const int rowsOccupied =
         static_cast<int>(std::ceil(logoBottomPx / std::max(cellHeightPx, 1.0f))) + 1;
@@ -386,6 +387,10 @@ void drawHotbarStackCounts(
         const float textRightPx = slotRight - charW * 0.35f;
         int col = static_cast<int>(std::floor(textRightPx / charW)) - static_cast<int>(digits.size()) + 1;
         col = std::clamp(col, 0, static_cast<int>(textWidth) - static_cast<int>(digits.size()));
+        if (row > 0)
+        {
+            bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row - 1), 0x0f, "%s", digits.c_str());
+        }
         bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), row, 0x0f, "%s", digits.c_str());
     }
 }
@@ -1153,6 +1158,7 @@ void drawPauseMenuOverlay(
             " GAME OPTIONS ");
         const int hovered = frameDebugData.pauseGameSettingsHoveredControl;
         const char* const mobState = frameDebugData.mobSpawningEnabled ? "ON" : "OFF";
+        const char* const creativeState = frameDebugData.pauseCreativeModeEnabled ? "ON" : "OFF";
         drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameMobButtonRow(th),
             centerCol,
@@ -1160,13 +1166,27 @@ void drawPauseMenuOverlay(
             fmt::format("Mob spawning: {}", mobState),
             hovered == 1);
         drawPauseMenuFramedButton(
+            PauseMenuLayout::pauseGameCreativeButtonRow(th),
+            centerCol,
+            kWide,
+            fmt::format("Creative mode: {}", creativeState),
+            hovered == 2);
+        drawPauseMenuFramedButton(
+            PauseMenuLayout::pauseGameDifficultyButtonRow(th),
+            centerCol,
+            kWide,
+            fmt::format(
+                "Difficulty grade: {}",
+                frameDebugData.pauseDifficultyLabel.empty() ? "Normal" : frameDebugData.pauseDifficultyLabel),
+            hovered == 3);
+        drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameBiomeButtonRow(th),
             centerCol,
             kWide,
             fmt::format(
                 "Biome preset: {}",
                 frameDebugData.pauseSpawnBiomeLabel.empty() ? "Any" : frameDebugData.pauseSpawnBiomeLabel),
-            hovered == 2);
+            hovered == 4);
         drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameTravelButtonRow(th),
             centerCol,
@@ -1174,7 +1194,7 @@ void drawPauseMenuOverlay(
             fmt::format(
                 "Travel now: {}",
                 frameDebugData.pauseSpawnBiomeLabel.empty() ? "Any" : frameDebugData.pauseSpawnBiomeLabel),
-            hovered == 3);
+            hovered == 5);
         drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameWeatherButtonRow(th),
             centerCol,
@@ -1182,7 +1202,7 @@ void drawPauseMenuOverlay(
             fmt::format(
                 "Weather: {}",
                 frameDebugData.pauseWeatherLabel.empty() ? "Unknown" : frameDebugData.pauseWeatherLabel),
-            hovered == 4);
+            hovered == 6);
         drawPauseMenuFramedButton(
             PauseMenuLayout::pauseGameBackButtonRow(th),
             centerCol,

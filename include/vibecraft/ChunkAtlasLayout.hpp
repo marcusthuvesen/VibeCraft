@@ -4,9 +4,9 @@
 
 namespace vibecraft
 {
-// Must match scripts/build_chunk_atlas.sh (8x14 grid of 16x16 tiles).
+// Must match scripts/build_chunk_atlas.sh (8x15 grid of 16x16 tiles).
 inline constexpr std::uint16_t kChunkAtlasWidthPx = 128;
-inline constexpr std::uint16_t kChunkAtlasHeightPx = 224;
+inline constexpr std::uint16_t kChunkAtlasHeightPx = 240;
 inline constexpr std::uint16_t kChunkAtlasTileColumns = 8;
-inline constexpr std::uint16_t kChunkAtlasTileRows = 14;
+inline constexpr std::uint16_t kChunkAtlasTileRows = 15;
 }  // namespace vibecraft

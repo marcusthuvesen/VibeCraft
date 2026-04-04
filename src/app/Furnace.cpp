@@ -17,9 +17,20 @@ namespace
 
 [[nodiscard]] bool isWoodBlockFuel(const world::BlockType blockType)
 {
+    if (world::isWoodDoorBlock(blockType))
+    {
+        return true;
+    }
+
     return blockType == world::BlockType::OakPlanks || blockType == world::BlockType::JunglePlanks
         || blockType == world::BlockType::CraftingTable || blockType == world::BlockType::Chest
         || blockType == world::BlockType::Bookshelf || blockType == world::BlockType::Bamboo
+        || blockType == world::BlockType::OakStairs || blockType == world::BlockType::OakStairsNorth
+        || blockType == world::BlockType::OakStairsEast || blockType == world::BlockType::OakStairsSouth
+        || blockType == world::BlockType::OakStairsWest
+        || blockType == world::BlockType::JungleStairs || blockType == world::BlockType::JungleStairsNorth
+        || blockType == world::BlockType::JungleStairsEast || blockType == world::BlockType::JungleStairsSouth
+        || blockType == world::BlockType::JungleStairsWest
         || isWoodLog(blockType);
 }
 

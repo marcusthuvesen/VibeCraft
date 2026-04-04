@@ -764,16 +764,17 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
             bagRow2,
             frameDebugData);
     }
+    detail::drawChatOverlay(frameDebugData, textWidthForHud, textHeight);
     bgfx::dbgTextPrintf(
         0,
         controlsRow0,
         0x0e,
-        "Controls: WASD move, Shift sneak, Ctrl sprint, Space jump, E inventory, mouse look");
+        "Controls: WASD move, Shift sneak, Ctrl sprint, Space jump, T chat, E inventory, mouse look");
     bgfx::dbgTextPrintf(
         0,
         controlsRow1,
         0x0e,
-        "LMB mine, RMB place, 1-9 select hotbar, Tab capture, Esc pause menu");
+        "LMB mine, RMB place, / command chat, 1-9 select hotbar, Tab capture, Esc pause menu");
 
     bgfx::frame();
 }

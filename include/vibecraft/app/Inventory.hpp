@@ -84,6 +84,7 @@ using EquipmentSlots = std::array<InventorySlot, kEquipmentSlotCount>;
 [[nodiscard]] bool canPlaceIntoEquipmentSlot(const InventorySlot& slot, EquipmentSlotKind slotKind);
 [[nodiscard]] bool isDamageableEquippedItem(EquippedItem equippedItem);
 [[nodiscard]] std::uint16_t maxDurabilityForEquippedItem(EquippedItem equippedItem);
+[[nodiscard]] std::uint16_t durabilityUseAmountForEquippedItem(EquippedItem equippedItem);
 [[nodiscard]] std::uint32_t inventorySlotStackLimit(const InventorySlot& slot);
 /// Decrements durability for damageable equipped items. Returns true if item broke and was removed.
 [[nodiscard]] bool consumeEquippedItemDurability(InventorySlot& slot, std::uint16_t amount = 1);
@@ -99,6 +100,7 @@ using EquipmentSlots = std::array<InventorySlot, kEquipmentSlotCount>;
     EquippedItem equippedItem,
     std::size_t& selectedHotbarIndex,
     InventorySelectionBehavior selectionBehavior = InventorySelectionBehavior::PreserveCurrent);
+void applyCreativeInventoryLoadout(HotbarSlots& hotbarSlots, BagSlots& bagSlots, std::size_t& selectedHotbarIndex);
 void consumeSelectedHotbarSlot(HotbarSlots& hotbarSlots, BagSlots& bagSlots, std::size_t selectedHotbarIndex);
 void compactBagSlots(BagSlots& bagSlots);
 }  // namespace vibecraft::app

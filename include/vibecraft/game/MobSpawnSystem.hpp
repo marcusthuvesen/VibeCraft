@@ -37,6 +37,14 @@ struct MobSpawnSettings
     float passiveFleePlayerDistance = 7.0f;
     float passiveWanderTimerMinSeconds = 1.4f;
     float passiveWanderTimerMaxSeconds = 3.8f;
+    float passiveBreedRange = 3.0f;
+    float passiveBreedChancePerSecond = 0.012f;
+    float passiveBreedCooldownSeconds = 300.0f;
+    float passiveBabyGrowSeconds = 1200.0f;
+    float passiveBabyScale = 0.58f;
+    float passiveBreedCrowdRadius = 10.0f;
+    std::size_t maxPassiveMobsAfterBreeding = 24;
+    std::size_t maxNearbySameKindForBreeding = 6;
     float meleeReach = 1.15f;
     float meleeDamage = 2.0f;
     float attackCooldownSeconds = 1.1f;
@@ -70,6 +78,7 @@ class MobSpawnSystem
 
     [[nodiscard]] const std::vector<MobInstance>& mobs() const;
     [[nodiscard]] const MobSpawnSettings& settings() const;
+    void setSettings(const MobSpawnSettings& settings);
     [[nodiscard]] std::optional<MobDamageResult> damageClosestAlongRay(
         const world::World& world,
         const glm::vec3& rayOrigin,

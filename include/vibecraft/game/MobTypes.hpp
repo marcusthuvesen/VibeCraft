@@ -58,6 +58,10 @@ struct MobInstance
     float wanderTimerSeconds = 0.0f;
     /// Passive: current wander heading on the XZ plane.
     float wanderYawRadians = 0.0f;
+    /// Passive breeding cooldown. Adults cannot breed while this is positive.
+    float breedCooldownSeconds = 0.0f;
+    /// Passive baby growth timer. Positive values mean the mob is still a juvenile.
+    float growthSecondsRemaining = 0.0f;
     float health = 1.0f;
     float halfWidth = 0.28f;
     float height = 1.75f;

@@ -186,7 +186,7 @@ struct OrePlacementProfile
         case OreKind::Gold:
             return 1.08;
         case OreKind::Coal:
-            return 0.88;
+            return 0.98;
         case OreKind::Iron:
         case OreKind::Emerald:
         default:
@@ -281,7 +281,7 @@ struct OrePlacementProfile
     return OrePlacementProfile{
         .kind = OreKind::Coal,
         .oreBlock = BlockType::CoalOre,
-        .heightProfile = {.minY = 0, .peakY = kCoalPeakY, .maxY = 192},
+        .heightProfile = {.minY = kUndergroundStartY, .peakY = 88, .maxY = 192},
         .regionScale = 94.0,
         .clusterScale = 22.0,
         .regionSeed = 0x0ca11ab1U,
@@ -289,7 +289,7 @@ struct OrePlacementProfile
         .randomSeed = 0x0ca11ab3U,
         .regionThreshold = 0.47,
         .clusterThreshold = 0.53,
-        .peakChance = 0.58,
+        .peakChance = 0.30,
     };
 }
 

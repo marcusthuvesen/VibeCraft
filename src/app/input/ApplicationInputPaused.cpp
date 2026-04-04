@@ -55,12 +55,29 @@ void Application::processPausedInput()
             pauseMenuNotice_ = mobSpawningEnabled_ ? "Mob spawning enabled." : "Mob spawning disabled.";
             break;
         case 2:
+            creativeModeEnabled_ = !creativeModeEnabled_;
+            if (creativeModeEnabled_)
+            {
+                applyCreativeInventoryLoadout(hotbarSlots_, bagSlots_, selectedHotbarIndex_);
+                pauseMenuNotice_ = "Creative mode enabled. Inventory restocked with all blocks.";
+            }
+            else
+            {
+                pauseMenuNotice_ = "Creative mode disabled.";
+            }
+            break;
+        case 3:
+            difficultyGrade_ = nextDifficultyGrade(difficultyGrade_);
+            mobSpawnSystem_.setSettings(mobSpawnSettingsForDifficulty(difficultyGrade_));
+            pauseMenuNotice_ = fmt::format("Difficulty grade set to {}.", difficultyGradeLabel(difficultyGrade_));
+            break;
+        case 4:
             spawnBiomeTarget_ = nextSpawnBiomeTarget(spawnBiomeTarget_);
             pauseMenuNotice_ = fmt::format(
                 "Biome target: {}. Select Travel now to move.",
                 spawnBiomeTargetLabel(spawnBiomeTarget_));
             break;
-        case 3:
+        case 5:
         {
             const glm::vec3 biomePreviewProbePosition =
                 preferredBiomePreviewProbePosition(spawnBiomeTarget_, camera_.position());
@@ -99,7 +116,7 @@ void Application::processPausedInput()
             pauseMenuNotice_ = fmt::format("Travelled to {}.", spawnBiomeTargetLabel(spawnBiomeTarget_));
             break;
         }
-        case 4:
+        case 6:
         {
             const game::WeatherType currentWeatherType = weatherSystem_.sample().type;
             const game::WeatherType nextType = nextWeatherType(currentWeatherType);

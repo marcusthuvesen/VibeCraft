@@ -34,6 +34,8 @@ constexpr std::uint32_t kTemperateFernSeed = 0x4983d4c0U;
 constexpr std::uint32_t kTemperateMushroomSeed = 0x5a94e5d1U;
 constexpr std::uint32_t kTemperateGroundSeed = 0x6ba5f6e2U;
 constexpr double kGrassTuftPatchScale = 28.0;
+constexpr double kGrassTuftDensityScale = 0.5;
+constexpr double kMushroomDensityScale = 0.5;
 
 struct SurfaceSample
 {
@@ -168,7 +170,7 @@ bool tryPopulateSnowySurfaceDecor(Chunk& chunk, const int localX, const int loca
         return false;
     }
 
-    const float tuftChance = sample.biome == SurfaceBiome::SnowyTaiga ? 0.016f : 0.010f;
+    const float tuftChance = sample.biome == SurfaceBiome::SnowyTaiga ? 0.008f : 0.005f;
     if (noise::random01(sample.worldX, sample.worldZ, kGrassTuftScatterSeed + 101U) < tuftChance)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::FrostTuft);
@@ -230,7 +232,7 @@ bool tryPopulateTemperateSurfaceDecor(Chunk& chunk, const int localX, const int 
     }
 
     if (denseForest && wetness > decor.mushroomWetnessMin
-        && mushroomRoll < (isDark ? decor.mushroomRollDark : decor.mushroomRollOther))
+        && mushroomRoll < (isDark ? decor.mushroomRollDark : decor.mushroomRollOther) * kMushroomDensityScale)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, pickMushroomBlock(sample.worldX, sample.worldZ));
         return true;
@@ -290,7 +292,7 @@ void tryPopulateTufts(Chunk& chunk, const int localX, const int localZ, const Su
         ? tuft.primaryTuft
         : (tuftVariantRoll < tuft.primaryFraction ? tuft.primaryTuft : tuft.secondaryTuft);
 
-    const double tuftChance = std::clamp(tuft.baseChance + tuftStrength * 0.03, 0.0, 0.06);
+    const double tuftChance = std::clamp((tuft.baseChance + tuftStrength * 0.016) * kGrassTuftDensityScale, 0.0, 0.016);
     if (scatter < tuftChance)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, tuftBlock);
@@ -359,12 +361,12 @@ bool tryPopulateMushroomFieldSpecials(Chunk& chunk, const int localX, const int 
         return false;
     }
 
-    if (noise::random01(sample.worldX, sample.worldZ, kMushroomFieldSeed) < 0.34f)
+    if (noise::random01(sample.worldX, sample.worldZ, kMushroomFieldSeed) < 0.17f)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, pickMushroomBlock(sample.worldX, sample.worldZ));
         return true;
     }
-    if (noise::random01(sample.worldX, sample.worldZ, kMushroomFieldSeed + 7U) < 0.06f)
+    if (noise::random01(sample.worldX, sample.worldZ, kMushroomFieldSeed + 7U) < 0.03f)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::BrownMushroom);
         chunk.setBlock(localX, sample.surfaceY + 2, localZ, BlockType::BrownMushroom);
@@ -407,7 +409,7 @@ bool tryPopulateFlowersAndMushrooms(Chunk& chunk, const int localX, const int lo
     const double flowerJitter = noise::random01(sample.worldX, sample.worldZ, kFloraSpotSeed);
     const double mushJitter = noise::random01(sample.worldX, sample.worldZ, kFloraSpotSeedB);
     bool tryFlower = inFlowerPatch && flowerJitter < patch.flowerSpotChance;
-    bool tryMushroom = inMushroomPatch && mushJitter < patch.mushroomSpotChance;
+    bool tryMushroom = inMushroomPatch && mushJitter < patch.mushroomSpotChance * kMushroomDensityScale;
 
     if (tryFlower && tryMushroom)
     {
