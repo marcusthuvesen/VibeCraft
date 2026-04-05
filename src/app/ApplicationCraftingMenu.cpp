@@ -479,6 +479,11 @@ void Application::handleCraftingMenuClick()
         craftingMenuState_.bagStartRow);
     if (hit < 0)
     {
+        if (!isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+        {
+            dropEntireSlotInFront(craftingMenuState_.carriedSlot, 1.4f);
+            soundEffects_.playUiClick();
+        }
         return;
     }
     soundEffects_.playUiClick();
@@ -609,6 +614,11 @@ void Application::handleCraftingMenuRightClick()
         craftingMenuState_.bagStartRow);
     if (hit < 0)
     {
+        if (!isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+        {
+            dropSingleItemFromSlotInFront(craftingMenuState_.carriedSlot, 1.4f);
+            soundEffects_.playUiClick();
+        }
         return;
     }
     if (furnaceMode && hit == render::Renderer::kCraftingResultHit)

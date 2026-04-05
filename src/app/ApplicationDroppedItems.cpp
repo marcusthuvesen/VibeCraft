@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include <glm/geometric.hpp>
+#include <glm/vec2.hpp>
+
 namespace vibecraft::app
 {
 void Application::spawnDroppedItem(
@@ -85,6 +88,66 @@ void Application::spawnDroppedItemAtPosition(
         .pickupDelaySeconds = 0.2f,
         .spinRadians = 0.0f,
     });
+}
+
+glm::vec3 Application::dropSpawnPositionInFront(
+    const float forwardDistance,
+    const float verticalOffset) const
+{
+    glm::vec3 horizontalForward = camera_.forward();
+    horizontalForward.y = 0.0f;
+    const float horizontalLengthSq = glm::dot(horizontalForward, horizontalForward);
+    if (horizontalLengthSq <= 0.0001f)
+    {
+        horizontalForward = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+    else
+    {
+        horizontalForward = glm::normalize(horizontalForward);
+    }
+
+    return playerFeetPosition_ + glm::vec3(0.0f, verticalOffset, 0.0f)
+        + horizontalForward * forwardDistance;
+}
+
+void Application::dropSingleItemFromSlotAt(InventorySlot& slot, const glm::vec3& worldPosition)
+{
+    if (isInventorySlotEmpty(slot))
+    {
+        return;
+    }
+    if (slot.equippedItem != EquippedItem::None)
+    {
+        spawnDroppedItemAtPosition(slot.equippedItem, worldPosition);
+    }
+    else if (slot.blockType != world::BlockType::Air)
+    {
+        spawnDroppedItemAtPosition(slot.blockType, worldPosition);
+    }
+    else
+    {
+        return;
+    }
+
+    --slot.count;
+    if (slot.count == 0)
+    {
+        clearInventorySlot(slot);
+    }
+}
+
+void Application::dropSingleItemFromSlotInFront(InventorySlot& slot, const float forwardDistance)
+{
+    dropSingleItemFromSlotAt(slot, dropSpawnPositionInFront(forwardDistance));
+}
+
+void Application::dropEntireSlotInFront(InventorySlot& slot, const float forwardDistance)
+{
+    const glm::vec3 dropPosition = dropSpawnPositionInFront(forwardDistance);
+    while (!isInventorySlotEmpty(slot))
+    {
+        dropSingleItemFromSlotAt(slot, dropPosition);
+    }
 }
 
 void Application::updateDroppedItems(const float deltaTimeSeconds, const float eyeHeight)

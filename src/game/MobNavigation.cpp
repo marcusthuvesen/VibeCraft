@@ -276,6 +276,7 @@ glm::vec3 chooseSteeredMoveDirection(
     glm::vec3 bestDir = baseDir;
     float bestScore = -std::numeric_limits<float>::infinity();
     bool directPathBlocked = false;
+    float directMovedDistance = 0.0f;
 
     {
         glm::vec3 directProbe = sweepMobAxis(
@@ -294,9 +295,16 @@ glm::vec3 chooseSteeredMoveDirection(
             baseDir.z * probeDistance);
         const float directDeltaX = directProbe.x - startFeet.x;
         const float directDeltaZ = directProbe.z - startFeet.z;
-        const float directMovedDistance = std::sqrt(
+        directMovedDistance = std::sqrt(
             directDeltaX * directDeltaX + directDeltaZ * directDeltaZ);
         directPathBlocked = directMovedDistance < probeDistance * 0.75f;
+    }
+
+    // Fast path: when the straight direction is clear enough, avoid expensive steer sampling.
+    // This reduces zig-zag jitter and frame spikes with many active mobs.
+    if (!directPathBlocked && directMovedDistance >= probeDistance * 0.92f)
+    {
+        return baseDir;
     }
 
     if (directPathBlocked)

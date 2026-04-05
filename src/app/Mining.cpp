@@ -217,8 +217,9 @@ float miningDurationSeconds(
     const world::BlockType equippedBlockType,
     const EquippedItem equippedItem)
 {
-    constexpr float kHardnessToSeconds = 0.65f;
-    constexpr float kMinimumBreakDurationSeconds = 0.06f;
+    // Keep mining readable, but reduce latency so block break feedback feels snappier.
+    constexpr float kHardnessToSeconds = 0.50f;
+    constexpr float kMinimumBreakDurationSeconds = 0.04f;
     const world::BlockMetadata metadata = world::blockMetadata(targetBlockType);
     if (!metadata.breakable)
     {

@@ -8,6 +8,9 @@ enum class MobKind : std::uint8_t
 {
     Zombie = 0,
     Player,
+    Skeleton,
+    Creeper,
+    Spider,
     Cow,
     Pig,
     Sheep,
@@ -16,7 +19,10 @@ enum class MobKind : std::uint8_t
 
 [[nodiscard]] constexpr bool isHostileMob(const MobKind kind)
 {
-    return kind == MobKind::Zombie;
+    return kind == MobKind::Zombie
+        || kind == MobKind::Skeleton
+        || kind == MobKind::Creeper
+        || kind == MobKind::Spider;
 }
 
 [[nodiscard]] constexpr bool isPassiveMob(const MobKind kind)
@@ -33,6 +39,12 @@ enum class MobKind : std::uint8_t
         return 20.0f;
     case MobKind::Player:
         return 20.0f;
+    case MobKind::Skeleton:
+        return 20.0f;
+    case MobKind::Creeper:
+        return 20.0f;
+    case MobKind::Spider:
+        return 16.0f;
     case MobKind::Cow:
         return 12.0f;
     case MobKind::Pig:
@@ -63,7 +75,7 @@ struct MobInstance
     /// Passive baby growth timer. Positive values mean the mob is still a juvenile.
     float growthSecondsRemaining = 0.0f;
     float health = 1.0f;
-    float halfWidth = 0.28f;
-    float height = 1.75f;
+    float halfWidth = 0.30f;
+    float height = 1.95f;
 };
 }  // namespace vibecraft::game

@@ -11,12 +11,17 @@
 
 namespace vibecraft::multiplayer
 {
+struct PendingClientJoin
+{
+    std::uint16_t clientId = 0;
+    std::string playerName;
+};
+
 struct ConnectedClient
 {
     std::uint16_t clientId = 0;
     NetworkEndpoint endpoint{};
     std::string playerName;
-    bool initialWorldSent = false;
 };
 
 class HostSession
@@ -32,21 +37,34 @@ class HostSession
     [[nodiscard]] bool running() const;
 
     [[nodiscard]] const std::vector<ConnectedClient>& clients() const;
+    [[nodiscard]] std::vector<PendingClientJoin> takePendingJoins();
     [[nodiscard]] std::vector<protocol::ClientInputMessage> takePendingInputs();
+    [[nodiscard]] std::vector<protocol::CommandRequestMessage> takePendingCommandRequests();
 
+    void acceptPendingJoin(std::uint16_t clientId, const protocol::JoinAcceptMessage& accept);
     void broadcastSnapshot(const protocol::ServerSnapshotMessage& snapshot);
     void broadcastBlockEdit(const protocol::BlockEditEventMessage& edit);
+    void sendCommandFeedback(std::uint16_t clientId, const std::string& feedback, bool isError);
     void sendChunkSnapshot(std::uint16_t clientId, const protocol::ChunkSnapshotMessage& chunk);
 
   private:
+    struct PendingJoinState
+    {
+        PendingClientJoin join;
+        NetworkEndpoint endpoint{};
+        bool announced = false;
+    };
+
     std::uint32_t nextSequence_ = 1;
     std::uint16_t nextClientId_ = 1;
     bool running_ = false;
     std::string lastError_;
     std::unique_ptr<INetworkTransport> transport_;
     std::vector<ConnectedClient> clients_;
+    std::vector<PendingJoinState> pendingJoinStates_;
     std::unordered_map<std::uint16_t, std::size_t> clientIndexById_;
     std::vector<protocol::ClientInputMessage> pendingInputs_;
+    std::vector<protocol::CommandRequestMessage> pendingCommandRequests_;
 
     void sendToClient(
         const ConnectedClient& client,
@@ -71,10 +89,12 @@ class ClientSession
     [[nodiscard]] const std::string& lastError() const;
 
     void sendInput(const protocol::ClientInputMessage& input, std::uint32_t tick);
+    void sendCommandRequest(const std::string& commandText, std::uint32_t tick);
     [[nodiscard]] std::vector<protocol::ServerSnapshotMessage> takeSnapshots();
     /// Protocol version from the last decoded `ServerSnapshot` header (0 if none yet).
     [[nodiscard]] std::uint16_t lastServerSnapshotProtocolVersion() const;
     [[nodiscard]] std::vector<protocol::BlockEditEventMessage> takeBlockEdits();
+    [[nodiscard]] std::vector<protocol::CommandFeedbackMessage> takeCommandFeedback();
     [[nodiscard]] std::vector<protocol::ChunkSnapshotMessage> takeChunkSnapshots();
     [[nodiscard]] std::optional<protocol::JoinAcceptMessage> takeJoinAccept();
 
@@ -88,6 +108,7 @@ class ClientSession
     std::unique_ptr<INetworkTransport> transport_;
     std::vector<protocol::ServerSnapshotMessage> pendingSnapshots_;
     std::vector<protocol::BlockEditEventMessage> pendingBlockEdits_;
+    std::vector<protocol::CommandFeedbackMessage> pendingCommandFeedback_;
     std::vector<protocol::ChunkSnapshotMessage> pendingChunkSnapshots_;
     std::unordered_map<std::uint64_t, protocol::ChunkSnapshotMessage> partialChunkSnapshots_;
     std::unordered_map<std::uint64_t, std::uint32_t> partialChunkSectionMasks_;

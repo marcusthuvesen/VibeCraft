@@ -365,6 +365,16 @@ std::vector<std::uint8_t> encodeMessage(const MessageHeader& header, const Messa
             {
                 writer.writeString(message.reason, kMaxStringLength);
             }
+            else if constexpr (std::is_same_v<MessageT, CommandRequestMessage>)
+            {
+                writer.writeU16(message.clientId);
+                writer.writeString(message.commandText, kMaxStringLength);
+            }
+            else if constexpr (std::is_same_v<MessageT, CommandFeedbackMessage>)
+            {
+                writer.writeU8(message.isError ? 1U : 0U);
+                writer.writeString(message.feedback, kMaxStringLength);
+            }
         },
         payload);
 
@@ -634,6 +644,28 @@ std::optional<DecodedMessage> decodeMessage(const std::span<const std::uint8_t> 
         {
             return std::nullopt;
         }
+        decoded.payload = std::move(message);
+        break;
+    }
+    case MessageType::CommandRequest:
+    {
+        CommandRequestMessage message;
+        if (!reader.readU16(message.clientId) || !reader.readString(message.commandText, kMaxStringLength))
+        {
+            return std::nullopt;
+        }
+        decoded.payload = std::move(message);
+        break;
+    }
+    case MessageType::CommandFeedback:
+    {
+        CommandFeedbackMessage message;
+        std::uint8_t errorFlag = 0;
+        if (!reader.readU8(errorFlag) || !reader.readString(message.feedback, kMaxStringLength))
+        {
+            return std::nullopt;
+        }
+        message.isError = errorFlag != 0;
         decoded.payload = std::move(message);
         break;
     }

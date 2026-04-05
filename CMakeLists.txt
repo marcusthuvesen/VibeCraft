@@ -147,10 +147,13 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/app/ChatCommands.hpp
     include/vibecraft/app/Furnace.hpp
     include/vibecraft/app/Mining.hpp
+    include/vibecraft/app/PauseMenuInputPolicy.hpp
     include/vibecraft/app/ApplicationSpawnHelpers.hpp
     include/vibecraft/app/ApplicationTerraformingRuntime.hpp
     include/vibecraft/app/ApplicationSurvival.hpp
+    include/vibecraft/app/TorchPlacement.hpp
     include/vibecraft/app/crafting/Crafting.hpp
+    include/vibecraft/app/StartupFlow.hpp
     include/vibecraft/app/input/ApplicationInputMenuHelpers.hpp
     include/vibecraft/app/Inventory.hpp
     include/vibecraft/app/SingleplayerSave.hpp
@@ -164,6 +167,7 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/multiplayer/Session.hpp
     include/vibecraft/multiplayer/Transport.hpp
     include/vibecraft/multiplayer/UdpTransport.hpp
+    include/vibecraft/multiplayer/WorldSync.hpp
     include/vibecraft/game/Camera.hpp
     include/vibecraft/game/CollisionHelpers.hpp
     include/vibecraft/game/MobNavigation.hpp
@@ -183,10 +187,16 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/world/Block.hpp
     include/vibecraft/world/biomes/BiomeProfile.hpp
     include/vibecraft/world/biomes/BiomeSelection.hpp
+    include/vibecraft/world/biomes/BiomeBlending.hpp
+    include/vibecraft/world/biomes/BiomeTransition.hpp
     include/vibecraft/world/biomes/BiomeTerrainContribution.hpp
+    include/vibecraft/world/biomes/BiomeVariation.hpp
     include/vibecraft/world/biomes/FloraGenerationTuning.hpp
+    include/vibecraft/world/biomes/FloraVariantRules.hpp
     include/vibecraft/world/biomes/SurfaceBiome.hpp
+    include/vibecraft/world/biomes/SurfaceVariantRules.hpp
     include/vibecraft/world/biomes/TreeGenerationTuning.hpp
+    include/vibecraft/world/biomes/TreeVariantRules.hpp
     include/vibecraft/world/Chunk.hpp
     include/vibecraft/world/TerrainNoise.hpp
     include/vibecraft/world/TerrainGenerator.hpp
@@ -211,9 +221,12 @@ set(VIBECRAFT_SOURCES
     src/app/ApplicationEquipment.cpp
     src/app/runtime/ApplicationFrameDebug.cpp
     src/app/ApplicationMobAudio.cpp
+    src/app/ApplicationMultiplayerClient.cpp
+    src/app/ApplicationMultiplayerHost.cpp
     src/app/ApplicationMultiplayerSession.cpp
     src/app/ApplicationMultiplayerRuntime.cpp
     src/app/ApplicationMovementHelpers.cpp
+    src/app/PauseMenuInputPolicy.cpp
     src/app/WaterMovement.cpp
     src/app/Furnace.cpp
     src/app/Mining.cpp
@@ -221,10 +234,13 @@ set(VIBECRAFT_SOURCES
     src/app/ApplicationPersistence.cpp
     src/app/ApplicationSingleplayerLoad.cpp
     src/app/ApplicationSpawnHelpers.cpp
+    src/app/StartupFlow.cpp
     src/app/ApplicationTerraformingRuntime.cpp
     src/app/ApplicationWorldSync.cpp
     src/app/ApplicationSurvival.cpp
+    src/app/ApplicationTnt.cpp
     src/app/ChatCommands.cpp
+    src/app/TorchPlacement.cpp
     src/app/crafting/Crafting.cpp
     src/app/crafting/CraftingRecipesCatalog.cpp
     src/app/crafting/CraftingRecipesVanilla.cpp
@@ -255,7 +271,10 @@ set(VIBECRAFT_SOURCES
     src/multiplayer/Protocol.cpp
     src/multiplayer/Session.cpp
     src/multiplayer/UdpTransport.cpp
+    src/multiplayer/WorldSync.cpp
     src/meshing/ChunkMesher.cpp
+    src/meshing/ChunkMesherTorchGeometry.cpp
+    src/meshing/ChunkMesherTorchLighting.cpp
     src/platform/LocalNetworkAddress.cpp
     src/platform/Window.cpp
     src/render/Renderer.cpp
@@ -274,10 +293,15 @@ set(VIBECRAFT_SOURCES
     src/world/TerrainGenerator.cpp
     src/world/WoodlandRavine.cpp
     src/world/biomes/BiomeProfile.cpp
+    src/world/biomes/BiomeBlending.cpp
     src/world/biomes/BiomeSelection.cpp
     src/world/biomes/BiomeTerrainContribution.cpp
+    src/world/biomes/BiomeVariation.cpp
     src/world/biomes/FloraGenerationTuning.cpp
+    src/world/biomes/FloraVariantRules.cpp
+    src/world/biomes/SurfaceVariantRules.cpp
     src/world/biomes/TreeGenerationTuning.cpp
+    src/world/biomes/TreeVariantRules.cpp
     src/world/WorldGeneration.cpp
     src/world/WorldGenerationCaveDecor.cpp
     src/world/WorldGenerationTrees.cpp
@@ -351,10 +375,14 @@ add_executable(vibecraft_tests
     tests/game/mob_breeding_tests.cpp
     tests/game/player_vitals_smoke_tests.cpp
     tests/multiplayer/multiplayer_smoke_tests.cpp
+    tests/multiplayer/world_sync_tests.cpp
     tests/multiplayer_dropped_item_tests.cpp
     tests/inventory_mining_tests.cpp
+    tests/pause_menu_input_policy_tests.cpp
+    tests/startup_flow_tests.cpp
     tests/terraforming_runtime_tests.cpp
     tests/terrain_biome_pass_tests.cpp
+    tests/world/world_biome_variation_tests.cpp
     tests/world/world_ambient_smoke_tests.cpp
     tests/world/world_chunk_spawn_smoke_tests.cpp
     tests/world/world_persistence_smoke_tests.cpp
@@ -372,8 +400,10 @@ add_executable(vibecraft_tests
     src/app/ChatCommands.cpp
     src/app/Furnace.cpp
     src/app/Mining.cpp
+    src/app/PauseMenuInputPolicy.cpp
     src/app/ApplicationTerraformingRuntime.cpp
     src/app/SingleplayerSave.cpp
+    src/app/StartupFlow.cpp
     src/app/ApplicationSurvival.cpp
     src/game/CollisionHelpers.cpp
     src/game/MobNavigation.cpp
@@ -386,15 +416,23 @@ add_executable(vibecraft_tests
     src/multiplayer/Protocol.cpp
     src/multiplayer/Session.cpp
     src/multiplayer/UdpTransport.cpp
+    src/multiplayer/WorldSync.cpp
     src/meshing/ChunkMesher.cpp
+    src/meshing/ChunkMesherTorchGeometry.cpp
+    src/meshing/ChunkMesherTorchLighting.cpp
     src/world/Chunk.cpp
     src/world/TerrainGenerator.cpp
     src/world/WoodlandRavine.cpp
     src/world/biomes/BiomeProfile.cpp
+    src/world/biomes/BiomeBlending.cpp
     src/world/biomes/BiomeSelection.cpp
     src/world/biomes/BiomeTerrainContribution.cpp
+    src/world/biomes/BiomeVariation.cpp
     src/world/biomes/FloraGenerationTuning.cpp
+    src/world/biomes/FloraVariantRules.cpp
+    src/world/biomes/SurfaceVariantRules.cpp
     src/world/biomes/TreeGenerationTuning.cpp
+    src/world/biomes/TreeVariantRules.cpp
     src/world/WorldGeneration.cpp
     src/world/WorldGenerationCaveDecor.cpp
     src/world/WorldGenerationTrees.cpp

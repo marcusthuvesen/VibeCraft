@@ -5,8 +5,11 @@
 #include <cstdint>
 
 #include "vibecraft/world/TerrainNoise.hpp"
+#include "vibecraft/world/biomes/BiomeTransition.hpp"
+#include "vibecraft/world/biomes/BiomeVariation.hpp"
 #include "vibecraft/world/biomes/BiomeProfile.hpp"
 #include "vibecraft/world/biomes/TreeGenerationTuning.hpp"
+#include "vibecraft/world/biomes/TreeVariantRules.hpp"
 
 namespace vibecraft::world::detail
 {
@@ -23,7 +26,6 @@ constexpr std::uint32_t kTreeChanceSeed = 0x6f4a31deU;
 constexpr std::uint32_t kTreeOffsetXSeed = 0x34b6f0e1U;
 constexpr std::uint32_t kTreeOffsetZSeed = 0x5cd2a907U;
 constexpr std::uint32_t kTreeShapeSeed = 0x72f1a4b3U;
-constexpr std::uint32_t kTreeForestDensitySeed = 0x83c2b5d4U;
 constexpr std::uint32_t kJungleCanopyVineSeed = 0xb72f6a4eU;
 constexpr std::uint32_t kJungleTrunkVineSeed = 0xc8407b5fU;
 constexpr std::uint32_t kJungleCocoaSeed = 0xd9518c60U;
@@ -118,258 +120,6 @@ void placeBlockIfInsideChunk(
     return true;
 }
 
-[[nodiscard]] float forestDensityAt(const SurfaceBiome biome, const int worldX, const int worldZ)
-{
-    const double worldXd = static_cast<double>(worldX);
-    const double worldZd = static_cast<double>(worldZ);
-
-    switch (biomes::biomeProfile(biome).treeFamily)
-    {
-    case biomes::TreeGenerationFamily::Plains:
-    {
-        const double field = noise::fbmNoise2d(worldXd + 31.0, worldZd - 17.0, 248.0, 3, kTreeForestDensitySeed);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::Forest:
-    {
-        const double field = noise::fbmNoise2d(worldXd + 31.0, worldZd - 17.0, 188.0, 3, kTreeForestDensitySeed + 3U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::BirchForest:
-    {
-        const double field = noise::fbmNoise2d(worldXd - 27.0, worldZd + 69.0, 180.0, 3, kTreeForestDensitySeed + 11U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::DarkForest:
-    {
-        const double field = noise::fbmNoise2d(worldXd - 85.0, worldZd + 17.0, 132.0, 3, kTreeForestDensitySeed + 19U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::Taiga:
-    {
-        const double field = noise::fbmNoise2d(worldXd - 59.0, worldZd + 43.0, 176.0, 3, kTreeForestDensitySeed + 17U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::SnowyTaiga:
-    {
-        const double field = noise::fbmNoise2d(worldXd - 59.0, worldZd + 43.0, 196.0, 3, kTreeForestDensitySeed + 23U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::Jungle:
-    {
-        const double field = noise::fbmNoise2d(worldXd + 73.0, worldZd + 91.0, 160.0, 3, kTreeForestDensitySeed + 31U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::SparseJungle:
-    {
-        const double field = noise::fbmNoise2d(worldXd + 73.0, worldZd + 91.0, 220.0, 3, kTreeForestDensitySeed + 37U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::BambooJungle:
-    {
-        const double field = noise::fbmNoise2d(worldXd + 73.0, worldZd + 91.0, 132.0, 3, kTreeForestDensitySeed + 41U);
-        return static_cast<float>(std::clamp(field * 0.5 + 0.5, 0.0, 1.0));
-    }
-    case biomes::TreeGenerationFamily::None:
-    default:
-        return 0.0f;
-    }
-}
-
-[[nodiscard]] float effectiveTreeSpawnChance(
-    const SurfaceBiome biome,
-    const TreeBiomeSettings& settings,
-    const int worldX,
-    const int worldZ)
-{
-    const float density = forestDensityAt(biome, worldX, worldZ);
-    switch (biomes::biomeProfile(biome).treeFamily)
-    {
-    case biomes::TreeGenerationFamily::Plains:
-        if (density < 0.16f)
-        {
-            return std::clamp(density * 0.08f, 0.0f, 0.015f);
-        }
-        return std::clamp(settings.spawnChance + (density - 0.16f) * 0.15f, 0.0f, 0.16f);
-    case biomes::TreeGenerationFamily::Forest:
-        if (density < 0.12f)
-        {
-            return std::clamp(density * 0.12f, 0.0f, 0.04f);
-        }
-        return std::clamp(settings.spawnChance + (density - 0.12f) * 0.75f, 0.0f, 0.87f);
-    case biomes::TreeGenerationFamily::BirchForest:
-        if (density < 0.12f)
-        {
-            return std::clamp(density * 0.12f, 0.0f, 0.04f);
-        }
-        return std::clamp(settings.spawnChance + (density - 0.12f) * 0.45f, 0.0f, 0.60f);
-    case biomes::TreeGenerationFamily::DarkForest:
-        if (density < 0.08f)
-        {
-            return std::clamp(density * 0.12f, 0.0f, 0.04f);
-        }
-        return std::clamp(settings.spawnChance + density * 0.36f, 0.0f, 0.74f);
-    case biomes::TreeGenerationFamily::Taiga:
-        if (density < 0.14f)
-        {
-            return std::clamp(density * 0.10f, 0.0f, 0.03f);
-        }
-        return std::clamp(settings.spawnChance + (density - 0.14f) * 0.34f, 0.0f, 0.48f);
-    case biomes::TreeGenerationFamily::SnowyTaiga:
-        if (density < 0.16f)
-        {
-            return std::clamp(density * 0.10f, 0.0f, 0.03f);
-        }
-        return std::clamp(settings.spawnChance + (density - 0.16f) * 0.36f, 0.0f, 0.50f);
-    case biomes::TreeGenerationFamily::Jungle:
-        if (density < 0.12f)
-        {
-            return std::clamp(density * 0.12f, 0.0f, 0.04f);
-        }
-        return std::clamp(settings.spawnChance + density * 0.28f, 0.0f, 0.58f);
-    case biomes::TreeGenerationFamily::SparseJungle:
-        if (density < 0.14f)
-        {
-            return std::clamp(density * 0.10f, 0.0f, 0.03f);
-        }
-        return std::clamp(settings.spawnChance + density * 0.16f, 0.0f, 0.34f);
-    case biomes::TreeGenerationFamily::BambooJungle:
-        if (density < 0.12f)
-        {
-            return std::clamp(density * 0.12f, 0.0f, 0.04f);
-        }
-        return std::clamp(settings.spawnChance + density * 0.32f, 0.0f, 0.64f);
-    case biomes::TreeGenerationFamily::None:
-    default:
-        return 0.0f;
-    }
-}
-
-[[nodiscard]] TreeBiomeSettings treeVariantForBiome(
-    const SurfaceBiome biome,
-    const int worldX,
-    const int worldZ,
-    const TreeBiomeSettings& baseSettings)
-{
-    TreeBiomeSettings settings = baseSettings;
-    const float variantRoll = noise::random01(worldX, worldZ, kTreeShapeSeed + 0x6b9U);
-    switch (biomes::biomeProfile(biome).treeFamily)
-    {
-    case biomes::TreeGenerationFamily::Plains:
-        if (variantRoll < 0.86f)
-        {
-            settings.trunkBlock = BlockType::OakLog;
-            settings.crownBlock = BlockType::OakLeaves;
-            settings.crownRadius = 2;
-        }
-        else
-        {
-            settings.trunkBlock = BlockType::BirchLog;
-            settings.crownBlock = BlockType::BirchLeaves;
-            settings.minTrunkHeight = std::max(settings.minTrunkHeight, 5);
-            settings.maxTrunkHeight = std::max(settings.maxTrunkHeight, 7);
-        }
-        break;
-    case biomes::TreeGenerationFamily::Forest:
-        // Minecraft Forest: dominant oak with scattered birch (roughly ~1 in 8 trees birch).
-        if (variantRoll < 0.88f)
-        {
-            settings.trunkBlock = BlockType::OakLog;
-            settings.crownBlock = BlockType::OakLeaves;
-            settings.crownRadius = 2;
-        }
-        else
-        {
-            settings.trunkBlock = BlockType::BirchLog;
-            settings.crownBlock = BlockType::BirchLeaves;
-            settings.minTrunkHeight = std::max(settings.minTrunkHeight, 5);
-            settings.maxTrunkHeight = std::max(settings.maxTrunkHeight, 7);
-            settings.crownRadius = 2;
-        }
-        break;
-    case biomes::TreeGenerationFamily::BirchForest:
-        settings.trunkBlock = BlockType::BirchLog;
-        settings.crownBlock = BlockType::BirchLeaves;
-        settings.minTrunkHeight = std::max(settings.minTrunkHeight, variantRoll < 0.20f ? 7 : 5);
-        settings.maxTrunkHeight = std::max(settings.maxTrunkHeight, variantRoll < 0.20f ? 10 : 8);
-        settings.crownRadius = variantRoll < 0.20f ? 3 : 2;
-        break;
-    case biomes::TreeGenerationFamily::DarkForest:
-        if (variantRoll < 0.82f)
-        {
-            settings.trunkBlock = BlockType::DarkOakLog;
-            settings.crownBlock = BlockType::DarkOakLeaves;
-            settings.minTrunkHeight = std::max(settings.minTrunkHeight, 6);
-            settings.maxTrunkHeight = std::max(settings.maxTrunkHeight, 9);
-            settings.crownRadius = 3;
-        }
-        else
-        {
-            settings.trunkBlock = BlockType::OakLog;
-            settings.crownBlock = BlockType::OakLeaves;
-            settings.minTrunkHeight = std::max(settings.minTrunkHeight, 5);
-            settings.maxTrunkHeight = std::max(settings.maxTrunkHeight, 7);
-            settings.crownRadius = 2;
-        }
-        break;
-    case biomes::TreeGenerationFamily::Taiga:
-        settings.trunkBlock = BlockType::SpruceLog;
-        settings.crownBlock = BlockType::SpruceLeaves;
-        if (variantRoll > 0.94f)
-        {
-            settings.trunkBlock = BlockType::BirchLog;
-            settings.crownBlock = BlockType::BirchLeaves;
-            settings.canopyStyle = TreeBiomeSettings::CanopyStyle::Temperate;
-        }
-        break;
-    case biomes::TreeGenerationFamily::SnowyTaiga:
-        if (variantRoll < 0.84f)
-        {
-            settings.trunkBlock = BlockType::SpruceLog;
-            settings.crownBlock = BlockType::SpruceLeaves;
-        }
-        else if (variantRoll < 0.94f)
-        {
-            settings.trunkBlock = BlockType::BirchLog;
-            settings.crownBlock = BlockType::BirchLeaves;
-            settings.minTrunkHeight = 5;
-            settings.maxTrunkHeight = 8;
-            settings.canopyStyle = TreeBiomeSettings::CanopyStyle::Temperate;
-        }
-        else
-        {
-            settings.trunkBlock = BlockType::OakLog;
-            settings.crownBlock = BlockType::OakLeaves;
-            settings.minTrunkHeight = 5;
-            settings.maxTrunkHeight = 7;
-            settings.canopyStyle = TreeBiomeSettings::CanopyStyle::Temperate;
-        }
-        break;
-    case biomes::TreeGenerationFamily::Jungle:
-    case biomes::TreeGenerationFamily::SparseJungle:
-    case biomes::TreeGenerationFamily::BambooJungle:
-        if (variantRoll < 0.88f)
-        {
-            settings.trunkBlock = BlockType::JungleLog;
-            settings.crownBlock = BlockType::JungleLeaves;
-        }
-        else
-        {
-            settings.trunkBlock = BlockType::OakLog;
-            settings.crownBlock = BlockType::OakLeaves;
-            settings.minTrunkHeight = 5;
-            settings.maxTrunkHeight = 7;
-            settings.crownRadius = 2;
-            settings.canopyStyle = TreeBiomeSettings::CanopyStyle::Temperate;
-        }
-        break;
-    case biomes::TreeGenerationFamily::None:
-    default:
-        break;
-    }
-    return settings;
-}
-
 void placeTemperateCanopy(
     Chunk& chunk,
     const ChunkCoord& coord,
@@ -416,6 +166,75 @@ void placeTemperateCanopy(
     placeBlockIfInsideChunk(chunk, coord, crownCenterX - 1, crownCenterY, crownCenterZ, crownBlock);
     placeBlockIfInsideChunk(chunk, coord, crownCenterX, crownCenterY, crownCenterZ + 1, crownBlock);
     placeBlockIfInsideChunk(chunk, coord, crownCenterX, crownCenterY, crownCenterZ - 1, crownBlock);
+}
+
+void placeBroadTemperateCanopy(
+    Chunk& chunk,
+    const ChunkCoord& coord,
+    const int trunkBaseX,
+    const int crownCenterY,
+    const int trunkBaseZ,
+    const int crownRadius,
+    const int trunkWidth,
+    const BlockType crownBlock)
+{
+    const int radius = std::max(2, crownRadius);
+    const std::array<std::pair<int, int>, 6> layers{{
+        {-3, -1},
+        {-2, 0},
+        {-1, 1},
+        {0, 1},
+        {1, 0},
+        {2, -1},
+    }};
+
+    for (const auto& [dy, radiusAdjust] : layers)
+    {
+        const int layerRadius = std::max(1, radius + radiusAdjust);
+        const int y = crownCenterY + dy;
+        for (int dz = -layerRadius; dz <= trunkWidth - 1 + layerRadius; ++dz)
+        {
+            for (int dx = -layerRadius; dx <= trunkWidth - 1 + layerRadius; ++dx)
+            {
+                const int outsideX = dx < 0 ? -dx : std::max(0, dx - (trunkWidth - 1));
+                const int outsideZ = dz < 0 ? -dz : std::max(0, dz - (trunkWidth - 1));
+                const int edgeDistance = std::max(outsideX, outsideZ);
+                if (edgeDistance > layerRadius)
+                {
+                    continue;
+                }
+                const bool isOuterEdge = edgeDistance == layerRadius;
+                const int worldX = trunkBaseX + dx;
+                const int worldZ = trunkBaseZ + dz;
+                if (isOuterEdge
+                    && noise::random01(worldX, worldZ, kTreeShapeSeed + static_cast<std::uint32_t>(y - kWorldMinY))
+                        > (layerRadius >= 3 ? 0.44f : 0.62f))
+                {
+                    continue;
+                }
+                placeBlockIfInsideChunk(chunk, coord, worldX, y, worldZ, crownBlock);
+            }
+        }
+    }
+
+    const int centerMinX = trunkBaseX;
+    const int centerMinZ = trunkBaseZ;
+    const int centerMaxX = trunkBaseX + trunkWidth - 1;
+    const int centerMaxZ = trunkBaseZ + trunkWidth - 1;
+    for (int z = centerMinZ; z <= centerMaxZ; ++z)
+    {
+        for (int x = centerMinX; x <= centerMaxX; ++x)
+        {
+            placeBlockIfInsideChunk(chunk, coord, x, crownCenterY + 3, z, crownBlock);
+        }
+    }
+
+    const int midX = trunkBaseX + trunkWidth / 2;
+    const int midZ = trunkBaseZ + trunkWidth / 2;
+    placeBlockIfInsideChunk(chunk, coord, midX - radius, crownCenterY - 1, midZ, crownBlock);
+    placeBlockIfInsideChunk(chunk, coord, midX + radius, crownCenterY - 1, midZ, crownBlock);
+    placeBlockIfInsideChunk(chunk, coord, midX, crownCenterY - 1, midZ - radius, crownBlock);
+    placeBlockIfInsideChunk(chunk, coord, midX, crownCenterY - 1, midZ + radius, crownBlock);
 }
 
 void placeSnowCanopy(
@@ -583,9 +402,14 @@ void placeTreeForColumn(
     const int treeX,
     const int treeZ,
     const SurfaceBiome biome,
-    const TreeBiomeSettings& baseSettings)
+    const TreeBiomeSettings& baseSettings,
+    const biomes::BiomeVariationSample& variation,
+    const biomes::BiomeTransitionSample& transition)
 {
-    const TreeBiomeSettings settings = treeVariantForBiome(biome, treeX, treeZ, baseSettings);
+    const TreeBiomeSettings settings = biomes::softenTreeSettingsForBiomeEdge(
+        biome,
+        transition,
+        biomes::treeVariantSettings(biome, baseSettings, variation, treeX, treeZ));
     const int surfaceY = terrainGenerator.surfaceHeightAt(treeX, treeZ);
     if (settings.spawnChance <= 0.0f)
     {
@@ -596,9 +420,10 @@ void placeTreeForColumn(
     int trunkHeight = settings.minTrunkHeight
         + static_cast<int>(treeHash % static_cast<std::uint32_t>(settings.maxTrunkHeight - settings.minTrunkHeight + 1));
     int crownRadius = settings.crownRadius;
-    int trunkWidth = 1;
+    int trunkWidth = settings.trunkWidth;
     const bool isJungleTree = settings.canopyStyle == TreeBiomeSettings::CanopyStyle::Jungle;
-    const bool isTemperateTree = settings.canopyStyle == TreeBiomeSettings::CanopyStyle::Temperate;
+    const bool isBroadTemperateTree = settings.canopyStyle == TreeBiomeSettings::CanopyStyle::BroadTemperate;
+    const bool isTemperateTree = settings.canopyStyle == TreeBiomeSettings::CanopyStyle::Temperate || isBroadTemperateTree;
     const bool isSnowTree = settings.canopyStyle == TreeBiomeSettings::CanopyStyle::Snowy;
 
     if (isJungleTree && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x193U) < 0.01)
@@ -616,6 +441,13 @@ void placeTreeForColumn(
         const std::uint32_t giantHash = noise::hashCoordinates(treeX, treeZ, kTreeShapeSeed + 0x58DU);
         trunkHeight += 2 + static_cast<int>(giantHash % 2U);
         crownRadius += 1;
+    }
+    if (settings.largeTreeChance > 0.0f
+        && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x8C3U) < settings.largeTreeChance)
+    {
+        trunkWidth = std::max(trunkWidth, 2);
+        trunkHeight += settings.largeTreeHeightBonus;
+        crownRadius += settings.largeTreeCrownRadiusBonus;
     }
     if (settings.trunkBlock == BlockType::DarkOakLog
         && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x72DU) < 0.18f)
@@ -644,7 +476,11 @@ void placeTreeForColumn(
     const int crownCenterX = treeX + (trunkWidth - 1) / 2;
     const int crownCenterZ = treeZ + (trunkWidth - 1) / 2;
     const int crownCenterY = surfaceY + trunkHeight;
-    if (isTemperateTree)
+    if (isBroadTemperateTree)
+    {
+        placeBroadTemperateCanopy(chunk, coord, treeX, crownCenterY, treeZ, crownRadius, trunkWidth, settings.crownBlock);
+    }
+    else if (isTemperateTree)
     {
         placeTemperateCanopy(chunk, coord, crownCenterX, crownCenterY, crownCenterZ, settings.crownBlock);
     }
@@ -699,13 +535,23 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
                                     % static_cast<std::uint32_t>(kTreeCellSize));
             const SurfaceBiome biome = terrainGenerator.surfaceBiomeAt(treeX, treeZ);
             const TreeBiomeSettings settings = treeBiomeSettingsForSurfaceBiome(biome);
-            const float effectiveChance = effectiveTreeSpawnChance(biome, settings, treeX, treeZ);
+            const biomes::BiomeVariationSample variation =
+                biomes::sampleBiomeVariation(biome, treeX, treeZ, terrainGenerator.worldSeed());
+            const biomes::BiomeTransitionSample transition = biomes::sampleBiomeTransition(
+                biome,
+                treeX,
+                treeZ,
+                [&](const int sampleX, const int sampleZ) { return terrainGenerator.surfaceBiomeAt(sampleX, sampleZ); });
+            const float effectiveChance = biomes::softenTreeSpawnChanceForBiomeEdge(
+                biome,
+                transition,
+                biomes::effectiveTreeSpawnChance(biome, settings, variation, treeX, treeZ));
             if (noise::random01(cellX, cellZ, kTreeChanceSeed) > effectiveChance)
             {
                 continue;
             }
 
-            placeTreeForColumn(chunk, coord, terrainGenerator, treeX, treeZ, biome, settings);
+            placeTreeForColumn(chunk, coord, terrainGenerator, treeX, treeZ, biome, settings, variation, transition);
             const biomes::TreeGenerationFamily biomeFamily = biomes::biomeProfile(biome).treeFamily;
             if (biomeFamily == biomes::TreeGenerationFamily::Jungle
                 || biomeFamily == biomes::TreeGenerationFamily::BambooJungle)
@@ -724,6 +570,13 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
                 const SurfaceBiome denseBiome = terrainGenerator.surfaceBiomeAt(denseTreeX, denseTreeZ);
                 const TreeBiomeSettings denseSettings = treeBiomeSettingsForSurfaceBiome(denseBiome);
                 const biomes::TreeGenerationFamily denseFamily = biomes::biomeProfile(denseBiome).treeFamily;
+                const biomes::BiomeVariationSample denseVariation =
+                    biomes::sampleBiomeVariation(denseBiome, denseTreeX, denseTreeZ, terrainGenerator.worldSeed());
+                const biomes::BiomeTransitionSample denseTransition = biomes::sampleBiomeTransition(
+                    denseBiome,
+                    denseTreeX,
+                    denseTreeZ,
+                    [&](const int sampleX, const int sampleZ) { return terrainGenerator.surfaceBiomeAt(sampleX, sampleZ); });
                 if ((denseFamily == biomes::TreeGenerationFamily::Jungle
                         || denseFamily == biomes::TreeGenerationFamily::BambooJungle)
                     && denseSettings.spawnChance > 0.0f)
@@ -735,7 +588,9 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
                         denseTreeX,
                         denseTreeZ,
                         denseBiome,
-                        denseSettings);
+                        denseSettings,
+                        denseVariation,
+                        denseTransition);
                 }
                 continue;
             }
@@ -748,28 +603,10 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
             {
                 continue;
             }
-            float extraChance = 0.0f;
-            switch (biomeFamily)
-            {
-            case biomes::TreeGenerationFamily::Forest:
-                extraChance = 0.70f;
-                break;
-            case biomes::TreeGenerationFamily::BirchForest:
-                extraChance = 0.28f;
-                break;
-            case biomes::TreeGenerationFamily::DarkForest:
-                extraChance = 0.44f;
-                break;
-            case biomes::TreeGenerationFamily::Taiga:
-                extraChance = 0.30f;
-                break;
-            case biomes::TreeGenerationFamily::SnowyTaiga:
-                extraChance = 0.24f;
-                break;
-            default:
-                extraChance = 0.0f;
-                break;
-            }
+            const float extraChance = biomes::softenSecondaryTreeChanceForBiomeEdge(
+                biome,
+                transition,
+                biomes::secondaryTreeChance(biome, variation));
             if (extraChance <= 0.0f)
             {
                 continue;
@@ -782,6 +619,13 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
             const int extraTreeZ = treeZ + extraOffsetZ;
             const SurfaceBiome extraBiome = terrainGenerator.surfaceBiomeAt(extraTreeX, extraTreeZ);
             const TreeBiomeSettings extraSettings = treeBiomeSettingsForSurfaceBiome(extraBiome);
+            const biomes::BiomeVariationSample extraVariation =
+                biomes::sampleBiomeVariation(extraBiome, extraTreeX, extraTreeZ, terrainGenerator.worldSeed());
+            const biomes::BiomeTransitionSample extraTransition = biomes::sampleBiomeTransition(
+                extraBiome,
+                extraTreeX,
+                extraTreeZ,
+                [&](const int sampleX, const int sampleZ) { return terrainGenerator.surfaceBiomeAt(sampleX, sampleZ); });
             if (biomes::isForestSurfaceBiome(extraBiome) && extraSettings.spawnChance > 0.0f)
             {
                 placeTreeForColumn(
@@ -791,7 +635,9 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
                     extraTreeX,
                     extraTreeZ,
                     extraBiome,
-                    extraSettings);
+                    extraSettings,
+                    extraVariation,
+                    extraTransition);
             }
         }
     }

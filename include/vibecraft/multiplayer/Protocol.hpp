@@ -16,7 +16,7 @@
 namespace vibecraft::multiplayer::protocol
 {
 inline constexpr std::uint32_t kProtocolMagic = 0x56434d50;  // "VCMP"
-inline constexpr std::uint16_t kProtocolVersion = 7;
+inline constexpr std::uint16_t kProtocolVersion = 8;
 inline constexpr std::size_t kMaxPlayerNameLength = 32;
 inline constexpr std::size_t kMaxStringLength = 256;
 inline constexpr std::size_t kMaxPlayersPerSnapshot = 8;
@@ -35,6 +35,8 @@ enum class MessageType : std::uint8_t
     Pong = 9,
     Disconnect = 10,
     ChunkSnapshotPart = 11,
+    CommandRequest = 12,
+    CommandFeedback = 13,
 };
 
 struct MessageHeader
@@ -201,6 +203,18 @@ struct DisconnectMessage
     std::string reason;
 };
 
+struct CommandRequestMessage
+{
+    std::uint16_t clientId = 0;
+    std::string commandText;
+};
+
+struct CommandFeedbackMessage
+{
+    bool isError = false;
+    std::string feedback;
+};
+
 using MessagePayload = std::variant<
     JoinRequestMessage,
     JoinAcceptMessage,
@@ -212,7 +226,9 @@ using MessagePayload = std::variant<
     ChunkSnapshotPartMessage,
     PingMessage,
     PongMessage,
-    DisconnectMessage>;
+    DisconnectMessage,
+    CommandRequestMessage,
+    CommandFeedbackMessage>;
 
 struct DecodedMessage
 {

@@ -18,6 +18,10 @@ struct BiomeSelectionInputs
     bool starterRegion = false;
 };
 
+[[nodiscard]] SurfaceBiome selectRawSurfaceBiome(
+    const BiomeSelectionInputs& inputs,
+    std::optional<SurfaceBiome> biomeOverride);
+
 [[nodiscard]] SurfaceBiome selectSurfaceBiome(
     const BiomeSelectionInputs& inputs,
     std::optional<SurfaceBiome> biomeOverride);

@@ -32,11 +32,20 @@ struct ChunkMeshData
     std::uint32_t faceCount = 0;
 };
 
+struct ChunkMeshBuildSettings
+{
+    bool prioritizeVerticalWindow = false;
+    int focusCenterY = 64;
+    int renderAboveBlocks = 80;
+    int renderBelowBlocks = 48;
+};
+
 class ChunkMesher
 {
   public:
     [[nodiscard]] ChunkMeshData buildMesh(
         const vibecraft::world::World& world,
-        const vibecraft::world::ChunkCoord& coord) const;
+        const vibecraft::world::ChunkCoord& coord,
+        const ChunkMeshBuildSettings& settings = {}) const;
 };
 }  // namespace vibecraft::meshing

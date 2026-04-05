@@ -18,24 +18,6 @@ namespace vibecraft::render
 {
 namespace
 {
-[[nodiscard]] std::string airBarString(const FrameDebugData& frameDebugData)
-{
-    constexpr int kBarSegments = 16;
-    const float clampedMaxAir = std::max(0.0f, frameDebugData.maxAir);
-    const float clampedAir = std::clamp(frameDebugData.air, 0.0f, clampedMaxAir);
-    const float fillRatio = clampedMaxAir > 0.0f ? clampedAir / clampedMaxAir : 0.0f;
-    const int filledSegments = std::clamp(static_cast<int>(std::round(fillRatio * kBarSegments)), 0, kBarSegments);
-
-    std::string bar = "[";
-    for (int i = 0; i < kBarSegments; ++i)
-    {
-        bar += i < filledSegments ? '=' : '.';
-    }
-    bar += "]";
-
-    return fmt::format("Air {} {:>3.0f}%", bar, fillRatio * 100.0f);
-}
-
 [[nodiscard]] float hashUnitFloat(std::uint32_t seed)
 {
     seed ^= 0x9e3779b9u;
@@ -259,7 +241,7 @@ void drawSun(
     }
 
     constexpr float kSunDistance = 236.0f;
-    constexpr float kSunRadius = 14.0f;
+    constexpr float kSunRadius = 18.5f;
     const glm::vec3 discTint = glm::mix(glm::vec3(1.0f, 0.95f, 0.62f), cameraFrameData.sunLightTint, 0.55f);
 
     if (submitTexturedCelestialSprite(
@@ -293,7 +275,7 @@ void drawMoon(
     }
 
     constexpr float kMoonDistance = 234.0f;
-    constexpr float kMoonRadius = 13.0f;
+    constexpr float kMoonRadius = 17.0f;
     const glm::vec3 moonDirection = glm::normalize(cameraFrameData.moonDirection);
     const glm::vec3 moonCenter = cameraFrameData.position + moonDirection * kMoonDistance;
     glm::vec3 lightAxis =
@@ -426,12 +408,12 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     bgfx::touch(detail::kUiView);
 
     const glm::vec3 ambientLight = glm::clamp(
-        cameraFrameData.skyTint * 0.48f
-            + cameraFrameData.horizonTint * 0.18f
-            + cameraFrameData.sunLightTint * (0.10f * cameraFrameData.sunVisibility)
-            + cameraFrameData.moonLightTint * (0.05f * cameraFrameData.moonVisibility),
-        glm::vec3(0.05f),
-        glm::vec3(0.78f));
+        cameraFrameData.skyTint * 0.31f
+            + cameraFrameData.horizonTint * 0.13f
+            + cameraFrameData.sunLightTint * (0.06f * cameraFrameData.sunVisibility)
+            + cameraFrameData.moonLightTint * (0.03f * cameraFrameData.moonVisibility),
+        glm::vec3(0.03f),
+        glm::vec3(0.56f));
     const glm::vec3 sunLightColor =
         cameraFrameData.sunLightTint * glm::max(cameraFrameData.sunVisibility, 0.0f);
     const glm::vec3 moonLightColor =
@@ -715,19 +697,7 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
             bgfx::dbgTextPrintf(0, 9, 0x0f, "Target block: none");
         }
     }
-    if (inventoryUiSolidProgramHandle_ == UINT16_MAX)
-    {
-        const bool airLow =
-            frameDebugData.maxAir > 0.0f && frameDebugData.air <= frameDebugData.maxAir * 0.2f + 1e-3f;
-        const std::uint16_t airAttr = airLow ? 0x0c : 0x0b;
-        const std::string airBar = airBarString(frameDebugData);
-        bgfx::dbgTextPrintf(0, 10, airAttr, "%s", airBar.c_str());
-        if (airLow)
-        {
-            bgfx::dbgTextPrintf(0, 11, 0x0c, "Warning: air low. Surface to breathe.");
-        }
-    }
-    const std::uint16_t selectedLabelRow = inventoryUiSolidProgramHandle_ == UINT16_MAX ? 12 : 10;
+    const std::uint16_t selectedLabelRow = 10;
     if (!frameDebugData.selectedHotbarLabel.empty())
     {
         bgfx::dbgTextPrintf(0, selectedLabelRow, 0x0f, "Selected: %s", frameDebugData.selectedHotbarLabel.c_str());

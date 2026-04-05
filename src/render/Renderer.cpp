@@ -578,13 +578,28 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
             textureUv = TextureUvRect{};
         }
     };
-    const std::filesystem::path playerPath = "textures/entity/player_mars.png";
+    const std::filesystem::path playerPath = "textures/entity/steve.png";
     const bgfx::TextureHandle playerMobTexture = detail::createTextureFromPng(playerPath);
     if (bgfx::isValid(playerMobTexture))
     {
         playerMobTextureHandle_ = playerMobTexture.idx;
         playerMobTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(playerPath));
     }
+    loadMobTextureWithFallback(
+        "textures/entity/skeleton.png",
+        vibecraft::game::MobKind::Skeleton,
+        skeletonTextureHandle_,
+        skeletonTextureUv_);
+    loadMobTextureWithFallback(
+        "textures/entity/creeper.png",
+        vibecraft::game::MobKind::Creeper,
+        creeperTextureHandle_,
+        creeperTextureUv_);
+    loadMobTextureWithFallback(
+        "textures/entity/spider.png",
+        vibecraft::game::MobKind::Spider,
+        spiderTextureHandle_,
+        spiderTextureUv_);
     loadMobTextureWithFallback(
         "textures/entity/cow.png",
         vibecraft::game::MobKind::Cow,
@@ -638,6 +653,56 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     {
         std::uint16_t menuBgW = 0;
         std::uint16_t menuBgH = 0;
+        const bgfx::TextureHandle craftingInventoryTexture = detail::createTextureFromPng(
+            "textures/ui/container/inventory.png",
+            BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+            nullptr,
+            nullptr,
+            true);
+        if (bgfx::isValid(craftingInventoryTexture))
+        {
+            craftingContainerInventoryTextureHandle_ = craftingInventoryTexture.idx;
+        }
+        const bgfx::TextureHandle craftingCreativeTexture = detail::createTextureFromPng(
+            "textures/ui/container/creative_inventory/tab_inventory.png",
+            BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+            nullptr,
+            nullptr,
+            true);
+        if (bgfx::isValid(craftingCreativeTexture))
+        {
+            craftingContainerCreativeTextureHandle_ = craftingCreativeTexture.idx;
+        }
+        const bgfx::TextureHandle craftingWorkbenchTexture = detail::createTextureFromPng(
+            "textures/ui/container/crafting_table.png",
+            BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+            nullptr,
+            nullptr,
+            true);
+        if (bgfx::isValid(craftingWorkbenchTexture))
+        {
+            craftingContainerWorkbenchTextureHandle_ = craftingWorkbenchTexture.idx;
+        }
+        const bgfx::TextureHandle craftingChestTexture = detail::createTextureFromPng(
+            "textures/ui/container/generic_54.png",
+            BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+            nullptr,
+            nullptr,
+            true);
+        if (bgfx::isValid(craftingChestTexture))
+        {
+            craftingContainerChestTextureHandle_ = craftingChestTexture.idx;
+        }
+        const bgfx::TextureHandle craftingFurnaceTexture = detail::createTextureFromPng(
+            "textures/ui/container/furnace.png",
+            BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+            nullptr,
+            nullptr,
+            true);
+        if (bgfx::isValid(craftingFurnaceTexture))
+        {
+            craftingContainerFurnaceTextureHandle_ = craftingFurnaceTexture.idx;
+        }
         const bgfx::TextureHandle menuBgTexture = detail::createTextureFromPng(
             "textures/ui/main_menu_background_lush.png",
             BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
@@ -850,6 +915,31 @@ void Renderer::shutdown()
         bgfx::destroy(detail::toProgramHandle(inventoryUiSolidProgramHandle_));
         inventoryUiSolidProgramHandle_ = UINT16_MAX;
     }
+    if (craftingContainerInventoryTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(craftingContainerInventoryTextureHandle_));
+        craftingContainerInventoryTextureHandle_ = UINT16_MAX;
+    }
+    if (craftingContainerCreativeTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(craftingContainerCreativeTextureHandle_));
+        craftingContainerCreativeTextureHandle_ = UINT16_MAX;
+    }
+    if (craftingContainerWorkbenchTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(craftingContainerWorkbenchTextureHandle_));
+        craftingContainerWorkbenchTextureHandle_ = UINT16_MAX;
+    }
+    if (craftingContainerChestTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(craftingContainerChestTextureHandle_));
+        craftingContainerChestTextureHandle_ = UINT16_MAX;
+    }
+    if (craftingContainerFurnaceTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(craftingContainerFurnaceTextureHandle_));
+        craftingContainerFurnaceTextureHandle_ = UINT16_MAX;
+    }
     if (inventoryUiProgramHandle_ != UINT16_MAX)
     {
         bgfx::destroy(detail::toProgramHandle(inventoryUiProgramHandle_));
@@ -869,6 +959,21 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toTextureHandle(playerMobTextureHandle_));
         playerMobTextureHandle_ = UINT16_MAX;
+    }
+    if (skeletonTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(skeletonTextureHandle_));
+        skeletonTextureHandle_ = UINT16_MAX;
+    }
+    if (creeperTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(creeperTextureHandle_));
+        creeperTextureHandle_ = UINT16_MAX;
+    }
+    if (spiderTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(spiderTextureHandle_));
+        spiderTextureHandle_ = UINT16_MAX;
     }
     if (sporegrazerTextureHandle_ != UINT16_MAX)
     {
@@ -1076,6 +1181,12 @@ std::uint16_t Renderer::mobTextureHandleForKind(const vibecraft::game::MobKind k
         return zombieTextureHandle_;
     case MK::Player:
         return playerMobTextureHandle_;
+    case MK::Skeleton:
+        return skeletonTextureHandle_;
+    case MK::Creeper:
+        return creeperTextureHandle_;
+    case MK::Spider:
+        return spiderTextureHandle_;
     case MK::Cow:
         return sporegrazerTextureHandle_;
     case MK::Pig:
@@ -1097,6 +1208,12 @@ TextureUvRect Renderer::mobTextureUvForKind(const vibecraft::game::MobKind kind)
         return zombieTextureUv_;
     case MK::Player:
         return playerMobTextureUv_;
+    case MK::Skeleton:
+        return skeletonTextureUv_;
+    case MK::Creeper:
+        return creeperTextureUv_;
+    case MK::Spider:
+        return spiderTextureUv_;
     case MK::Cow:
         return sporegrazerTextureUv_;
     case MK::Pig:

@@ -1,18 +1,24 @@
 #pragma once
 
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <condition_variable>
+#include <deque>
 #include <cstdint>
 #include <filesystem>
 #include <cstdint>
+#include <mutex>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "vibecraft/app/Inventory.hpp"
+#include "vibecraft/app/ChatCommands.hpp"
 #include "vibecraft/app/ApplicationBotanyRuntime.hpp"
 #include "vibecraft/app/Furnace.hpp"
 #include "vibecraft/app/crafting/Crafting.hpp"
@@ -135,13 +141,27 @@ class Application
         float digSoundCooldownSeconds = 0.0f;
     };
 
+    struct PrimedTntState
+    {
+        glm::ivec3 blockPosition{0};
+        glm::vec3 centerPosition{0.0f};
+        float fuseSeconds = 4.0f;
+    };
+
     struct SingleplayerLoadState
     {
         bool active = false;
         bool worldPrepared = false;
         bool playerStateLoaded = false;
+        bool spawnSearchActive = false;
         float progress = 0.0f;
         std::string label;
+        glm::vec3 spawnProbePosition{0.0f};
+        std::vector<glm::ivec2> spawnSearchOffsets;
+        std::size_t spawnSearchIndex = 0;
+        std::optional<glm::vec3> bestSpawnCandidate;
+        int bestSpawnCrowding = 0;
+        int bestSpawnPenalty = 0;
     };
 
     struct SingleplayerWorldEntry
@@ -159,17 +179,76 @@ class Application
         std::uint16_t port = 41234;
     };
 
+    struct AsyncChunkMeshJob
+    {
+        world::ChunkCoord coord{};
+        std::uint64_t meshId = 0;
+        std::uint64_t dirtyRevision = 0;
+        std::uint64_t generation = 0;
+        int verticalFocusBand = 0;
+        bool wasDirtyWhenQueued = false;
+        meshing::ChunkMeshBuildSettings buildSettings{};
+        world::World::ChunkMap snapshotChunks;
+    };
+
+    struct AsyncChunkMeshResult
+    {
+        world::ChunkCoord coord{};
+        std::uint64_t meshId = 0;
+        std::uint64_t dirtyRevision = 0;
+        std::uint64_t generation = 0;
+        int verticalFocusBand = 0;
+        bool wasDirtyWhenQueued = false;
+        world::ChunkMeshStats stats{};
+        bool hasRenderableMesh = false;
+        render::SceneMeshData sceneMesh;
+    };
+
+    struct AsyncChunkGenerationJob
+    {
+        world::ChunkCoord coord{};
+        std::uint64_t generation = 0;
+        world::TerrainGenerator terrainGenerator;
+    };
+
+    struct AsyncChunkGenerationResult
+    {
+        world::ChunkCoord coord{};
+        std::uint64_t generation = 0;
+        world::Chunk chunk;
+    };
+
+    struct ChatInputIntent
+    {
+        bool submit = false;
+        bool autocomplete = false;
+        bool historyPrev = false;
+        bool historyNext = false;
+        bool moveCursorLeft = false;
+        bool moveCursorRight = false;
+        bool moveCursorHome = false;
+        bool moveCursorEnd = false;
+        bool deleteForward = false;
+    };
+
     struct ChatLine
     {
         std::string text;
         bool isError = false;
+        std::string timestampLabel;
+        float createdAtSeconds = 0.0f;
     };
 
     struct ChatState
     {
         bool open = false;
         std::string inputBuffer;
+        std::size_t cursorIndex = 0;
+        std::string hintLine;
         std::vector<ChatLine> history;
+        std::vector<std::string> submittedInputs;
+        std::optional<std::size_t> submittedHistoryIndex;
+        std::string submittedHistoryDraft;
     };
 
     struct CraftingMenuState
@@ -209,15 +288,23 @@ class Application
     [[nodiscard]] std::filesystem::path audioPrefsPath() const;
     void refreshDetectedLanAddress();
     void processJoinMenuTextInput();
-    void processPlayingChatInput(bool submitPressed);
+    void processPlayingChatInput(const ChatInputIntent& intent);
     void openChat(const std::string& initialText = {});
     void closeChat(bool clearInput);
     void appendChatLine(const std::string& text, bool isError);
     void submitChatInput();
+    void applyChatCommandResult(const ChatCommandResult& result);
+    void requestHostCommandExecution(const std::string& commandText);
+    void handleHostRequestedCommand(std::uint16_t clientId, const std::string& commandText);
     void teleportPlayerToFeetPosition(const glm::vec3& feetPosition);
     void tryStartHostFromMenu();
     void tryConnectFromJoinMenu();
     void beginClientJoinLoad();
+    void updateHostMultiplayer(float deltaTimeSeconds);
+    void updateClientMultiplayer(float deltaTimeSeconds);
+    void acceptPendingHostClient(const vibecraft::multiplayer::PendingClientJoin& join);
+    void rebuildClientChunkSyncList(std::uint16_t clientId, const world::ChunkCoord& centerChunk);
+    void sendChunkSnapshotsToClient(std::uint16_t clientId, std::size_t maxChunkSnapshots);
     void sendInitialWorldToClient(std::uint16_t clientId);
     void applyChunkSnapshot(const vibecraft::multiplayer::protocol::ChunkSnapshotMessage& chunkMessage);
     void applyRemoteBlockEdit(const vibecraft::multiplayer::protocol::BlockEditEventMessage& editMessage);
@@ -253,7 +340,14 @@ class Application
     void unloadActiveSingleplayerWorld();
     void beginSingleplayerLoad();
     void updateSingleplayerLoad();
+    [[nodiscard]] bool continueSingleplayerSpawnSearch(float colliderHeight);
     void syncWorldData();
+    void startChunkGenerationWorker();
+    void stopChunkGenerationWorker();
+    void resetChunkGenerationPipeline();
+    void startChunkMeshingWorker();
+    void stopChunkMeshingWorker();
+    void resetChunkMeshingPipeline();
     void respawnPlayer();
     void openCraftingMenu(bool useWorkbench, const glm::ivec3& workbenchBlockPosition = glm::ivec3(0));
     void openChestMenu(const glm::ivec3& chestBlockPosition);
@@ -269,7 +363,17 @@ class Application
     void spawnDroppedItem(vibecraft::world::BlockType blockType, const glm::ivec3& blockPosition);
     void spawnDroppedItemAtPosition(vibecraft::world::BlockType blockType, const glm::vec3& worldPosition);
     void spawnDroppedItemAtPosition(EquippedItem equippedItem, const glm::vec3& worldPosition);
+    [[nodiscard]] glm::vec3 dropSpawnPositionInFront(
+        float forwardDistance,
+        float verticalOffset = 1.0f) const;
+    void dropSingleItemFromSlotAt(InventorySlot& slot, const glm::vec3& worldPosition);
+    void dropSingleItemFromSlotInFront(InventorySlot& slot, float forwardDistance);
+    void dropEntireSlotInFront(InventorySlot& slot, float forwardDistance);
     void updateDroppedItems(float deltaTimeSeconds, float eyeHeight);
+    void queuePrimedTnt(const glm::ivec3& blockPosition, float fuseSeconds);
+    void igniteTntAtBlock(const glm::ivec3& blockPosition, float fuseSeconds = 4.0f, bool broadcastRemove = true);
+    void explodeTntAt(const glm::vec3& centerPosition, float blastRadiusBlocks = 4.0f);
+    void tickPrimedTnt(float deltaTimeSeconds);
 
     vibecraft::platform::Window window_;
     vibecraft::platform::InputState inputState_;
@@ -285,6 +389,7 @@ class Application
     vibecraft::meshing::ChunkMesher chunkMesher_;
     std::filesystem::path savePath_ = "assets/saves/dev_world.bin";
     std::unordered_set<std::uint64_t> residentChunkMeshIds_;
+    std::unordered_map<std::uint64_t, int> residentChunkMeshVerticalBandById_;
     bool mouseCaptured_ = true;
     glm::vec3 playerFeetPosition_{0.0f};
     glm::vec3 spawnFeetPosition_{0.0f};
@@ -327,7 +432,6 @@ class Application
     std::vector<JoinPresetEntry> joinPresets_;
     std::string detectedLanAddress_;
     std::vector<RemotePlayerState> remotePlayers_;
-    std::unordered_set<std::uint16_t> worldSyncSentClients_;
     std::unordered_map<std::uint16_t, std::vector<world::ChunkCoord>> clientChunkSyncCoordsById_;
     std::unordered_map<std::uint16_t, std::size_t> clientChunkSyncCursorById_;
     std::unordered_map<std::uint16_t, world::ChunkCoord> clientChunkSyncCenterById_;
@@ -338,9 +442,10 @@ class Application
     std::string pauseMenuNotice_;
     bool pauseSoundSettingsOpen_ = false;
     bool pauseGameSettingsOpen_ = false;
+    bool pauseMenuAwaitingMouseRelease_ = false;
     bool mobSpawningEnabled_ = true;
     DifficultyGrade difficultyGrade_ = DifficultyGrade::Normal;
-    SpawnBiomeTarget spawnBiomeTarget_ = SpawnBiomeTarget::Temperate;
+    SpawnBiomeTarget spawnBiomeTarget_ = SpawnBiomeTarget::Any;
     bool mainMenuSoundSettingsOpen_ = false;
     bool creativeModeEnabled_ = false;
     SpawnPreset spawnPreset_ = SpawnPreset::Origin;
@@ -350,15 +455,27 @@ class Application
     bool chatOpenKeyWasDown_ = false;
     bool chatSlashKeyWasDown_ = false;
     bool chatSubmitKeyWasDown_ = false;
+    bool chatAutocompleteKeyWasDown_ = false;
+    bool chatHistoryUpKeyWasDown_ = false;
+    bool chatHistoryDownKeyWasDown_ = false;
+    bool chatCursorLeftKeyWasDown_ = false;
+    bool chatCursorRightKeyWasDown_ = false;
+    bool chatDeleteKeyWasDown_ = false;
+    bool chatHomeKeyWasDown_ = false;
+    bool chatEndKeyWasDown_ = false;
+    bool dropKeyWasDown_ = false;
     bool previousWorldKeyWasDown_ = false;
     bool newWorldKeyWasDown_ = false;
     bool nextWorldKeyWasDown_ = false;
     bool spawnPresetToggleKeyWasDown_ = false;
     float heldItemSwing_ = 0.0f;
     float footstepDistanceAccumulator_ = 0.0f;
+    bool creativeFlightActive_ = false;
+    float creativeFlightToggleWindowSeconds_ = 0.0f;
     bool craftingKeyWasDown_ = false;
     std::string respawnNotice_;
     std::vector<DroppedItem> droppedItems_;
+    std::vector<PrimedTntState> primedTntStates_;
     std::unordered_map<std::int64_t, CraftingGridSlots> chestSlotsByPosition_;
     std::unordered_map<std::int64_t, FurnaceBlockState> furnaceStatesByPosition_;
     ActiveMiningState activeMiningState_{};
@@ -397,5 +514,21 @@ class Application
     std::unordered_map<std::uint32_t, MobAudioState> mobAudioStateById_;
     TerraformingRuntimeState terraformingRuntimeState_{};
     BotanyRuntimeState botanyRuntimeState_{};
+    std::thread chunkGenerationWorkerThread_;
+    std::mutex chunkGenerationMutex_;
+    std::condition_variable chunkGenerationCv_;
+    std::deque<AsyncChunkGenerationJob> chunkGenerationPendingJobs_;
+    std::deque<AsyncChunkGenerationResult> chunkGenerationCompletedResults_;
+    std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> chunkGenerationInFlightCoords_;
+    bool chunkGenerationStopRequested_ = false;
+    std::uint64_t chunkGenerationGeneration_ = 1;
+    std::thread chunkMeshingWorkerThread_;
+    std::mutex chunkMeshingMutex_;
+    std::condition_variable chunkMeshingCv_;
+    std::deque<AsyncChunkMeshJob> chunkMeshingPendingJobs_;
+    std::deque<AsyncChunkMeshResult> chunkMeshingCompletedResults_;
+    std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> chunkMeshingInFlightCoords_;
+    bool chunkMeshingStopRequested_ = false;
+    std::uint64_t chunkMeshingGeneration_ = 1;
 };
 }  // namespace vibecraft::app

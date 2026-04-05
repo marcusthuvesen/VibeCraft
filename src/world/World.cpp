@@ -22,6 +22,7 @@ namespace
 {
 constexpr int kWaterHorizontalReach = 7;
 constexpr int kLavaHorizontalReach = 3;
+constexpr std::uint32_t kLavaHorizontalCadenceTicks = 3;
 constexpr int kLeafDecayQueueRadius = 6;
 constexpr int kLeafDecayQueueBelow = 2;
 constexpr int kLeafDecayQueueAbove = 8;
@@ -338,6 +339,16 @@ std::vector<ChunkCoord> World::dirtyChunkCoords() const
     return std::vector<ChunkCoord>(dirtyChunks_.begin(), dirtyChunks_.end());
 }
 
+std::uint64_t World::dirtyRevisionForChunk(const ChunkCoord& coord) const
+{
+    const auto it = dirtyRevisionByChunk_.find(coord);
+    if (it == dirtyRevisionByChunk_.end())
+    {
+        return 0;
+    }
+    return it->second;
+}
+
 std::uint32_t World::totalVisibleFaces() const
 {
     std::uint32_t faceCount = 0;
@@ -355,6 +366,7 @@ void World::tickFluids(const std::size_t maxUpdates)
     {
         return;
     }
+    ++fluidTickCounter_;
 
     std::vector<FluidCell> pending;
     pending.reserve(std::min(maxUpdates, activeFluidCells_.size()));
@@ -462,10 +474,12 @@ void World::replaceChunks(ChunkMap chunks)
 {
     chunks_ = std::move(chunks);
     dirtyChunks_.clear();
+    dirtyRevisionByChunk_.clear();
     meshStats_.clear();
     fluidSources_.clear();
     flowingFluids_.clear();
     activeFluidCells_.clear();
+    fluidTickCounter_ = 0;
     activeLeafDecayCells_.clear();
     queuedLeafDecayCells_.clear();
 
@@ -486,6 +500,13 @@ Chunk& World::ensureChunk(const ChunkCoord& coord)
 void World::markChunkDirty(const ChunkCoord& coord)
 {
     dirtyChunks_.insert(coord);
+    const auto it = dirtyRevisionByChunk_.find(coord);
+    if (it == dirtyRevisionByChunk_.end())
+    {
+        dirtyRevisionByChunk_.emplace(coord, 1);
+        return;
+    }
+    ++it->second;
 }
 
 bool World::setBlockUnchecked(const int worldX, const int y, const int worldZ, const BlockType blockType)
@@ -921,6 +942,17 @@ void World::processFluidCell(const FluidCell& cell)
             }
         }
         return;
+    }
+
+    if (desiredBlock == BlockType::Lava && desiredDistance > 0)
+    {
+        const std::uint32_t lavaCadencePhase = fluidTickCounter_
+            + static_cast<std::uint32_t>((cell.x * 73856093) ^ (cell.y * 19349663) ^ (cell.z * 83492791));
+        if ((lavaCadencePhase % kLavaHorizontalCadenceTicks) != 0U)
+        {
+            activeFluidCells_.insert(cell);
+            return;
+        }
     }
 
     if ((desiredBlock == BlockType::Water && hasWaterSource) || (desiredBlock == BlockType::Lava && hasLavaSource))

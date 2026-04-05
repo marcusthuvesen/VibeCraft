@@ -40,7 +40,7 @@ namespace
 }
 }  // namespace
 
-SurfaceBiome selectSurfaceBiome(
+SurfaceBiome selectRawSurfaceBiome(
     const BiomeSelectionInputs& inputs,
     const std::optional<SurfaceBiome> biomeOverride)
 {
@@ -211,5 +211,12 @@ SurfaceBiome selectSurfaceBiome(
         return SurfaceBiome::Forest;
     }
     return SurfaceBiome::Plains;
+}
+
+SurfaceBiome selectSurfaceBiome(
+    const BiomeSelectionInputs& inputs,
+    const std::optional<SurfaceBiome> biomeOverride)
+{
+    return selectRawSurfaceBiome(inputs, biomeOverride);
 }
 }  // namespace vibecraft::world::biomes

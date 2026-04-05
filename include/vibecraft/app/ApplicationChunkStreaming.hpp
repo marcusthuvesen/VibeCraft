@@ -27,6 +27,7 @@ struct MeshSyncCpuData
     const std::unordered_set<std::uint64_t>& residentChunkMeshIds,
     const std::unordered_set<world::ChunkCoord, world::ChunkCoordHash>& dirtyCoordSet,
     const world::ChunkCoord& cameraChunk,
+    int cameraWorldY,
     int residentChunkRadius,
     std::size_t meshBuildBudget);
 

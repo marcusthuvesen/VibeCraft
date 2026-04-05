@@ -35,8 +35,10 @@ bool HostSession::start(const std::uint16_t port)
     }
     running_ = true;
     clients_.clear();
+    pendingJoinStates_.clear();
     clientIndexById_.clear();
     pendingInputs_.clear();
+    pendingCommandRequests_.clear();
     lastError_.clear();
     return true;
 }
@@ -45,8 +47,10 @@ void HostSession::shutdown()
 {
     running_ = false;
     clients_.clear();
+    pendingJoinStates_.clear();
     clientIndexById_.clear();
     pendingInputs_.clear();
+    pendingCommandRequests_.clear();
     if (transport_ != nullptr)
     {
         transport_->close();
@@ -78,7 +82,7 @@ void HostSession::poll()
             {
                 break;
             }
-            if (clients_.size() >= protocol::kMaxPlayersPerSnapshot)
+            if (clients_.size() + pendingJoinStates_.size() >= protocol::kMaxPlayersPerSnapshot)
             {
                 sendToClient(
                     ConnectedClient{
@@ -99,20 +103,26 @@ void HostSession::poll()
                 break;
             }
 
-            ConnectedClient client{
-                .clientId = nextClientId_++,
-                .endpoint = packet.from,
-                .playerName = join->playerName,
-                .initialWorldSent = false,
-            };
-            clientIndexById_[client.clientId] = clients_.size();
-            clients_.push_back(client);
-            sendToClient(
-                client,
-                protocol::MessageType::JoinAccept,
-                protocol::JoinAcceptMessage{
-                    .clientId = client.clientId,
+            const auto pendingIt = std::find_if(
+                pendingJoinStates_.begin(),
+                pendingJoinStates_.end(),
+                [&packet](const PendingJoinState& pendingJoin)
+                {
+                    return pendingJoin.endpoint == packet.from;
                 });
+            if (pendingIt != pendingJoinStates_.end())
+            {
+                break;
+            }
+
+            pendingJoinStates_.push_back(PendingJoinState{
+                .join =
+                    PendingClientJoin{
+                        .clientId = nextClientId_++,
+                        .playerName = join->playerName,
+                    },
+                .endpoint = packet.from,
+            });
             break;
         }
         case protocol::MessageType::ClientInput:
@@ -132,11 +142,37 @@ void HostSession::poll()
             pendingInputs_.push_back(normalizedInput);
             break;
         }
+        case protocol::MessageType::CommandRequest:
+        {
+            const auto* const request = std::get_if<protocol::CommandRequestMessage>(&decoded->payload);
+            if (request == nullptr)
+            {
+                break;
+            }
+            const std::optional<ConnectedClient> client = findClientByEndpoint(packet.from);
+            if (!client.has_value())
+            {
+                break;
+            }
+            protocol::CommandRequestMessage normalizedRequest = *request;
+            normalizedRequest.clientId = client->clientId;
+            pendingCommandRequests_.push_back(std::move(normalizedRequest));
+            break;
+        }
         case protocol::MessageType::Disconnect:
         {
             const std::optional<ConnectedClient> client = findClientByEndpoint(packet.from);
             if (!client.has_value())
             {
+                pendingJoinStates_.erase(
+                    std::remove_if(
+                        pendingJoinStates_.begin(),
+                        pendingJoinStates_.end(),
+                        [&packet](const PendingJoinState& pendingJoin)
+                        {
+                            return pendingJoin.endpoint == packet.from;
+                        }),
+                    pendingJoinStates_.end());
                 break;
             }
             clients_.erase(
@@ -176,11 +212,62 @@ const std::vector<ConnectedClient>& HostSession::clients() const
     return clients_;
 }
 
+std::vector<PendingClientJoin> HostSession::takePendingJoins()
+{
+    std::vector<PendingClientJoin> pendingJoins;
+    pendingJoins.reserve(pendingJoinStates_.size());
+    for (PendingJoinState& pendingJoin : pendingJoinStates_)
+    {
+        if (pendingJoin.announced)
+        {
+            continue;
+        }
+        pendingJoin.announced = true;
+        pendingJoins.push_back(pendingJoin.join);
+    }
+    return pendingJoins;
+}
+
 std::vector<protocol::ClientInputMessage> HostSession::takePendingInputs()
 {
     std::vector<protocol::ClientInputMessage> pending = std::move(pendingInputs_);
     pendingInputs_.clear();
     return pending;
+}
+
+std::vector<protocol::CommandRequestMessage> HostSession::takePendingCommandRequests()
+{
+    std::vector<protocol::CommandRequestMessage> pending = std::move(pendingCommandRequests_);
+    pendingCommandRequests_.clear();
+    return pending;
+}
+
+void HostSession::acceptPendingJoin(const std::uint16_t clientId, const protocol::JoinAcceptMessage& accept)
+{
+    const auto pendingIt = std::find_if(
+        pendingJoinStates_.begin(),
+        pendingJoinStates_.end(),
+        [clientId](const PendingJoinState& pendingJoin)
+        {
+            return pendingJoin.join.clientId == clientId;
+        });
+    if (pendingIt == pendingJoinStates_.end())
+    {
+        return;
+    }
+
+    ConnectedClient client{
+        .clientId = pendingIt->join.clientId,
+        .endpoint = pendingIt->endpoint,
+        .playerName = pendingIt->join.playerName,
+    };
+    clientIndexById_[client.clientId] = clients_.size();
+    clients_.push_back(client);
+
+    protocol::JoinAcceptMessage normalizedAccept = accept;
+    normalizedAccept.clientId = client.clientId;
+    sendToClient(client, protocol::MessageType::JoinAccept, normalizedAccept);
+    pendingJoinStates_.erase(pendingIt);
 }
 
 void HostSession::broadcastSnapshot(const protocol::ServerSnapshotMessage& snapshot)
@@ -197,6 +284,25 @@ void HostSession::broadcastBlockEdit(const protocol::BlockEditEventMessage& edit
     {
         sendToClient(client, protocol::MessageType::BlockEditEvent, edit);
     }
+}
+
+void HostSession::sendCommandFeedback(
+    const std::uint16_t clientId,
+    const std::string& feedback,
+    const bool isError)
+{
+    const auto it = clientIndexById_.find(clientId);
+    if (it == clientIndexById_.end())
+    {
+        return;
+    }
+    sendToClient(
+        clients_[it->second],
+        protocol::MessageType::CommandFeedback,
+        protocol::CommandFeedbackMessage{
+            .isError = isError,
+            .feedback = feedback,
+        });
 }
 
 void HostSession::sendChunkSnapshot(const std::uint16_t clientId, const protocol::ChunkSnapshotMessage& chunk)
@@ -288,6 +394,7 @@ bool ClientSession::connect(const std::string& host, const std::uint16_t port, s
     clientId_ = 0;
     pendingSnapshots_.clear();
     pendingBlockEdits_.clear();
+    pendingCommandFeedback_.clear();
     pendingChunkSnapshots_.clear();
     partialChunkSnapshots_.clear();
     partialChunkSectionMasks_.clear();
@@ -390,6 +497,15 @@ void ClientSession::poll()
             }
             break;
         }
+        case protocol::MessageType::CommandFeedback:
+        {
+            const auto* const feedback = std::get_if<protocol::CommandFeedbackMessage>(&decoded->payload);
+            if (feedback != nullptr)
+            {
+                pendingCommandFeedback_.push_back(*feedback);
+            }
+            break;
+        }
         case protocol::MessageType::ChunkSnapshot:
         {
             const auto* const chunk = std::get_if<protocol::ChunkSnapshotMessage>(&decoded->payload);
@@ -470,6 +586,21 @@ void ClientSession::sendInput(const protocol::ClientInputMessage& input, const s
     sendMessage(protocol::MessageType::ClientInput, input, tick);
 }
 
+void ClientSession::sendCommandRequest(const std::string& commandText, const std::uint32_t tick)
+{
+    if (!connected_)
+    {
+        return;
+    }
+    sendMessage(
+        protocol::MessageType::CommandRequest,
+        protocol::CommandRequestMessage{
+            .clientId = clientId_,
+            .commandText = commandText,
+        },
+        tick);
+}
+
 std::vector<protocol::ServerSnapshotMessage> ClientSession::takeSnapshots()
 {
     std::vector<protocol::ServerSnapshotMessage> snapshots = std::move(pendingSnapshots_);
@@ -487,6 +618,13 @@ std::vector<protocol::BlockEditEventMessage> ClientSession::takeBlockEdits()
     std::vector<protocol::BlockEditEventMessage> edits = std::move(pendingBlockEdits_);
     pendingBlockEdits_.clear();
     return edits;
+}
+
+std::vector<protocol::CommandFeedbackMessage> ClientSession::takeCommandFeedback()
+{
+    std::vector<protocol::CommandFeedbackMessage> feedback = std::move(pendingCommandFeedback_);
+    pendingCommandFeedback_.clear();
+    return feedback;
 }
 
 std::vector<protocol::ChunkSnapshotMessage> ClientSession::takeChunkSnapshots()

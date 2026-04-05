@@ -828,6 +828,27 @@ void stripWhiteEdgeMatteAlpha(
         stripePeriod = 8;
         seed = 3;
         break;
+    case MK::Skeleton:
+        top = {.r = 214, .g = 214, .b = 214, .a = 255};
+        bottom = {.r = 122, .g = 122, .b = 122, .a = 255};
+        accent = {.r = 248, .g = 248, .b = 248, .a = 255};
+        stripePeriod = 8;
+        seed = 13;
+        break;
+    case MK::Creeper:
+        top = {.r = 122, .g = 164, .b = 88, .a = 255};
+        bottom = {.r = 55, .g = 88, .b = 42, .a = 255};
+        accent = {.r = 18, .g = 24, .b = 14, .a = 255};
+        stripePeriod = 9;
+        seed = 23;
+        break;
+    case MK::Spider:
+        top = {.r = 74, .g = 58, .b = 53, .a = 255};
+        bottom = {.r = 26, .g = 20, .b = 22, .a = 255};
+        accent = {.r = 204, .g = 32, .b = 22, .a = 255};
+        stripePeriod = 7;
+        seed = 37;
+        break;
     case MK::Cow:
         top = {.r = 124, .g = 92, .b = 72, .a = 255};
         bottom = {.r = 82, .g = 58, .b = 44, .a = 255};

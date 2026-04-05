@@ -264,9 +264,11 @@ resize_tile "${FURNACE_TOP_SRC}" "${TMP}/t24.png"
 resize_tile "${FURNACE_SIDE_SRC}" "${TMP}/t25.png"
 resize_tile "${FURNACE_FRONT_SRC}" "${TMP}/t26.png"
 # Row 5 tail: chest textures.
-resize_tile "${MAT}/chest_top.png" "${TMP}/t27.png"
-resize_tile "${MAT}/chest_front.png" "${TMP}/t28.png"
-resize_tile "${MAT}/chest_side.png" "${TMP}/t29.png"
+# Derive chest faces from the canonical Prismarine chest atlas (`entity/chest/normal.png`).
+# Vanilla single-chest base faces are 14x14 (top) and 14x10 (front/side) regions in a 64x64 sheet.
+crop_tile "${CHEST_ATLAS_SRC}" "14x14+14+19" "${TMP}/t27.png"
+crop_tile "${CHEST_ATLAS_SRC}" "14x10+14+33" "${TMP}/t28.png"
+crop_tile "${CHEST_ATLAS_SRC}" "14x10+0+33" "${TMP}/t29.png"
 
 # Row 6: biome-specialized surface tiles.
 resize_tile "${MAT}/snow.png" "${TMP}/t30.png"

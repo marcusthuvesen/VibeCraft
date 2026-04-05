@@ -5,7 +5,9 @@
 namespace
 {
 using vibecraft::app::ChatCommandContext;
+using vibecraft::app::ChatAutocompleteResult;
 using vibecraft::app::ChatCommandResult;
+using vibecraft::app::autocompleteChatInput;
 using vibecraft::app::executeChatCommand;
 }  // namespace
 
@@ -69,5 +71,70 @@ TEST_CASE("help command lists available chat commands")
 
     CHECK(result.handled);
     CHECK(result.succeeded);
-    CHECK(result.feedback.find("/tp") != std::string::npos);
+    CHECK_FALSE(result.feedbackLines.empty());
+    CHECK(result.feedbackLines[1].find("/tp") != std::string::npos);
+}
+
+TEST_CASE("gamemode command toggles creative mode")
+{
+    const ChatCommandResult result = executeChatCommand("/gamemode creative", ChatCommandContext{});
+
+    CHECK(result.handled);
+    CHECK(result.succeeded);
+    REQUIRE(result.creativeModeEnabled.has_value());
+    CHECK(*result.creativeModeEnabled);
+}
+
+TEST_CASE("give command resolves minecraft-style item ids")
+{
+    const ChatCommandResult result = executeChatCommand("/give oak_planks 12", ChatCommandContext{});
+
+    CHECK(result.handled);
+    CHECK(result.succeeded);
+    REQUIRE(result.giveStacks.size() == 1);
+    CHECK(result.giveStacks.front().count == 12);
+    CHECK(result.giveStacks.front().displayLabel == "Oak Planks");
+}
+
+TEST_CASE("give command accepts display-name style item names")
+{
+    const ChatCommandResult sand = executeChatCommand("/give sand 40", ChatCommandContext{});
+    CHECK(sand.handled);
+    CHECK(sand.succeeded);
+    REQUIRE(sand.giveStacks.size() == 1);
+    CHECK(sand.giveStacks.front().count == 40);
+    CHECK(sand.giveStacks.front().displayLabel == "Sand");
+
+    const ChatCommandResult spaced = executeChatCommand("/give oak planks 5", ChatCommandContext{});
+    CHECK(spaced.handled);
+    CHECK(spaced.succeeded);
+    REQUIRE(spaced.giveStacks.size() == 1);
+    CHECK(spaced.giveStacks.front().count == 5);
+    CHECK(spaced.giveStacks.front().displayLabel == "Oak Planks");
+}
+
+TEST_CASE("time command marks world-state changes for host routing")
+{
+    const ChatCommandResult result = executeChatCommand(
+        "/time set night",
+        ChatCommandContext{
+            .globalWorldStateRequiresHostAuthority = true,
+        });
+
+    CHECK(result.handled);
+    CHECK(result.succeeded);
+    CHECK(result.requiresHostAuthority);
+    REQUIRE(result.dayNightElapsedSeconds.has_value());
+    CHECK(*result.dayNightElapsedSeconds == doctest::Approx(390.0f));
+}
+
+TEST_CASE("autocomplete expands command names and item ids")
+{
+    const ChatAutocompleteResult commandCompletion = autocompleteChatInput("/ga", 3);
+    CHECK(commandCompletion.applied);
+    CHECK(commandCompletion.updatedInput == "/gamemode ");
+
+    const ChatAutocompleteResult itemCompletion = autocompleteChatInput("/give oak_p", 11);
+    CHECK(itemCompletion.applied);
+    CHECK(itemCompletion.updatedInput == "/give oak_planks ");
 }

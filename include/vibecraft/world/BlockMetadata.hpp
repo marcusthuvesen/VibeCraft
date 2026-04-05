@@ -179,7 +179,7 @@ struct BlockMetadata
         };
     case BlockType::OakLeaves:
         return {
-            .debugColor = 0xffffffff,
+            .debugColor = 0xff70bf7d,
             .textureTiles = {.top = 16, .bottom = 16, .side = 16},
             .hardness = 0.2f,
             .breakable = true,
@@ -193,7 +193,7 @@ struct BlockMetadata
         };
     case BlockType::BirchLeaves:
         return {
-            .debugColor = 0xffffffff,
+            .debugColor = 0xff7ece9a,
             .textureTiles = {.top = 94, .bottom = 94, .side = 94},
             .hardness = 0.2f,
             .breakable = true,
@@ -207,7 +207,7 @@ struct BlockMetadata
         };
     case BlockType::DarkOakLeaves:
         return {
-            .debugColor = 0xffffffff,
+            .debugColor = 0xff466e58,
             .textureTiles = {.top = 101, .bottom = 101, .side = 101},
             .hardness = 0.2f,
             .breakable = true,
@@ -221,7 +221,7 @@ struct BlockMetadata
         };
     case BlockType::JungleLeaves:
         return {
-            .debugColor = 0xffffffff,
+            .debugColor = 0xff5cae72,
             .textureTiles = {.top = 60, .bottom = 60, .side = 60},
             .hardness = 0.2f,
             .breakable = true,
@@ -235,7 +235,7 @@ struct BlockMetadata
         };
     case BlockType::SpruceLeaves:
         return {
-            .debugColor = 0xffffffff,
+            .debugColor = 0xff4c875f,
             .textureTiles = {.top = 63, .bottom = 63, .side = 63},
             .hardness = 0.2f,
             .breakable = true,

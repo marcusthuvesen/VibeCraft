@@ -107,6 +107,25 @@ struct ModelPartSpec
             .arm = makeCuboidUvSet(kTexW, kTexH, 40.0f, 16.0f, 4.0f, 12.0f, 4.0f),
             .horn = makeCuboidUvSet(kTexW, kTexH, 24.0f, 0.0f, 2.0f, 8.0f, 2.0f),
         };
+    case MK::Skeleton:
+        return {
+            .body = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 8.0f, 12.0f, 4.0f),
+            .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
+            .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 2.0f, 12.0f, 2.0f),
+            .arm = makeCuboidUvSet(kTexW, kTexH, 40.0f, 16.0f, 2.0f, 12.0f, 2.0f),
+        };
+    case MK::Creeper:
+        return {
+            .body = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 8.0f, 12.0f, 4.0f),
+            .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
+            .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 6.0f, 4.0f),
+        };
+    case MK::Spider:
+        return {
+            .body = makeCuboidUvSet(kTexW, kTexH, 0.0f, 12.0f, 10.0f, 8.0f, 12.0f),
+            .head = makeCuboidUvSet(kTexW, kTexH, 32.0f, 4.0f, 8.0f, 8.0f, 8.0f),
+            .leg = makeCuboidUvSet(kTexW, kTexH, 18.0f, 0.0f, 16.0f, 2.0f, 2.0f),
+        };
     case MK::Cow:
         return {
             .body = makeCuboidUvSet(kTexW, kTexH, 18.0f, 4.0f, 12.0f, 18.0f, 10.0f),
@@ -117,7 +136,7 @@ struct ModelPartSpec
         };
     case MK::Pig:
         return {
-            .body = makeCuboidUvSet(kTexW, kTexH, 28.0f, 8.0f, 10.0f, 16.0f, 8.0f),
+            .body = makeCuboidUvSet(kTexW, kTexH, 28.0f, 8.0f, 8.0f, 14.0f, 8.0f),
             .head = makeCuboidUvSet(kTexW, kTexH, 0.0f, 0.0f, 8.0f, 8.0f, 8.0f),
             .leg = makeCuboidUvSet(kTexW, kTexH, 0.0f, 16.0f, 4.0f, 6.0f, 4.0f),
             .snout = makeCuboidUvSet(kTexW, kTexH, 16.0f, 16.0f, 4.0f, 3.0f, 2.0f),
@@ -149,6 +168,12 @@ struct ModelPartSpec
     case MK::Zombie:
     case MK::Player:
         return 32.0f;
+    case MK::Skeleton:
+        return 32.0f;
+    case MK::Creeper:
+        return 30.0f;
+    case MK::Spider:
+        return 16.0f;
     case MK::Cow:
         return 20.0f;
     case MK::Pig:
@@ -169,10 +194,16 @@ struct ModelPartSpec
     case MK::Zombie:
     case MK::Player:
         return 6.0f;
+    case MK::Skeleton:
+        return 6.0f;
+    case MK::Creeper:
+        return 6.0f;
+    case MK::Spider:
+        return 11.0f;
     case MK::Cow:
         return 6.0f;
     case MK::Pig:
-        return 5.0f;
+        return 4.4f;
     case MK::Sheep:
         return 5.0f;
     case MK::Chicken:
@@ -810,6 +841,15 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     const bool workbenchMode = frameDebugData.craftingUiMode == CraftingUiMode::Workbench;
     const bool chestMode = frameDebugData.craftingUiMode == CraftingUiMode::Chest;
     const bool furnaceMode = frameDebugData.craftingUiMode == CraftingUiMode::Furnace;
+    const std::uint16_t containerBackgroundTextureHandle =
+        inventoryMode
+        ? (frameDebugData.craftingCreativeModeEnabled && craftingContainerCreativeTextureHandle_ != UINT16_MAX
+               ? craftingContainerCreativeTextureHandle_
+               : craftingContainerInventoryTextureHandle_)
+        : (workbenchMode
+               ? craftingContainerWorkbenchTextureHandle_
+               : (chestMode ? craftingContainerChestTextureHandle_ : craftingContainerFurnaceTextureHandle_));
+    const bool hasContainerBackground = containerBackgroundTextureHandle != UINT16_MAX;
     const auto drawUiTextureRectUv = [&](const float x0,
                                          const float y0,
                                          const float x1,
@@ -874,9 +914,13 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
         return;
     }
 
-    const std::uint32_t dimAbgr = detail::packAbgr8(glm::vec3(0.02f, 0.03f, 0.05f), 0.52f);
-    const std::uint32_t panelOuterAbgr = detail::packAbgr8(glm::vec3(0.05f, 0.08f, 0.14f), 0.97f);
-    const std::uint32_t panelInnerAbgr = detail::packAbgr8(glm::vec3(0.11f, 0.17f, 0.27f), 0.96f);
+    const std::uint32_t dimAbgr = detail::packAbgr8(glm::vec3(0.02f, 0.03f, 0.05f), hasContainerBackground ? 0.42f : 0.52f);
+    const std::uint32_t panelOuterAbgr = detail::packAbgr8(
+        glm::vec3(0.05f, 0.08f, 0.14f),
+        hasContainerBackground ? 0.18f : 0.97f);
+    const std::uint32_t panelInnerAbgr = detail::packAbgr8(
+        glm::vec3(0.11f, 0.17f, 0.27f),
+        hasContainerBackground ? 0.02f : 0.96f);
     const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.04f, 0.08f, 0.12f), 0.98f);
     const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.16f, 0.25f, 0.38f), 0.97f);
     const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.26f, 0.39f, 0.58f), 0.97f);
@@ -924,6 +968,16 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     };
 
     drawUiSolidRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), dimAbgr);
+    if (hasContainerBackground)
+    {
+        drawUiTextureRectUv(
+            layout.panelLeft,
+            layout.panelTop,
+            layout.panelRight,
+            layout.panelBottom,
+            containerBackgroundTextureHandle,
+            TextureUvRect{});
+    }
     drawUiSolidRect(layout.panelLeft - 2.0f, layout.panelTop - 2.0f, layout.panelRight + 2.0f, layout.panelBottom + 2.0f, panelOuterAbgr);
     drawUiSolidRect(layout.panelLeft, layout.panelTop, layout.panelRight, layout.panelBottom, panelInnerAbgr);
 
@@ -1919,6 +1973,85 @@ void Renderer::drawWorldMobSprites(
             if (!submitCuboid(glm::vec3(2.0f, 6.0f, -legSwing), glm::vec3(2.0f, 6.0f, 2.0f), uv.leg)) break;
             break;
         }
+        case MK::Skeleton:
+        {
+            constexpr float kPi = 3.14159265358979323846f;
+            const float gaitPhase = cameraFrameData.weatherTimeSeconds * 3.35f
+                + mob.feetPosition.x * 0.34f
+                + mob.feetPosition.z * 0.31f;
+            const float armSwing = std::sin(gaitPhase) * 1.15f;
+            const float legSwing = std::sin(gaitPhase + kPi) * 0.95f;
+            const float bodyBob = std::abs(std::sin(gaitPhase * 2.0f)) * 0.17f;
+
+            if (!submitCuboid(glm::vec3(0.0f, 18.0f + bodyBob, 0.0f), glm::vec3(4.0f, 6.0f, 2.0f), uv.body)) break;
+            if (!submitOrientedCuboid(
+                    glm::vec3(0.0f, 28.0f + bodyBob, 0.0f),
+                    glm::vec3(4.0f * sx, 4.0f * sy, 4.0f * sz),
+                    right,
+                    headUp,
+                    headForward,
+                    uv.head))
+            {
+                break;
+            }
+            if (!submitCuboid(glm::vec3(-6.0f, 18.0f + bodyBob, armSwing), glm::vec3(1.0f, 6.0f, 1.0f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(6.0f, 18.0f + bodyBob, -armSwing), glm::vec3(1.0f, 6.0f, 1.0f), uv.arm)) break;
+            if (!submitCuboid(glm::vec3(-2.0f, 6.0f, legSwing), glm::vec3(1.0f, 6.0f, 1.0f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.0f, 6.0f, -legSwing), glm::vec3(1.0f, 6.0f, 1.0f), uv.leg)) break;
+            break;
+        }
+        case MK::Creeper:
+        {
+            const float gaitPhase = cameraFrameData.weatherTimeSeconds * 2.95f
+                + mob.feetPosition.x * 0.27f
+                + mob.feetPosition.z * 0.23f;
+            const float legLift = std::sin(gaitPhase) * 0.65f;
+            const float bodyBob = std::abs(std::sin(gaitPhase * 1.9f)) * 0.18f;
+
+            if (!submitCuboid(glm::vec3(0.0f, 17.0f + bodyBob, 0.0f), glm::vec3(4.0f, 6.0f, 2.0f), uv.body)) break;
+            if (!submitOrientedCuboid(
+                    glm::vec3(0.0f, 27.2f + bodyBob, 0.0f),
+                    glm::vec3(4.0f * sx, 4.0f * sy, 4.0f * sz),
+                    right,
+                    headUp,
+                    headForward,
+                    uv.head))
+            {
+                break;
+            }
+            if (!submitCuboid(glm::vec3(-2.6f, 3.2f + legLift, 2.6f), glm::vec3(1.45f, 3.2f, 1.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.6f, 3.2f - legLift, 2.6f), glm::vec3(1.45f, 3.2f, 1.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-2.6f, 3.2f - legLift, -2.6f), glm::vec3(1.45f, 3.2f, 1.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.6f, 3.2f + legLift, -2.6f), glm::vec3(1.45f, 3.2f, 1.45f), uv.leg)) break;
+            break;
+        }
+        case MK::Spider:
+        {
+            const float gaitPhase = cameraFrameData.weatherTimeSeconds * 4.35f
+                + mob.feetPosition.x * 0.42f
+                + mob.feetPosition.z * 0.39f;
+            const float legSwing = std::sin(gaitPhase) * 1.2f;
+            const float legSwingOpp = std::sin(gaitPhase + 3.14159265358979323846f) * 1.2f;
+            const float bodyBob = std::abs(std::sin(gaitPhase * 1.6f)) * 0.08f;
+
+            if (!submitHorizontalBody(
+                    glm::vec3(0.0f, 4.8f + bodyBob, -0.2f),
+                    glm::vec3(4.2f, 5.0f, 2.0f),
+                    uv.body))
+            {
+                break;
+            }
+            if (!submitCuboid(glm::vec3(0.0f, 5.7f + bodyBob, 5.3f), glm::vec3(3.0f, 2.2f, 3.0f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(-5.8f, 3.4f, 4.0f + legSwing), glm::vec3(4.8f, 0.45f, 0.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(5.8f, 3.4f, 4.0f - legSwing), glm::vec3(4.8f, 0.45f, 0.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-6.3f, 3.0f, 1.4f + legSwingOpp), glm::vec3(5.2f, 0.45f, 0.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(6.3f, 3.0f, 1.4f - legSwingOpp), glm::vec3(5.2f, 0.45f, 0.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-6.3f, 3.0f, -1.4f + legSwing), glm::vec3(5.2f, 0.45f, 0.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(6.3f, 3.0f, -1.4f - legSwing), glm::vec3(5.2f, 0.45f, 0.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-5.8f, 3.4f, -4.0f + legSwingOpp), glm::vec3(4.8f, 0.45f, 0.45f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(5.8f, 3.4f, -4.0f - legSwingOpp), glm::vec3(4.8f, 0.45f, 0.45f), uv.leg)) break;
+            break;
+        }
         case MK::Cow:
             if (!submitHorizontalBody(
                     glm::vec3(0.0f, 13.2f, 0.0f),
@@ -1938,18 +2071,18 @@ void Renderer::drawWorldMobSprites(
             break;
         case MK::Pig:
             if (!submitHorizontalBody(
-                    glm::vec3(0.0f, 7.8f, -0.8f),
-                    glm::vec3(5.4f, 7.8f, 3.6f),
+                    glm::vec3(0.0f, 7.4f, -0.8f),
+                    glm::vec3(4.6f, 7.0f, 3.2f),
                     uv.body))
             {
                 break;
             }
-            if (!submitCuboid(glm::vec3(0.0f, 8.3f, 7.4f), glm::vec3(3.6f, 3.0f, 3.6f), uv.head)) break;
-            if (!submitCuboid(glm::vec3(0.0f, 7.8f, 11.2f), glm::vec3(1.6f, 1.0f, 1.2f), uv.snout)) break;
-            if (!submitCuboid(glm::vec3(-2.6f, 2.8f, 4.4f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(2.6f, 2.8f, 4.4f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(-3.5f, 2.8f, -3.8f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
-            if (!submitCuboid(glm::vec3(3.5f, 2.8f, -3.8f), glm::vec3(1.2f, 2.8f, 1.2f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 8.0f, 6.9f), glm::vec3(3.2f, 2.8f, 3.2f), uv.head)) break;
+            if (!submitCuboid(glm::vec3(0.0f, 7.6f, 10.2f), glm::vec3(1.5f, 1.0f, 1.1f), uv.snout)) break;
+            if (!submitCuboid(glm::vec3(-2.2f, 2.7f, 3.9f), glm::vec3(1.05f, 2.7f, 1.05f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(2.2f, 2.7f, 3.9f), glm::vec3(1.05f, 2.7f, 1.05f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(-3.0f, 2.7f, -3.4f), glm::vec3(1.05f, 2.7f, 1.05f), uv.leg)) break;
+            if (!submitCuboid(glm::vec3(3.0f, 2.7f, -3.4f), glm::vec3(1.05f, 2.7f, 1.05f), uv.leg)) break;
             break;
         case MK::Sheep:
             if (!submitHorizontalBody(

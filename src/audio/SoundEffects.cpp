@@ -630,6 +630,9 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
+    case MobKind::Skeleton:
+    case MobKind::Creeper:
+    case MobKind::Spider:
         return concatClipLists({numberedClipRange("mob/zombie/hurt", 1, 2), numberedClipRange("mob/zombie/say", 1, 3)});
     case MobKind::Player:
         return playerHurtOptions();
@@ -651,6 +654,9 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
+    case MobKind::Skeleton:
+    case MobKind::Creeper:
+    case MobKind::Spider:
         return numberedClipRange("mob/zombie/say", 1, 3);
     case MobKind::Player:
         return {};
@@ -672,6 +678,9 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
+    case MobKind::Skeleton:
+    case MobKind::Creeper:
+    case MobKind::Spider:
         return numberedClipRange("mob/zombie/step", 1, 5);
     case MobKind::Player:
         return {};
@@ -693,6 +702,9 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
+    case MobKind::Skeleton:
+    case MobKind::Creeper:
+    case MobKind::Spider:
         return {"mob/zombie/death.ogg"};
     case MobKind::Player:
         return playerDeathOptions();
@@ -750,21 +762,33 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 
     using MK = vibecraft::game::MobKind;
     append(mobAmbientOptions(MK::Zombie));
+    append(mobAmbientOptions(MK::Skeleton));
+    append(mobAmbientOptions(MK::Creeper));
+    append(mobAmbientOptions(MK::Spider));
     append(mobAmbientOptions(MK::Cow));
     append(mobAmbientOptions(MK::Pig));
     append(mobAmbientOptions(MK::Sheep));
     append(mobAmbientOptions(MK::Chicken));
     append(mobStepOptions(MK::Zombie));
+    append(mobStepOptions(MK::Skeleton));
+    append(mobStepOptions(MK::Creeper));
+    append(mobStepOptions(MK::Spider));
     append(mobStepOptions(MK::Cow));
     append(mobStepOptions(MK::Pig));
     append(mobStepOptions(MK::Sheep));
     append(mobStepOptions(MK::Chicken));
     append(mobHitOptions(MK::Zombie));
+    append(mobHitOptions(MK::Skeleton));
+    append(mobHitOptions(MK::Creeper));
+    append(mobHitOptions(MK::Spider));
     append(mobHitOptions(MK::Cow));
     append(mobHitOptions(MK::Pig));
     append(mobHitOptions(MK::Sheep));
     append(mobHitOptions(MK::Chicken));
     append(mobDefeatOptions(MK::Zombie));
+    append(mobDefeatOptions(MK::Skeleton));
+    append(mobDefeatOptions(MK::Creeper));
+    append(mobDefeatOptions(MK::Spider));
     append(mobDefeatOptions(MK::Cow));
     append(mobDefeatOptions(MK::Pig));
     append(mobDefeatOptions(MK::Sheep));

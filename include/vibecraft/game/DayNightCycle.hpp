@@ -72,10 +72,11 @@ inline const glm::vec3 kMoonLightTint{0.62f, 0.72f, 1.0f};
 class DayNightCycle
 {
   public:
-    static constexpr float kDaylightDurationSeconds = 300.0f;
-    static constexpr float kNightDurationSeconds = 300.0f;
+    // Minecraft-like pacing: full cycle ~= 20 minutes.
+    static constexpr float kDaylightDurationSeconds = 600.0f;
+    static constexpr float kNightDurationSeconds = 600.0f;
     static constexpr float kFullCycleDurationSeconds = kDaylightDurationSeconds + kNightDurationSeconds;
-    static constexpr float kTwilightDurationSeconds = 60.0f;
+    static constexpr float kTwilightDurationSeconds = 90.0f;
 
     DayNightCycle() = default;
     explicit DayNightCycle(const float elapsedSeconds) : elapsedSeconds_(wrapCycleSeconds(elapsedSeconds)) {}

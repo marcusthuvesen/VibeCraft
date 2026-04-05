@@ -226,6 +226,7 @@ flowchart TD
 ### `world`
 
 - Owns chunks, block access, terrain generation, world persistence, and edit commands.
+- Keeps macro biome selection and local biome-variation rules under `world/biomes/` so terrain, flora, and tree passes can share the same deterministic regional context.
 - Remains authoritative over world mutation.
 - Should own biome and resource distribution for the alien planet pivot.
 - Must stay independent from renderer APIs.

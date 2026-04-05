@@ -2,6 +2,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "vibecraft/app/PauseMenuInputPolicy.hpp"
+
 namespace vibecraft::app
 {
 void Application::processInput(const float deltaTimeSeconds)
@@ -9,7 +11,14 @@ void Application::processInput(const float deltaTimeSeconds)
     const bool allowMainMenuPointerInputWhileUnfocused =
         gameScreen_ == GameScreen::MainMenu
         && (inputState_.leftMousePressed || inputState_.leftMouseClicked);
-    if (!inputState_.windowFocused && !allowMainMenuPointerInputWhileUnfocused)
+    const bool allowPausedPointerInputWhileUnfocused =
+        gameScreen_ == GameScreen::Paused
+        && shouldAllowPausedPointerInputWhileUnfocused(
+            mouseCaptured_,
+            inputState_.leftMousePressed,
+            inputState_.leftMouseClicked);
+    if (!inputState_.windowFocused && !allowMainMenuPointerInputWhileUnfocused
+        && !allowPausedPointerInputWhileUnfocused)
     {
         if (mouseCaptured_)
         {
@@ -40,6 +49,33 @@ void Application::processInput(const float deltaTimeSeconds)
         inputState_.isKeyDown(SDL_SCANCODE_RETURN) || inputState_.isKeyDown(SDL_SCANCODE_KP_ENTER);
     const bool chatSubmitKeyPressed = chatSubmitKeyDown && !chatSubmitKeyWasDown_;
     chatSubmitKeyWasDown_ = chatSubmitKeyDown;
+    const bool chatAutocompleteKeyDown = inputState_.isKeyDown(SDL_SCANCODE_TAB);
+    const bool chatAutocompleteKeyPressed = chatAutocompleteKeyDown && !chatAutocompleteKeyWasDown_;
+    chatAutocompleteKeyWasDown_ = chatAutocompleteKeyDown;
+    const bool chatHistoryUpKeyDown = inputState_.isKeyDown(SDL_SCANCODE_UP);
+    const bool chatHistoryUpKeyPressed = chatHistoryUpKeyDown && !chatHistoryUpKeyWasDown_;
+    chatHistoryUpKeyWasDown_ = chatHistoryUpKeyDown;
+    const bool chatHistoryDownKeyDown = inputState_.isKeyDown(SDL_SCANCODE_DOWN);
+    const bool chatHistoryDownKeyPressed = chatHistoryDownKeyDown && !chatHistoryDownKeyWasDown_;
+    chatHistoryDownKeyWasDown_ = chatHistoryDownKeyDown;
+    const bool chatCursorLeftKeyDown = inputState_.isKeyDown(SDL_SCANCODE_LEFT);
+    const bool chatCursorLeftKeyPressed = chatCursorLeftKeyDown && !chatCursorLeftKeyWasDown_;
+    chatCursorLeftKeyWasDown_ = chatCursorLeftKeyDown;
+    const bool chatCursorRightKeyDown = inputState_.isKeyDown(SDL_SCANCODE_RIGHT);
+    const bool chatCursorRightKeyPressed = chatCursorRightKeyDown && !chatCursorRightKeyWasDown_;
+    chatCursorRightKeyWasDown_ = chatCursorRightKeyDown;
+    const bool chatDeleteKeyDown = inputState_.isKeyDown(SDL_SCANCODE_DELETE);
+    const bool chatDeleteKeyPressed = chatDeleteKeyDown && !chatDeleteKeyWasDown_;
+    chatDeleteKeyWasDown_ = chatDeleteKeyDown;
+    const bool chatHomeKeyDown = inputState_.isKeyDown(SDL_SCANCODE_HOME);
+    const bool chatHomeKeyPressed = chatHomeKeyDown && !chatHomeKeyWasDown_;
+    chatHomeKeyWasDown_ = chatHomeKeyDown;
+    const bool chatEndKeyDown = inputState_.isKeyDown(SDL_SCANCODE_END);
+    const bool chatEndKeyPressed = chatEndKeyDown && !chatEndKeyWasDown_;
+    chatEndKeyWasDown_ = chatEndKeyDown;
+    const bool dropKeyDown = inputState_.isKeyDown(SDL_SCANCODE_Q);
+    const bool dropKeyPressed = dropKeyDown && !dropKeyWasDown_;
+    dropKeyWasDown_ = dropKeyDown;
 
     if (craftingMenuState_.active && (inputState_.escapePressed || craftingKeyPressed))
     {
@@ -49,7 +85,17 @@ void Application::processInput(const float deltaTimeSeconds)
 
     if (gameScreen_ == GameScreen::Playing && chatState_.open)
     {
-        processPlayingChatInput(chatSubmitKeyPressed);
+        processPlayingChatInput(ChatInputIntent{
+            .submit = chatSubmitKeyPressed,
+            .autocomplete = chatAutocompleteKeyPressed,
+            .historyPrev = chatHistoryUpKeyPressed,
+            .historyNext = chatHistoryDownKeyPressed,
+            .moveCursorLeft = chatCursorLeftKeyPressed,
+            .moveCursorRight = chatCursorRightKeyPressed,
+            .moveCursorHome = chatHomeKeyPressed,
+            .moveCursorEnd = chatEndKeyPressed,
+            .deleteForward = chatDeleteKeyPressed,
+        });
         return;
     }
 
@@ -60,6 +106,7 @@ void Application::processInput(const float deltaTimeSeconds)
             gameScreen_ = GameScreen::Paused;
             pauseSoundSettingsOpen_ = false;
             pauseGameSettingsOpen_ = false;
+            pauseMenuAwaitingMouseRelease_ = true;
             mouseCaptured_ = false;
             window_.setRelativeMouseMode(false);
             pauseMenuNotice_.clear();
@@ -69,17 +116,20 @@ void Application::processInput(const float deltaTimeSeconds)
             if (pauseGameSettingsOpen_)
             {
                 pauseGameSettingsOpen_ = false;
+                pauseMenuAwaitingMouseRelease_ = true;
                 pauseMenuNotice_.clear();
             }
             else if (pauseSoundSettingsOpen_)
             {
                 pauseSoundSettingsOpen_ = false;
+                pauseMenuAwaitingMouseRelease_ = true;
                 pauseMenuNotice_ = "Sound settings saved.";
                 saveAudioPrefs();
             }
             else
             {
                 gameScreen_ = GameScreen::Playing;
+                pauseMenuAwaitingMouseRelease_ = false;
                 mouseCaptured_ = true;
                 window_.setRelativeMouseMode(true);
                 pauseMenuNotice_.clear();
@@ -159,6 +209,11 @@ void Application::processInput(const float deltaTimeSeconds)
         if (chatSlashKeyPressed)
         {
             openChat("/");
+            return;
+        }
+        if (dropKeyPressed)
+        {
+            dropSingleItemFromSlotInFront(hotbarSlots_[selectedHotbarIndex_], 2.0f);
             return;
         }
     }

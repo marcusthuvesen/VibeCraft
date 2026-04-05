@@ -1,16 +1,20 @@
 #include "vibecraft/world/TerrainGenerator.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <optional>
 
 #include "vibecraft/world/TerrainNoise.hpp"
 #include "vibecraft/world/WorldVerticalScale.hpp"
+#include "vibecraft/world/biomes/BiomeBlending.hpp"
 #include "vibecraft/world/biomes/BiomeProfile.hpp"
 #include "vibecraft/world/biomes/BiomeSelection.hpp"
+#include "vibecraft/world/biomes/BiomeTransition.hpp"
 #include "vibecraft/world/biomes/BiomeTerrainContribution.hpp"
-#include "vibecraft/world/biomes/BiomeProfile.hpp"
+#include "vibecraft/world/biomes/BiomeVariation.hpp"
+#include "vibecraft/world/biomes/SurfaceVariantRules.hpp"
 #include "vibecraft/world/underground/CaveRules.hpp"
 #include "vibecraft/world/underground/OreVeinRules.hpp"
 #include "vibecraft/world/WoodlandRavine.hpp"
@@ -184,22 +188,45 @@ struct ColumnContext
     const std::uint32_t worldSeed,
     const std::optional<SurfaceBiome> biomeOverride)
 {
+    if (biomeOverride.has_value())
+    {
+        return *biomeOverride;
+    }
+
     const long long wx = static_cast<long long>(worldX);
     const long long wz = static_cast<long long>(worldZ);
     const long long starterRadiusSq = static_cast<long long>(kStarterForestRadius) * kStarterForestRadius;
-    const double temperature = biomeTemperatureAt(worldX, worldZ, surfaceHeight, worldSeed);
-    const double humidity = biomeHumidityAt(worldX, worldZ, worldSeed);
-    return biomes::selectSurfaceBiome(
-        biomes::BiomeSelectionInputs{
-            .worldX = worldX,
-            .worldZ = worldZ,
-            .surfaceHeight = surfaceHeight,
-            .worldSeed = worldSeed,
-            .temperature = temperature,
-            .humidity = humidity,
-            .starterRegion = wx * wx + wz * wz <= starterRadiusSq,
-        },
-        biomeOverride);
+    const auto rawBiomeAt = [&](const int sampleX, const int sampleZ, const int sampleSurfaceHeight) {
+        const double sampleTemperature = biomeTemperatureAt(sampleX, sampleZ, sampleSurfaceHeight, worldSeed);
+        const double sampleHumidity = biomeHumidityAt(sampleX, sampleZ, worldSeed);
+        return biomes::selectRawSurfaceBiome(
+            biomes::BiomeSelectionInputs{
+                .worldX = sampleX,
+                .worldZ = sampleZ,
+                .surfaceHeight = sampleSurfaceHeight,
+                .worldSeed = worldSeed,
+                .temperature = sampleTemperature,
+                .humidity = sampleHumidity,
+                .starterRegion = static_cast<long long>(sampleX) * sampleX + static_cast<long long>(sampleZ) * sampleZ <= starterRadiusSq,
+            },
+            std::nullopt);
+    };
+
+    const SurfaceBiome centerBiome = rawBiomeAt(worldX, worldZ, surfaceHeight);
+    std::array<SurfaceBiome, biomes::kBiomeBlendNeighborCount> nearbyBiomes{};
+    const auto& offsets = biomes::biomeBlendOffsets();
+    for (std::size_t i = 0; i < offsets.size(); ++i)
+    {
+        const int sampleX = worldX + offsets[i].dx;
+        const int sampleZ = worldZ + offsets[i].dz;
+        const int sampleSurfaceHeight = std::clamp(
+            static_cast<int>(std::round(baseTerrainHeightAt(sampleX, sampleZ, worldSeed))),
+            36,
+            144);
+        nearbyBiomes[i] = rawBiomeAt(sampleX, sampleZ, sampleSurfaceHeight);
+    }
+
+    return biomes::selectBlendedSurfaceBiome(centerBiome, nearbyBiomes);
 }
 
 [[nodiscard]] int surfaceHeightForCoordinates(
@@ -220,8 +247,10 @@ struct ColumnContext
         36,
         144);
     const SurfaceBiome targetBiome = columnBiomeAt(worldX, worldZ, provisionalSurfaceHeight, worldSeed, biomeOverride);
+    const biomes::BiomeVariationSample variation = biomes::sampleBiomeVariation(targetBiome, worldX, worldZ, worldSeed);
     const double terrainHeight = baseTerrainHeightAt(worldX, worldZ, worldSeed)
         + biomes::biomeTerrainContribution(targetBiome, worldX, worldZ, continents, uplands, ridges, worldSeed)
+        + biomes::localSurfaceHeightDelta(targetBiome, variation, worldX, worldZ, worldSeed)
         + woodlandSurfaceHeightDelta(targetBiome, worldX, worldZ, worldSeed);
     return std::clamp(static_cast<int>(std::round(terrainHeight)), 36, 144);
 }
@@ -388,18 +417,66 @@ struct ColumnContext
     const int columnWaterLevel = floodLowland || lushPondPocket ? surfaceHeight + 1 : kSeaLevel;
     const bool usesSandStrata = columnUsesSandStrata(biome);
     const bool forceCanonicalSurface = biomeOverride.has_value();
-    const BlockType surfaceBlockType = forceCanonicalSurface
+    const biomes::BiomeTransitionSample transition = forceCanonicalSurface
+        ? biomes::BiomeTransitionSample{}
+        : biomes::sampleBiomeTransition(
+              biome,
+              worldX,
+              worldZ,
+              [&](const int sampleX, const int sampleZ)
+              {
+                  // Avoid recursive full surface sampling here. This transition is only used to
+                  // soften surface variants near biome edges, so a provisional terrain height is
+                  // accurate enough and keeps spawn-time probe generation responsive.
+                  const int sampleHeight = std::clamp(
+                      static_cast<int>(std::round(baseTerrainHeightAt(sampleX, sampleZ, worldSeed))),
+                      36,
+                      144);
+                  return columnBiomeAt(sampleX, sampleZ, sampleHeight, worldSeed, biomeOverride);
+              });
+    const biomes::BiomeVariationSample variation = biomes::sampleBiomeVariation(biome, worldX, worldZ, worldSeed);
+    BlockType surfaceBlockType = forceCanonicalSurface
         ? surfaceBlockTypeAt(biome, surfaceHeight, 0, 0.0)
         : surfaceBlockTypeAt(biome, surfaceHeight, maxNeighborSurfaceDelta, moisturePocket);
-    const BlockType subsurfaceBlockType = forceCanonicalSurface
+    BlockType subsurfaceBlockType = forceCanonicalSurface
         ? subsurfaceBlockTypeAt(biome, 0, surfaceBlockType)
         : subsurfaceBlockTypeAt(biome, maxNeighborSurfaceDelta, surfaceBlockType);
+    biomes::SurfaceVariantDecision surfaceVariant{};
+    if (!forceCanonicalSurface)
+    {
+        surfaceVariant = biomes::evaluateSurfaceVariantRules(
+            biome,
+            variation,
+            surfaceHeight,
+            maxNeighborSurfaceDelta,
+            moisturePocket,
+            surfaceBlockType,
+            subsurfaceBlockType);
+        if (surfaceVariant.surfaceBlock.has_value())
+        {
+            surfaceBlockType = *surfaceVariant.surfaceBlock;
+        }
+        if (surfaceVariant.subsurfaceBlock.has_value())
+        {
+            subsurfaceBlockType = *surfaceVariant.subsurfaceBlock;
+        }
+        biomes::softenSurfaceVariantForBiomeEdge(
+            biomes::biomeProfile(biome),
+            transition,
+            surfaceBlockType,
+            subsurfaceBlockType,
+            surfaceVariant);
+    }
     int topsoilDepth = topsoilDepthAt(worldX, worldZ, worldSeed);
     if (!forceCanonicalSurface
         && (surfaceBlockType == BlockType::Stone || surfaceBlockType == BlockType::Sandstone)
         && topsoilDepth > 1)
     {
         topsoilDepth -= 1;
+    }
+    if (!forceCanonicalSurface)
+    {
+        topsoilDepth += surfaceVariant.topsoilDepthDelta;
     }
     topsoilDepth = std::clamp(topsoilDepth, 1, 6);
     const int stratumTopExclusive = surfaceHeight - topsoilDepth;

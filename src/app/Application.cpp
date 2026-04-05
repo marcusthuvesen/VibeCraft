@@ -30,6 +30,7 @@
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
 #include "vibecraft/app/ApplicationAmbientLife.hpp"
 #include "vibecraft/app/ApplicationBotanyRuntime.hpp"
+#include "vibecraft/app/StartupFlow.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
 #include "vibecraft/app/ApplicationTerraformingRuntime.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
@@ -47,25 +48,6 @@ namespace vibecraft::app
 {
 namespace
 {
-[[nodiscard]] bool envFlagEnabled(const char* const value)
-{
-    if (value == nullptr)
-    {
-        return false;
-    }
-
-    std::string normalized(value);
-    std::transform(
-        normalized.begin(),
-        normalized.end(),
-        normalized.begin(),
-        [](const unsigned char ch)
-        {
-            return static_cast<char>(std::tolower(ch));
-        });
-    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
-}
-
 struct BiomeVisualProfile
 {
     glm::vec3 skyTarget{0.62f, 0.75f, 0.96f};
@@ -281,14 +263,35 @@ struct BiomeVisualProfile
     return mixed;
 }
 
+struct RenderSurfaceSize
+{
+    std::uint32_t width = 1;
+    std::uint32_t height = 1;
+};
+
+[[nodiscard]] RenderSurfaceSize desiredRenderSurfaceSize(
+    const platform::Window& window,
+    const GameScreen gameScreen)
+{
+    const bool preferLogicalResolution =
+        gameScreen == GameScreen::MainMenu || gameScreen == GameScreen::Paused;
+    return RenderSurfaceSize{
+        .width = std::max(preferLogicalResolution ? window.logicalWidth() : window.width(), 1U),
+        .height = std::max(preferLogicalResolution ? window.logicalHeight() : window.height(), 1U),
+    };
+}
+
 }
 
 bool Application::initialize()
 {
     core::initializeLogger();
 
-    autoStartSingleplayerRequested_ = envFlagEnabled(std::getenv("VIBECRAFT_AUTOSTART_SINGLEPLAYER"));
-    autoStartCreatesNewWorld_ = envFlagEnabled(std::getenv("VIBECRAFT_AUTOSTART_NEW_WORLD"));
+    const char* const autoStartSingleplayerEnv = std::getenv("VIBECRAFT_AUTOSTART_SINGLEPLAYER");
+    const char* const autoStartNewWorldEnv = std::getenv("VIBECRAFT_AUTOSTART_NEW_WORLD");
+    autoStartSingleplayerRequested_ =
+        envFlagEnabled(autoStartSingleplayerEnv != nullptr ? autoStartSingleplayerEnv : "");
+    autoStartCreatesNewWorld_ = envFlagEnabled(autoStartNewWorldEnv != nullptr ? autoStartNewWorldEnv : "");
     autoStartSingleplayerConsumed_ = false;
 
     if (!window_.create("VibeCraft", kWindowSettings.width, kWindowSettings.height))
@@ -307,7 +310,11 @@ bool Application::initialize()
     loadAudioPrefs();
     refreshSingleplayerWorldList();
 
-    if (!renderer_.initialize(window_.nativeWindowHandle(), window_.width(), window_.height()))
+    const RenderSurfaceSize initialRenderSurface = desiredRenderSurfaceSize(window_, gameScreen_);
+    if (!renderer_.initialize(
+            window_.nativeWindowHandle(),
+            initialRenderSurface.width,
+            initialRenderSurface.height))
     {
         core::logError("Failed to initialize bgfx.");
         return false;
@@ -345,6 +352,8 @@ bool Application::initialize()
         ? "No worlds yet. Click Singleplayer to choose New World."
         : "Click Singleplayer to choose a saved world or create a new one.";
     applyDefaultHotbarLoadout(hotbarSlots_, selectedHotbarIndex_);
+    startChunkGenerationWorker();
+    startChunkMeshingWorker();
     return true;
 }
 
@@ -371,6 +380,8 @@ int Application::run()
     }
     saveAudioPrefs();
     stopMultiplayerSessions();
+    stopChunkGenerationWorker();
+    stopChunkMeshingWorker();
     musicDirector_.shutdown();
     soundEffects_.shutdown();
     sharedAudioOutput_.shutdown();
@@ -383,8 +394,9 @@ void Application::update(const float deltaTimeSeconds)
     if ((gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
         && multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
-        world_.tickFluids(multiplayerMode_ == MultiplayerRuntimeMode::Host ? 64 : 96);
+        world_.tickFluids(multiplayerMode_ == MultiplayerRuntimeMode::Host ? 128 : 224);
         world_.tickLeafDecay(multiplayerMode_ == MultiplayerRuntimeMode::Host ? 4 : 6);
+        tickPrimedTnt(deltaTimeSeconds);
     }
 
     dayNightCycle_.advanceSeconds(deltaTimeSeconds);
@@ -420,10 +432,11 @@ void Application::update(const float deltaTimeSeconds)
         biomeProfile.cloudBlend,
         biomeProfile.cloudBrightness);
     const glm::vec3 terrainHazeBase = glm::mix(weatherHorizonTint, weatherSkyTint, 0.42f);
-    const float sunLightScale = 1.0f - weatherSample.sunOcclusion * 0.55f;
-    const float moonLightScale = 1.0f - weatherSample.cloudCoverage * 0.20f;
-    const float visibleSunScale = 1.0f - weatherSample.sunOcclusion * 0.35f;
-    const float visibleMoonScale = 1.0f - weatherSample.cloudCoverage * 0.12f;
+    // Push weather/day contrast closer to Minecraft: rain/clouds noticeably darken sunlight.
+    const float sunLightScale = 1.0f - weatherSample.sunOcclusion * 0.72f;
+    const float moonLightScale = 1.0f - weatherSample.cloudCoverage * 0.32f;
+    const float visibleSunScale = 1.0f - weatherSample.sunOcclusion * 0.58f;
+    const float visibleMoonScale = 1.0f - weatherSample.cloudCoverage * 0.20f;
     float finalSunVisibility = glm::clamp(dayNightSample.sunVisibility * visibleSunScale, 0.0f, 1.0f);
     float finalMoonVisibility = glm::clamp(dayNightSample.moonVisibility * visibleMoonScale, 0.0f, 1.0f);
     constexpr float kMinCelestialVisibility = 0.12f;
@@ -486,9 +499,12 @@ void Application::update(const float deltaTimeSeconds)
 
     updateMultiplayer(deltaTimeSeconds);
 
-    if (inputState_.windowSizeChanged && window_.width() != 0 && window_.height() != 0)
+    // Keep menu-scale changes modest across Retina and standard-DPI displays by rendering menu
+    // screens at logical window resolution, while gameplay still uses the full drawable size.
+    const RenderSurfaceSize targetRenderSurface = desiredRenderSurfaceSize(window_, gameScreen_);
+    if (targetRenderSurface.width != 0 && targetRenderSurface.height != 0)
     {
-        renderer_.resize(window_.width(), window_.height());
+        renderer_.resize(targetRenderSurface.width, targetRenderSurface.height);
     }
 
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)

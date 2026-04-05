@@ -154,7 +154,10 @@ void Application::buildFrameDebugData(
     const int cycleMinutesComponent = cycleSeconds / 60;
     const int cycleSecondsComponent = cycleSeconds % 60;
     frameDebugData.statusLine = fmt::format(
-        "HP: {:.0f}/{:.0f}  Air: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Net: {}  Peers: {}  Frame: {:.2f} ms ({:.1f} fps){}",
+        "Pos: {} {} {}  HP: {:.0f}/{:.0f}  Air: {:.0f}/{:.0f}  Hazard: {}  Mouse: {}  Grounded: {}  Time: {} {:02d}:{:02d}  Weather: {}  Save: {}  Net: {}  Peers: {}  Frame: {:.2f} ms ({:.1f} fps){}",
+        playerBlockPosition.x,
+        playerBlockPosition.y,
+        playerBlockPosition.z,
         playerVitals_.health(),
         playerVitals_.maxHealth(),
         playerVitals_.air(),
@@ -179,10 +182,14 @@ void Application::buildFrameDebugData(
         frameDebugData.chatLines.push_back(render::FrameDebugData::ChatLineHud{
             .text = line.text,
             .isError = line.isError,
+            .timestampLabel = line.timestampLabel,
+            .ageSeconds = std::max(0.0f, sessionPlayTimeSeconds_ - line.createdAtSeconds),
         });
     }
     frameDebugData.chatOpen = chatState_.open;
     frameDebugData.chatInputLine = chatState_.inputBuffer;
+    frameDebugData.chatCursorIndex = chatState_.cursorIndex;
+    frameDebugData.chatHintLine = chatState_.hintLine;
     for (std::size_t slotIndex = 0; slotIndex < frameDebugData.hotbarSlots.size(); ++slotIndex)
     {
         frameDebugData.hotbarSlots[slotIndex] = makeHudSlot(hotbarSlots_[slotIndex]);
@@ -257,6 +264,7 @@ void Application::buildFrameDebugData(
     {
         frameDebugData.craftingMenuActive = true;
         frameDebugData.craftingUsesWorkbench = craftingMenuState_.usesWorkbench;
+        frameDebugData.craftingCreativeModeEnabled = creativeModeEnabled_;
         switch (craftingMenuState_.mode)
         {
         case CraftingMenuState::Mode::InventoryCrafting:

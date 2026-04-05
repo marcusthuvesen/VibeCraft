@@ -1,6 +1,7 @@
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
 
 #include <SDL3/SDL.h>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <array>
@@ -11,6 +12,7 @@
 
 #include "vibecraft/app/Application.hpp"
 #include "vibecraft/app/ApplicationConfig.hpp"
+#include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
 #include "vibecraft/game/CollisionHelpers.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 
@@ -339,6 +341,32 @@ namespace
     }
 }
 
+[[nodiscard]] std::vector<glm::ivec2> buildSpawnSearchOffsets()
+{
+    constexpr int kSearchStep = 24;
+    constexpr int kSearchRadius = 4096;
+
+    std::vector<glm::ivec2> offsets;
+    offsets.reserve(static_cast<std::size_t>((kSearchRadius / kSearchStep) * 32));
+    offsets.push_back(glm::ivec2{0, 0});
+    for (int radius = kSearchStep; radius <= kSearchRadius; radius += kSearchStep)
+    {
+        for (int dz = -radius; dz <= radius; dz += kSearchStep)
+        {
+            for (int dx = -radius; dx <= radius; dx += kSearchStep)
+            {
+                if (std::abs(dx) != radius && std::abs(dz) != radius)
+                {
+                    continue;
+                }
+                offsets.push_back(glm::ivec2{dx, dz});
+            }
+        }
+    }
+
+    return offsets;
+}
+
 [[nodiscard]] std::uint32_t inventoryBlockCount(
     const HotbarSlots& hotbarSlots,
     const BagSlots& bagSlots,
@@ -529,6 +557,153 @@ glm::vec3 resolveSpawnFeetPosition(
         static_cast<float>(fallbackX) + 0.5f,
         static_cast<float>(surfaceY + 1),
         static_cast<float>(fallbackZ) + 0.5f);
+}
+
+bool Application::continueSingleplayerSpawnSearch(const float colliderHeight)
+{
+    const auto commitSpawnFeetPosition = [&](const glm::vec3& feetPosition)
+    {
+        playerFeetPosition_ = feetPosition;
+        spawnFeetPosition_ = feetPosition;
+        camera_.setPosition(playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+        singleplayerLoadState_.spawnSearchActive = false;
+        singleplayerLoadState_.spawnSearchOffsets.clear();
+        singleplayerLoadState_.spawnSearchIndex = 0;
+        singleplayerLoadState_.bestSpawnCandidate.reset();
+        singleplayerLoadState_.bestSpawnCrowding = std::numeric_limits<int>::max();
+        singleplayerLoadState_.bestSpawnPenalty = std::numeric_limits<int>::max();
+    };
+
+    if (!singleplayerLoadState_.playerStateLoaded)
+    {
+        // Fresh worlds already start in the forced starter biome near the chosen preset,
+        // so skip the expensive biome-target scan and just resolve a safe local spawn.
+        commitSpawnFeetPosition(resolveSpawnFeetPosition(
+            world_,
+            terrainGenerator_,
+            spawnPreset_,
+            SpawnBiomeTarget::Any,
+            camera_.position(),
+            colliderHeight));
+        return true;
+    }
+
+    if (spawnBiomeTarget_ == SpawnBiomeTarget::Any)
+    {
+        commitSpawnFeetPosition(resolveSpawnFeetPosition(
+            world_,
+            terrainGenerator_,
+            spawnPreset_,
+            spawnBiomeTarget_,
+            camera_.position(),
+            colliderHeight));
+        return true;
+    }
+
+    constexpr int kSpawnProbeChunkRadius = 1;
+    constexpr std::size_t kSpawnProbeChunkBudget =
+        static_cast<std::size_t>((kSpawnProbeChunkRadius * 2 + 1) * (kSpawnProbeChunkRadius * 2 + 1));
+    const auto ensureProbeGenerated = [&](const int worldX, const int worldZ)
+    {
+        world_.generateMissingChunksAround(
+            terrainGenerator_,
+            world::worldToChunkCoord(worldX, worldZ),
+            kSpawnProbeChunkRadius,
+            kSpawnProbeChunkBudget);
+    };
+
+    if (!singleplayerLoadState_.spawnSearchActive)
+    {
+        singleplayerLoadState_.spawnSearchActive = true;
+        singleplayerLoadState_.spawnProbePosition = preferredSpawnProbePosition(spawnPreset_, camera_.position());
+        singleplayerLoadState_.spawnSearchOffsets = buildSpawnSearchOffsets();
+        singleplayerLoadState_.spawnSearchIndex = 0;
+        singleplayerLoadState_.bestSpawnCandidate.reset();
+        singleplayerLoadState_.bestSpawnCrowding = std::numeric_limits<int>::max();
+        singleplayerLoadState_.bestSpawnPenalty = std::numeric_limits<int>::max();
+    }
+
+    constexpr std::size_t kSpawnCandidatesPerFrame = 12;
+    std::size_t processedCandidates = 0;
+    while (singleplayerLoadState_.spawnSearchIndex < singleplayerLoadState_.spawnSearchOffsets.size()
+           && processedCandidates < kSpawnCandidatesPerFrame)
+    {
+        const glm::ivec2 offset = singleplayerLoadState_.spawnSearchOffsets[singleplayerLoadState_.spawnSearchIndex++];
+        ++processedCandidates;
+
+        const int sampleX =
+            static_cast<int>(std::floor(singleplayerLoadState_.spawnProbePosition.x)) + offset.x;
+        const int sampleZ =
+            static_cast<int>(std::floor(singleplayerLoadState_.spawnProbePosition.z)) + offset.y;
+        if (!matchesSpawnBiomeTarget(terrainGenerator_.surfaceBiomeAt(sampleX, sampleZ), spawnBiomeTarget_))
+        {
+            continue;
+        }
+        if (!isSpawnBiomeCoreArea(terrainGenerator_, sampleX, sampleZ, spawnBiomeTarget_))
+        {
+            continue;
+        }
+
+        ensureProbeGenerated(sampleX, sampleZ);
+        const glm::vec3 biomeProbe{
+            static_cast<float>(sampleX),
+            singleplayerLoadState_.spawnProbePosition.y,
+            static_cast<float>(sampleZ),
+        };
+        const glm::vec3 candidateFeet =
+            findInitialSpawnFeetPosition(world_, terrainGenerator_, biomeProbe, colliderHeight);
+        if (!isSpawnFeetPositionSafe(world_, candidateFeet, colliderHeight))
+        {
+            continue;
+        }
+
+        const int surfacePenalty = spawnSurfacePenalty(terrainGenerator_, candidateFeet, spawnBiomeTarget_);
+        const int crowding = spawnCrowdingScore(world_, candidateFeet);
+        if (surfacePenalty == 0 && crowding <= 8)
+        {
+            commitSpawnFeetPosition(candidateFeet);
+            return true;
+        }
+        if (surfacePenalty < singleplayerLoadState_.bestSpawnPenalty
+            || (surfacePenalty == singleplayerLoadState_.bestSpawnPenalty
+                && crowding < singleplayerLoadState_.bestSpawnCrowding))
+        {
+            singleplayerLoadState_.bestSpawnPenalty = surfacePenalty;
+            singleplayerLoadState_.bestSpawnCrowding = crowding;
+            singleplayerLoadState_.bestSpawnCandidate = candidateFeet;
+        }
+    }
+
+    const float searchProgress = singleplayerLoadState_.spawnSearchOffsets.empty()
+        ? 1.0f
+        : static_cast<float>(singleplayerLoadState_.spawnSearchIndex)
+            / static_cast<float>(singleplayerLoadState_.spawnSearchOffsets.size());
+    singleplayerLoadState_.progress = std::clamp(0.45f + searchProgress * 0.10f, 0.0f, 0.55f);
+    singleplayerLoadState_.label = fmt::format(
+        "Searching for safe {} spawn... {}/{}",
+        spawnBiomeTargetLabel(spawnBiomeTarget_),
+        singleplayerLoadState_.spawnSearchIndex,
+        singleplayerLoadState_.spawnSearchOffsets.size());
+
+    if (singleplayerLoadState_.spawnSearchIndex < singleplayerLoadState_.spawnSearchOffsets.size())
+    {
+        return false;
+    }
+
+    if (singleplayerLoadState_.bestSpawnCandidate.has_value())
+    {
+        commitSpawnFeetPosition(*singleplayerLoadState_.bestSpawnCandidate);
+        return true;
+    }
+
+    commitSpawnFeetPosition(resolveSpawnFeetPosition(
+        world_,
+        terrainGenerator_,
+        spawnPreset_,
+        spawnBiomeTarget_,
+        camera_.position(),
+        colliderHeight));
+    return true;
 }
 
 bool isGroundedAtFeetPosition(

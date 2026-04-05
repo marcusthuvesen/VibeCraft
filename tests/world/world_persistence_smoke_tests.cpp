@@ -39,6 +39,39 @@ TEST_CASE("world save and load round-trips edited blocks")
     std::filesystem::remove(tempPath, errorCode);
 }
 
+TEST_CASE("revisiting generated terrain preserves prior chunk edits")
+{
+    vibecraft::world::World world;
+    world.setGenerationSeed(0xdeadbeefU);
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0xdeadbeefU);
+
+    const vibecraft::world::ChunkCoord originChunk{0, 0};
+    world.generateMissingChunksAround(terrainGenerator, originChunk, 1);
+
+    int editY = terrainGenerator.surfaceHeightAt(2, 2) + 1;
+    while (editY <= vibecraft::world::kWorldMaxY && world.blockAt(2, editY, 2) != vibecraft::world::BlockType::Air)
+    {
+        ++editY;
+    }
+    REQUIRE(editY <= vibecraft::world::kWorldMaxY);
+    REQUIRE(world.applyEditCommand({
+        .action = vibecraft::world::WorldEditAction::Place,
+        .position = {2, editY, 2},
+        .blockType = vibecraft::world::BlockType::CoalOre,
+    }));
+
+    const auto editedChunkStorage =
+        world.chunks().at(vibecraft::world::worldToChunkCoord(2, 2)).blockStorage();
+
+    world.generateMissingChunksAround(terrainGenerator, vibecraft::world::ChunkCoord{12, 12}, 1);
+    world.generateMissingChunksAround(terrainGenerator, originChunk, 1);
+
+    CHECK(world.blockAt(2, editY, 2) == vibecraft::world::BlockType::CoalOre);
+    CHECK(world.chunks().contains(vibecraft::world::worldToChunkCoord(2, 2)));
+    CHECK(world.chunks().at(vibecraft::world::worldToChunkCoord(2, 2)).blockStorage() == editedChunkStorage);
+}
+
 TEST_CASE("singleplayer save serializer round-trips metadata and player state")
 {
     namespace fs = std::filesystem;

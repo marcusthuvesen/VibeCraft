@@ -57,6 +57,26 @@ namespace
     }
 }
 
+[[nodiscard]] MobKind randomHostileKind(std::mt19937& rng)
+{
+    // Weighted mix so zombies remain the most common baseline hostile.
+    std::uniform_int_distribution<int> dist(0, 99);
+    const int roll = dist(rng);
+    if (roll < 50)
+    {
+        return MobKind::Zombie;
+    }
+    if (roll < 74)
+    {
+        return MobKind::Skeleton;
+    }
+    if (roll < 90)
+    {
+        return MobKind::Creeper;
+    }
+    return MobKind::Spider;
+}
+
 [[nodiscard]] bool tooCloseToAnyPlayerFeet(
     const float feetX,
     const float feetZ,
@@ -148,7 +168,9 @@ bool MobSpawnSystem::trySpawnOneHostile(
         return false;
     }
 
-    const MobDimensions dims = adultDimensionsForMobKind(MobKind::Zombie);
+    const MobKind kind =
+        countMobsMatching(mobs_, true) == 0 ? MobKind::Zombie : randomHostileKind(rng_);
+    const MobDimensions dims = adultDimensionsForMobKind(kind);
 
     std::uniform_real_distribution<float> angleDist(0.0f, 6.28318530718f);
     std::uniform_real_distribution<float> radiusDist(
@@ -236,7 +258,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
         const glm::vec3 faceToward = nearestPlayerFeetForFacing(candidateFeet, playerFeet, remotePlayerFeet);
         mobs_.push_back(MobInstance{
             .id = nextId_++,
-            .kind = MobKind::Zombie,
+            .kind = kind,
             .feetX = feetX,
             .feetY = feetY,
             .feetZ = feetZ,
@@ -246,7 +268,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
             .wanderYawRadians = 0.0f,
             .breedCooldownSeconds = 0.0f,
             .growthSecondsRemaining = 0.0f,
-            .health = mobKindDefaultMaxHealth(MobKind::Zombie),
+            .health = mobKindDefaultMaxHealth(kind),
             .halfWidth = dims.halfWidth,
             .height = dims.height,
         });

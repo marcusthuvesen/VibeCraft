@@ -215,10 +215,14 @@ struct FrameDebugData
     {
         std::string text;
         bool isError = false;
+        std::string timestampLabel;
+        float ageSeconds = 0.0f;
     };
     std::vector<ChatLineHud> chatLines;
     bool chatOpen = false;
     std::string chatInputLine;
+    std::size_t chatCursorIndex = 0;
+    std::string chatHintLine;
 
     /// When true, the 3D view and in-game HUD are hidden and the title menu is drawn instead.
     bool mainMenuActive = false;
@@ -277,6 +281,7 @@ struct FrameDebugData
     std::string pauseWeatherLabel;
     bool craftingMenuActive = false;
     bool craftingUsesWorkbench = false;
+    bool craftingCreativeModeEnabled = false;
     CraftingUiMode craftingUiMode = CraftingUiMode::Inventory;
     std::string craftingTitle;
     std::string craftingHint;
@@ -518,8 +523,16 @@ class Renderer
     std::uint16_t inventoryUiProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSolidProgramHandle_ = UINT16_MAX;
     std::uint16_t inventoryUiSamplerHandle_ = UINT16_MAX;
+    std::uint16_t craftingContainerInventoryTextureHandle_ = UINT16_MAX;
+    std::uint16_t craftingContainerCreativeTextureHandle_ = UINT16_MAX;
+    std::uint16_t craftingContainerWorkbenchTextureHandle_ = UINT16_MAX;
+    std::uint16_t craftingContainerChestTextureHandle_ = UINT16_MAX;
+    std::uint16_t craftingContainerFurnaceTextureHandle_ = UINT16_MAX;
     std::uint16_t zombieTextureHandle_ = UINT16_MAX;
     std::uint16_t playerMobTextureHandle_ = UINT16_MAX;
+    std::uint16_t skeletonTextureHandle_ = UINT16_MAX;
+    std::uint16_t creeperTextureHandle_ = UINT16_MAX;
+    std::uint16_t spiderTextureHandle_ = UINT16_MAX;
     std::uint16_t sporegrazerTextureHandle_ = UINT16_MAX;
     std::uint16_t burrowerTextureHandle_ = UINT16_MAX;
     std::uint16_t shardbackTextureHandle_ = UINT16_MAX;
@@ -527,6 +540,9 @@ class Renderer
     std::uint16_t ambientBirdTextureHandle_ = UINT16_MAX;
     TextureUvRect zombieTextureUv_{};
     TextureUvRect playerMobTextureUv_{};
+    TextureUvRect skeletonTextureUv_{};
+    TextureUvRect creeperTextureUv_{};
+    TextureUvRect spiderTextureUv_{};
     TextureUvRect sporegrazerTextureUv_{};
     TextureUvRect burrowerTextureUv_{};
     TextureUvRect shardbackTextureUv_{};

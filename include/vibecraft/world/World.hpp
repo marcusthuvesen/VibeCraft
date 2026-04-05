@@ -71,6 +71,7 @@ class World
     [[nodiscard]] const std::unordered_map<ChunkCoord, ChunkMeshStats, ChunkCoordHash>& meshStats() const;
     [[nodiscard]] std::size_t dirtyChunkCount() const;
     [[nodiscard]] std::vector<ChunkCoord> dirtyChunkCoords() const;
+    [[nodiscard]] std::uint64_t dirtyRevisionForChunk(const ChunkCoord& coord) const;
     [[nodiscard]] std::uint32_t totalVisibleFaces() const;
     void tickFluids(std::size_t maxUpdates = 96);
     void tickLeafDecay(std::size_t maxUpdates = 8);
@@ -134,9 +135,11 @@ class World
     ChunkMap chunks_;
     std::unordered_map<ChunkCoord, ChunkMeshStats, ChunkCoordHash> meshStats_;
     std::unordered_set<ChunkCoord, ChunkCoordHash> dirtyChunks_;
+    std::unordered_map<ChunkCoord, std::uint64_t, ChunkCoordHash> dirtyRevisionByChunk_;
     std::unordered_map<FluidCell, BlockType, FluidCellHash> fluidSources_;
     std::unordered_map<FluidCell, FlowingFluidState, FluidCellHash> flowingFluids_;
     std::unordered_set<FluidCell, FluidCellHash> activeFluidCells_;
+    std::uint32_t fluidTickCounter_ = 0;
     std::deque<OrganicDecayCell> activeLeafDecayCells_;
     std::unordered_set<OrganicDecayCell, OrganicDecayCellHash> queuedLeafDecayCells_;
 };

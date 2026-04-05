@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <optional>
 
 #include "vibecraft/app/ApplicationBotanyRuntime.hpp"
@@ -14,6 +15,7 @@
 #include "vibecraft/app/ApplicationEquipment.hpp"
 #include "vibecraft/app/Mining.hpp"
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
+#include "vibecraft/app/TorchPlacement.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
@@ -29,6 +31,24 @@ namespace
     const std::int64_t y = (static_cast<std::int64_t>(blockPosition.y) + offset) & mask;
     const std::int64_t z = (static_cast<std::int64_t>(blockPosition.z) + offset) & mask;
     return (x << 42) | (y << 21) | z;
+}
+
+[[nodiscard]] bool shouldDropSaplingFromLeafBreak(
+    const glm::ivec3& blockPosition,
+    const float sessionPlayTimeSeconds)
+{
+    // Target behavior: roughly 1 in 10 leaf/crown breaks drop a sapling.
+    const std::uint64_t positionSeed = static_cast<std::uint64_t>(blockStorageKey(blockPosition));
+    const std::uint32_t timeSeed = static_cast<std::uint32_t>(
+        std::llround(std::max(0.0f, sessionPlayTimeSeconds) * 1000.0f));
+    std::uint32_t seed = static_cast<std::uint32_t>(positionSeed ^ (positionSeed >> 32U));
+    seed ^= timeSeed * 747796405u + 2891336453u;
+    seed ^= seed >> 16U;
+    seed *= 2246822519u;
+    seed ^= seed >> 13U;
+    seed *= 3266489917u;
+    seed ^= seed >> 16U;
+    return (seed % 10u) == 0u;
 }
 
 [[nodiscard]] world::BlockType furnaceBlockFacingPlayer(const glm::vec3& cameraForward)
@@ -90,50 +110,6 @@ namespace
     default:
         return stairsBaseBlock;
     }
-}
-
-[[nodiscard]] world::BlockType torchBlockForPlacement(
-    const world::BlockType torchBaseBlock,
-    const glm::ivec3& solidBlock,
-    const glm::ivec3& buildTarget)
-{
-    if (!world::isTorchBlock(torchBaseBlock))
-    {
-        return torchBaseBlock;
-    }
-
-    const glm::ivec3 delta = buildTarget - solidBlock;
-    if (delta.y != 0)
-    {
-        // Top/bottom face placement uses standing torch.
-        return world::BlockType::Torch;
-    }
-    if (delta.x > 0)
-    {
-        return world::BlockType::TorchEast;
-    }
-    if (delta.x < 0)
-    {
-        return world::BlockType::TorchWest;
-    }
-    if (delta.z > 0)
-    {
-        return world::BlockType::TorchSouth;
-    }
-    if (delta.z < 0)
-    {
-        return world::BlockType::TorchNorth;
-    }
-    return world::BlockType::Torch;
-}
-
-[[nodiscard]] bool isValidTorchPlacementFace(
-    const glm::ivec3& solidBlock,
-    const glm::ivec3& buildTarget)
-{
-    const glm::ivec3 delta = buildTarget - solidBlock;
-    // Minecraft-style: torches place on top or on vertical sides, not on undersides.
-    return delta.y >= 0;
 }
 
 [[nodiscard]] world::DoorFacing doorFacingPlayer(const glm::vec3& cameraForward)
@@ -392,6 +368,8 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
             }
             if (!appliedCommands.empty())
             {
+                // Fire break SFX immediately when the block edit is confirmed locally.
+                soundEffects_.playBlockBreak(raycastHit->blockType);
                 if (raycastHit->blockType == world::BlockType::Chest)
                 {
                     const auto chestIt = chestSlotsByPosition_.find(blockStorageKey(raycastHit->solidBlock));
@@ -458,11 +436,17 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
                     const glm::ivec3 dropPosition = world::isDoorUpperHalf(raycastHit->blockType)
                         ? raycastHit->solidBlock + glm::ivec3(0, -1, 0)
                         : raycastHit->solidBlock;
-                    spawnDroppedItem(
-                        world::normalizePlaceVariantBlockType(raycastHit->blockType),
-                        dropPosition);
+                    const world::BlockType brokenBlockType =
+                        world::normalizePlaceVariantBlockType(raycastHit->blockType);
+                    if (!world::isLeafBlock(brokenBlockType))
+                    {
+                        spawnDroppedItem(brokenBlockType, dropPosition);
+                    }
+                    else if (shouldDropSaplingFromLeafBreak(raycastHit->solidBlock, sessionPlayTimeSeconds_))
+                    {
+                        spawnDroppedItem(world::BlockType::FiberSapling, dropPosition);
+                    }
                 }
-                soundEffects_.playBlockBreak(raycastHit->blockType);
                 for (const world::WorldEditCommand& command : appliedCommands)
                 {
                     relayWorldEdit(command);
@@ -475,6 +459,16 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
 
     if (!inputState_.rightMousePressed)
     {
+        return;
+    }
+    if (raycastHit->blockType == world::BlockType::TNT)
+    {
+        if (multiplayerMode_ == MultiplayerRuntimeMode::Client)
+        {
+            respawnNotice_ = "TNT ignition is host-side in multiplayer.";
+            return;
+        }
+        igniteTntAtBlock(raycastHit->solidBlock, 4.0f, true);
         return;
     }
     if (world::isDoorVariantBlock(raycastHit->blockType))

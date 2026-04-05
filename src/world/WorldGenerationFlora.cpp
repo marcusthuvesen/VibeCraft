@@ -5,8 +5,10 @@
 #include <cstdint>
 
 #include "vibecraft/world/TerrainNoise.hpp"
+#include "vibecraft/world/biomes/BiomeVariation.hpp"
 #include "vibecraft/world/biomes/BiomeProfile.hpp"
 #include "vibecraft/world/biomes/FloraGenerationTuning.hpp"
+#include "vibecraft/world/biomes/FloraVariantRules.hpp"
 
 namespace vibecraft::world::detail
 {
@@ -34,7 +36,8 @@ constexpr std::uint32_t kTemperateFernSeed = 0x4983d4c0U;
 constexpr std::uint32_t kTemperateMushroomSeed = 0x5a94e5d1U;
 constexpr std::uint32_t kTemperateGroundSeed = 0x6ba5f6e2U;
 constexpr double kGrassTuftPatchScale = 28.0;
-constexpr double kGrassTuftDensityScale = 0.5;
+// Keep tuft cover intentionally sparse: broad patch masks plus low per-cell hit chance.
+constexpr double kGrassTuftDensityScale = 0.10;
 constexpr double kMushroomDensityScale = 0.5;
 
 struct SurfaceSample
@@ -44,6 +47,8 @@ struct SurfaceSample
     int surfaceY = 0;
     BlockType surfaceBlock = BlockType::Air;
     SurfaceBiome biome = SurfaceBiome::Forest;
+    biomes::BiomeVariationSample variation{};
+    biomes::BiomeTransitionSample transition{};
 };
 
 [[nodiscard]] BlockType pickTemperateFlowerBlock(const int worldX, const int worldZ, const double wetNoise)
@@ -139,6 +144,12 @@ struct SurfaceSample
     outSample.surfaceY = surfaceY;
     outSample.surfaceBlock = chunk.blockAt(localX, surfaceY, localZ);
     outSample.biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
+    outSample.variation = biomes::sampleBiomeVariation(outSample.biome, worldX, worldZ, terrainGenerator.worldSeed());
+    outSample.transition = biomes::sampleBiomeTransition(
+        outSample.biome,
+        worldX,
+        worldZ,
+        [&](const int sampleX, const int sampleZ) { return terrainGenerator.surfaceBiomeAt(sampleX, sampleZ); });
     return true;
 }
 
@@ -182,13 +193,17 @@ bool tryPopulateSnowySurfaceDecor(Chunk& chunk, const int localX, const int loca
 
 bool tryPopulateTemperateSurfaceDecor(Chunk& chunk, const int localX, const int localZ, const SurfaceSample& sample)
 {
-    if (!biomes::isForestSurfaceBiome(sample.biome) || sample.surfaceBlock != BlockType::Grass)
+    if (!biomes::isForestSurfaceBiome(sample.biome) || !biomes::isTemperateForestDecorSurface(sample.surfaceBlock))
     {
         return false;
     }
 
     const biomes::FloraGenerationFamily floraFamily = biomes::biomeProfile(sample.biome).floraFamily;
-    const biomes::TemperateForestDecorProfile decor = biomes::temperateForestDecorProfile(sample.biome);
+    const biomes::TemperateForestDecorProfile decor =
+        biomes::softenTemperateForestDecorForBiomeEdge(
+            sample.biome,
+            sample.transition,
+            biomes::applyTemperateForestDecorVariant(sample.biome, sample.variation, biomes::temperateForestDecorProfile(sample.biome)));
     const double forestPatch = temperateForestPatchAt(sample.worldX, sample.worldZ);
     if (forestPatch < decor.patchEnterThreshold)
     {
@@ -277,7 +292,11 @@ void tryPopulateTufts(Chunk& chunk, const int localX, const int localZ, const Su
     }
 
     const biomes::FloraGenerationFamily floraFamily = biomes::biomeProfile(sample.biome).floraFamily;
-    const biomes::GrassTuftTuning tuft = biomes::grassTuftTuning(floraFamily);
+    const biomes::GrassTuftTuning tuft =
+        biomes::softenGrassTuftForBiomeEdge(
+            sample.biome,
+            sample.transition,
+            biomes::applyGrassTuftVariant(sample.biome, sample.variation, biomes::grassTuftTuning(floraFamily)));
     const double tuftField = noise::fbmNoise2d(
         static_cast<double>(sample.worldX) + 13.0,
         static_cast<double>(sample.worldZ) - 37.0,
@@ -285,6 +304,13 @@ void tryPopulateTufts(Chunk& chunk, const int localX, const int localZ, const Su
         3,
         kGrassTuftNoiseSeed);
     const double tuftStrength = std::clamp(tuftField * 0.5 + 0.5, 0.0, 1.0);
+    // Gate out weak-noise areas so grass reads as occasional natural clusters, not uniform salt-and-pepper.
+    constexpr double kTuftPatchGate = 0.57;
+    if (tuftStrength < kTuftPatchGate)
+    {
+        return;
+    }
+    const double gatedStrength = (tuftStrength - kTuftPatchGate) / (1.0 - kTuftPatchGate);
     const double scatter = noise::random01(sample.worldX, sample.worldZ, kGrassTuftScatterSeed);
     const double tuftVariantRoll = noise::random01(sample.worldX, sample.worldZ, kGrassTuftScatterSeed + 23U);
 
@@ -292,7 +318,10 @@ void tryPopulateTufts(Chunk& chunk, const int localX, const int localZ, const Su
         ? tuft.primaryTuft
         : (tuftVariantRoll < tuft.primaryFraction ? tuft.primaryTuft : tuft.secondaryTuft);
 
-    const double tuftChance = std::clamp((tuft.baseChance + tuftStrength * 0.016) * kGrassTuftDensityScale, 0.0, 0.016);
+    const double tuftChance = std::clamp(
+        (tuft.baseChance + gatedStrength * 0.010) * kGrassTuftDensityScale,
+        0.0,
+        0.008);
     if (scatter < tuftChance)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, tuftBlock);
@@ -319,12 +348,14 @@ bool tryPopulateJungleSpecials(Chunk& chunk, const int localX, const int localZ,
     {
         bambooChance = 0.065f;
     }
+    bambooChance = biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, bambooChance);
     if (noise::random01(sample.worldX, sample.worldZ, kJungleSpecialSeed) < bambooChance)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Bamboo);
         return true;
     }
-    if (noise::random01(sample.worldX, sample.worldZ, kJungleSpecialSeed + 19U) < 0.006f)
+    if (noise::random01(sample.worldX, sample.worldZ, kJungleSpecialSeed + 19U)
+        < biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, 0.006f))
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Melon);
         return true;
@@ -340,12 +371,14 @@ bool tryPopulateSwampSpecials(Chunk& chunk, const int localX, const int localZ, 
         return false;
     }
 
-    if (noise::random01(sample.worldX, sample.worldZ, kSwampSpecialSeed) < 0.17f)
+    if (noise::random01(sample.worldX, sample.worldZ, kSwampSpecialSeed)
+        < biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, 0.17f))
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Vines);
         return true;
     }
-    if (noise::random01(sample.worldX, sample.worldZ, kSwampSpecialSeed + 13U) < 0.11f)
+    if (noise::random01(sample.worldX, sample.worldZ, kSwampSpecialSeed + 13U)
+        < biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, 0.11f))
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Water);
         return true;
@@ -379,7 +412,13 @@ bool tryPopulateMushroomFieldSpecials(Chunk& chunk, const int localX, const int 
 bool tryPopulateFlowersAndMushrooms(Chunk& chunk, const int localX, const int localZ, const SurfaceSample& sample)
 {
     const biomes::FloraPatchTuning patch
-        = biomes::floraPatchTuning(biomes::biomeProfile(sample.biome).floraFamily);
+        = biomes::softenFloraPatchForBiomeEdge(
+            sample.biome,
+            sample.transition,
+            biomes::applyFloraPatchVariant(
+                sample.biome,
+                sample.variation,
+                biomes::floraPatchTuning(biomes::biomeProfile(sample.biome).floraFamily)));
     const double flowerField = noise::fbmNoise2d(
         static_cast<double>(sample.worldX),
         static_cast<double>(sample.worldZ),

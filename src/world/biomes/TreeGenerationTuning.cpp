@@ -78,8 +78,13 @@ TreeBiomeSettings treeBiomeSettingsForTreeFamily(const TreeGenerationFamily fami
             .minTrunkHeight = 5,
             .maxTrunkHeight = 8,
             .crownRadius = 3,
+            .trunkWidth = 1,
             .trunkBlock = BlockType::DarkOakLog,
             .crownBlock = BlockType::DarkOakLeaves,
+            .canopyStyle = TreeBiomeSettings::CanopyStyle::BroadTemperate,
+            .largeTreeChance = 0.34f,
+            .largeTreeHeightBonus = 2,
+            .largeTreeCrownRadiusBonus = 1,
         };
     case TreeGenerationFamily::Plains:
         return TreeBiomeSettings{

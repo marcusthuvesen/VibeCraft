@@ -9,6 +9,7 @@
 #include <glm/vec3.hpp>
 
 #include "vibecraft/app/ApplicationConfig.hpp"
+#include "vibecraft/app/PauseMenuInputPolicy.hpp"
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
@@ -21,6 +22,18 @@ void Application::processPausedInput()
 {
     const bgfx::Stats* const stats = bgfx::getStats();
     const MenuUiMetrics menuUiMetrics = computeMenuUiMetrics(window_, inputState_, stats);
+
+    if (pauseMenuAwaitingMouseRelease_)
+    {
+        if (shouldBlockPausedMenuPointerActivation(
+                pauseMenuAwaitingMouseRelease_,
+                inputState_.leftMousePressed,
+                inputState_.leftMouseClicked))
+        {
+            return;
+        }
+        pauseMenuAwaitingMouseRelease_ = false;
+    }
 
     if (!inputState_.leftMouseClicked)
     {
@@ -213,6 +226,7 @@ void Application::processPausedInput()
         gameScreen_ = GameScreen::Playing;
         pauseSoundSettingsOpen_ = false;
         pauseGameSettingsOpen_ = false;
+        pauseMenuAwaitingMouseRelease_ = false;
         mouseCaptured_ = true;
         window_.setRelativeMouseMode(true);
         pauseMenuNotice_.clear();
@@ -238,6 +252,7 @@ void Application::processPausedInput()
         gameScreen_ = GameScreen::MainMenu;
         pauseSoundSettingsOpen_ = false;
         pauseGameSettingsOpen_ = false;
+        pauseMenuAwaitingMouseRelease_ = false;
         mouseCaptured_ = false;
         window_.setRelativeMouseMode(false);
         pauseMenuNotice_.clear();

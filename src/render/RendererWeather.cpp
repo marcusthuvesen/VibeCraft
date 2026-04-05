@@ -93,15 +93,22 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
     const glm::vec2 windDirection =
         normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
     const glm::vec2 windOffset = windDirection * cameraFrameData.weatherTimeSeconds * cameraFrameData.weatherWindSpeed;
-    constexpr float kCloudCellSize = 36.0f;
+    constexpr float kCloudCellSize = 40.0f;
     const int cloudRadiusInCells =
-        std::clamp(static_cast<int>(2.0f + cameraFrameData.cloudCoverage * 1.6f), 2, 3);
-    const float cloudHeight = glm::max(78.0f, cameraFrameData.position.y + 38.0f);
+        std::clamp(static_cast<int>(2.0f + cameraFrameData.cloudCoverage * 2.2f), 2, 4);
+    const float cloudHeight = glm::max(92.0f, cameraFrameData.position.y + 44.0f);
     const int baseCellX = static_cast<int>(std::floor((cameraFrameData.position.x + windOffset.x) / kCloudCellSize));
     const int baseCellZ = static_cast<int>(std::floor((cameraFrameData.position.z + windOffset.y) / kCloudCellSize));
-    const float densityThreshold = std::clamp(0.86f - cameraFrameData.cloudCoverage * 0.62f, 0.24f, 0.82f);
+    const float densityThreshold = std::clamp(0.84f - cameraFrameData.cloudCoverage * 0.60f, 0.28f, 0.82f);
     const bool drawSecondaryCloudLayer = cameraFrameData.cloudCoverage > 0.72f;
     const int cloudStride = cameraFrameData.cloudCoverage < 0.48f ? 2 : 1;
+    const glm::vec3 neutralCloudTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.90f, 0.93f, 0.97f), 0.60f);
+    const glm::vec3 sunCloudTint = glm::mix(neutralCloudTint, cameraFrameData.sunLightTint, 0.28f);
+    const glm::vec3 stormCloudTint = glm::mix(
+        neutralCloudTint,
+        glm::vec3(0.58f, 0.64f, 0.74f),
+        std::clamp(cameraFrameData.rainIntensity * 0.62f + cameraFrameData.cloudCoverage * 0.18f, 0.0f, 0.75f));
+    const glm::vec3 cloudBaseTint = glm::mix(stormCloudTint, sunCloudTint, cameraFrameData.sunVisibility * 0.75f);
 
     debugDrawEncoder.push();
     debugDrawEncoder.setDepthTestLess(true);
@@ -140,31 +147,21 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
                 - windOffset.y
                 + (hashUnitFloat(gridX, gridZ, 31) - 0.5f) * 12.0f;
             const float y = cloudHeight + (hashUnitFloat(gridX, gridZ, 41) - 0.5f) * 4.0f;
-            const float baseSize = 16.0f + patchStrength * 22.0f + hashUnitFloat(gridX, gridZ, 51) * 8.0f;
-            const float stretch = 0.9f + hashUnitFloat(gridX, gridZ, 61) * 0.5f;
-            const float secondaryOffset = 5.0f + hashUnitFloat(gridX, gridZ, 71) * 5.0f;
-            const glm::vec3 auroraAnchor = glm::mix(cameraFrameData.skyTint, cameraFrameData.horizonTint, 0.45f);
-            const glm::vec3 plasmaHighlight = glm::mix(auroraAnchor, glm::vec3(0.90f, 0.65f, 1.00f), 0.55f);
-            const float chromaPhase =
-                std::sin(cameraFrameData.weatherTimeSeconds * 0.12f + static_cast<float>(gridX) * 0.9f
-                         + static_cast<float>(gridZ) * 0.6f);
-            const float chromaBlend = std::clamp(0.35f + (chromaPhase * 0.5f + 0.5f) * 0.4f + patchStrength * 0.35f, 0.0f, 1.0f);
-            const glm::vec3 primaryTint = glm::mix(cameraFrameData.cloudTint, plasmaHighlight, chromaBlend);
-            const glm::vec3 secondaryTint =
-                glm::mix(primaryTint, auroraAnchor, 0.18f + patchStrength * 0.25f);
-            const bool drawIridescentHalo = patchStrength > 0.72f;
-            if (drawIridescentHalo)
-            {
-                const float haloScale = baseSize * (1.18f + patchStrength * 0.22f);
-                const glm::vec3 haloTint = glm::mix(plasmaHighlight, auroraAnchor, 0.25f);
-                debugDrawEncoder.setColor(packAbgr8(haloTint, 0.55f));
-                debugDrawEncoder.drawQuad(
-                    bx::Vec3(0.0f, 1.0f, 0.0f),
-                    bx::Vec3(centerX, y + 1.8f, centerZ),
-                    haloScale);
-            }
+            const float baseSize = 18.0f + patchStrength * 24.0f + hashUnitFloat(gridX, gridZ, 51) * 9.0f;
+            const float stretch = 0.88f + hashUnitFloat(gridX, gridZ, 61) * 0.55f;
+            const float secondaryOffset = 5.0f + hashUnitFloat(gridX, gridZ, 71) * 6.0f;
+            const float brightness = 0.80f + patchStrength * 0.22f;
+            const glm::vec3 primaryTint = cloudBaseTint * brightness;
+            const glm::vec3 secondaryTint = glm::mix(primaryTint, stormCloudTint, 0.30f);
+            const glm::vec3 softEdgeTint = glm::mix(primaryTint, cameraFrameData.skyTint, 0.28f);
 
-            debugDrawEncoder.setColor(packAbgr8(primaryTint, 1.0f));
+            debugDrawEncoder.setColor(packAbgr8(softEdgeTint, 0.52f));
+            debugDrawEncoder.drawQuad(
+                bx::Vec3(0.0f, 1.0f, 0.0f),
+                bx::Vec3(centerX, y + 0.8f, centerZ),
+                baseSize * (1.26f + patchStrength * 0.20f));
+
+            debugDrawEncoder.setColor(packAbgr8(primaryTint, 0.86f));
             debugDrawEncoder.drawQuad(
                 bx::Vec3(0.0f, 1.0f, 0.0f),
                 bx::Vec3(centerX, y, centerZ),
@@ -172,11 +169,11 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
 
             if (drawSecondaryCloudLayer)
             {
-                debugDrawEncoder.setColor(packAbgr8(secondaryTint, 0.95f));
+                debugDrawEncoder.setColor(packAbgr8(secondaryTint, 0.72f));
                 debugDrawEncoder.drawQuad(
                     bx::Vec3(0.0f, 1.0f, 0.0f),
-                    bx::Vec3(centerX + secondaryOffset, y - 1.0f, centerZ - secondaryOffset * 0.5f),
-                    baseSize * 0.58f);
+                    bx::Vec3(centerX + secondaryOffset, y - 1.4f, centerZ - secondaryOffset * 0.45f),
+                    baseSize * 0.64f);
             }
         }
     }

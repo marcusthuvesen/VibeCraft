@@ -216,12 +216,15 @@ bool Application::createNewSingleplayerWorld()
 
 bool Application::ensureSelectedSingleplayerWorld()
 {
-    if (!singleplayerWorlds_.empty())
+    if (singleplayerWorlds_.empty())
     {
-        selectedSingleplayerWorldIndex_ = std::min(selectedSingleplayerWorldIndex_, singleplayerWorlds_.size() - 1);
-        return true;
+        mainMenuSingleplayerPickerOpen_ = true;
+        mainMenuNotice_ = "No saved worlds yet. Choose Start new world.";
+        return false;
     }
-    return createNewSingleplayerWorld();
+
+    selectedSingleplayerWorldIndex_ = std::min(selectedSingleplayerWorldIndex_, singleplayerWorlds_.size() - 1);
+    return true;
 }
 
 void Application::cycleSelectedSingleplayerWorld(const int direction)
@@ -329,6 +332,7 @@ void Application::unloadActiveSingleplayerWorld()
     autosaveAccumulatorSeconds_ = 0.0f;
     sessionPlayTimeSeconds_ = 0.0f;
     chatState_ = {};
+    primedTntStates_.clear();
 }
 
 std::filesystem::path Application::multiplayerPrefsPath() const

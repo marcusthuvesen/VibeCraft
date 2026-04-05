@@ -25,6 +25,16 @@ namespace
         static_cast<float>((coord.z + 1) * world::Chunk::kSize),
     };
 }
+
+[[nodiscard]] meshing::ChunkMeshBuildSettings focusedMeshBuildSettings(const int cameraWorldY)
+{
+    return meshing::ChunkMeshBuildSettings{
+        .prioritizeVerticalWindow = true,
+        .focusCenterY = cameraWorldY,
+        .renderAboveBlocks = 88,
+        .renderBelowBlocks = 52,
+    };
+}
 }  // namespace
 
 std::uint64_t chunkMeshId(const world::ChunkCoord& coord)
@@ -39,6 +49,7 @@ MeshSyncCpuData buildMeshSyncCpuData(
     const std::unordered_set<std::uint64_t>& residentChunkMeshIds,
     const std::unordered_set<world::ChunkCoord, world::ChunkCoordHash>& dirtyCoordSet,
     const world::ChunkCoord& cameraChunk,
+    const int cameraWorldY,
     const int residentChunkRadius,
     const std::size_t meshBuildBudget)
 {
@@ -109,7 +120,7 @@ MeshSyncCpuData buildMeshSyncCpuData(
         }
 
         const std::uint64_t meshId = chunkMeshId(coord);
-        meshing::ChunkMeshData meshData = chunkMesher.buildMesh(world, coord);
+        meshing::ChunkMeshData meshData = chunkMesher.buildMesh(world, coord, focusedMeshBuildSettings(cameraWorldY));
         if (meshData.vertices.empty() || meshData.indices.empty())
         {
             cpuData.removedMeshIds.push_back(meshId);

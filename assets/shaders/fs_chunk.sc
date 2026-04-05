@@ -22,20 +22,38 @@ void main()
     float sunVis = clamp(u_sunLightColor.w, 0.0, 1.0);
     float moonVis = clamp(u_moonLightColor.w, 0.0, 1.0);
 
-    // Keep chunk lighting simple so the albedo reads cleanly instead of being heavily graded in shader.
+    // Minecraft-like readability: stronger face-based shading, plus weather-aware daylight contrast.
     float sunDiffuse = max(dot(normal, sunDirection), 0.0);
     float moonDiffuse = max(dot(normal, moonDirection), 0.0);
-    float up = max(normal.y, 0.0);
-    // Slight hemispheric bias so topsoil and flat faces read a bit warmer (reference-style readability).
-    float skyFill = 0.095 + up * 0.13 * (0.42 + 0.58 * sunVis);
-    float hemi = mix(0.94, 1.06, up);
+    float rain = clamp(u_chunkAnim.y, 0.0, 1.0);
+
+    float sideAxis = max(abs(normal.x), abs(normal.z));
+    float faceShade = 0.80;
+    if (normal.y > 0.5)
+    {
+        faceShade = 1.00;
+    }
+    else if (normal.y < -0.5)
+    {
+        faceShade = 0.56;
+    }
+    else if (sideAxis > 0.5)
+    {
+        // Mild directional asymmetry makes crowns/terrain read less flat.
+        faceShade = abs(normal.z) > abs(normal.x) ? 0.76 : 0.68;
+    }
+
+    float sunTerm = (0.18 + 0.82 * sunDiffuse) * (1.0 - rain * 0.35);
+    float moonTerm = (0.14 + 0.86 * moonDiffuse) * (1.0 - rain * 0.12);
+    float skyFill = mix(0.03, 0.11, sunVis) + mix(0.0, 0.03, moonVis);
 
     vec3 lighting =
-        u_ambientLight.rgb * hemi
-        + u_sunLightColor.rgb * sunDiffuse
-        + u_moonLightColor.rgb * moonDiffuse
+        u_ambientLight.rgb
+        + u_sunLightColor.rgb * sunTerm
+        + u_moonLightColor.rgb * moonTerm
         + vec3(skyFill, skyFill, skyFill);
-    lighting = clamp(lighting, vec3(0.0, 0.0, 0.0), vec3(1.55, 1.55, 1.55));
+    lighting *= faceShade;
+    lighting = clamp(lighting, vec3(0.0, 0.0, 0.0), vec3(1.45, 1.45, 1.45));
     vec4 atlasColor = texture2D(s_chunkAtlas, v_uv);
     // Cutout alpha avoids writing depth for fully transparent texels (flowers/torch),
     // which otherwise creates "holes" where background terrain disappears.

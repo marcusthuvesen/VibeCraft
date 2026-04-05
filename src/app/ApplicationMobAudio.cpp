@@ -26,6 +26,12 @@ namespace
         return 0.42f;
     case MK::Zombie:
         return 0.88f;
+    case MK::Skeleton:
+        return 0.90f;
+    case MK::Creeper:
+        return 0.84f;
+    case MK::Spider:
+        return 0.64f;
     case MK::Player:
         return 0.0f;
     }
@@ -47,6 +53,12 @@ namespace
         return 5.5f;
     case MK::Zombie:
         return 10.0f;
+    case MK::Skeleton:
+        return 9.5f;
+    case MK::Creeper:
+        return 11.0f;
+    case MK::Spider:
+        return 8.0f;
     case MK::Player:
         return 1000.0f;
     }
@@ -68,6 +80,12 @@ namespace
         return 4.0f;
     case MK::Zombie:
         return 6.0f;
+    case MK::Skeleton:
+        return 5.5f;
+    case MK::Creeper:
+        return 6.5f;
+    case MK::Spider:
+        return 5.0f;
     case MK::Player:
         return 0.0f;
     }

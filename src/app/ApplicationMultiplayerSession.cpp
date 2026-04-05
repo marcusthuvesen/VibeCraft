@@ -15,6 +15,7 @@
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
 #include "vibecraft/app/ApplicationMultiplayerLog.hpp"
 #include "vibecraft/multiplayer/UdpTransport.hpp"
+#include "vibecraft/multiplayer/WorldSync.hpp"
 
 namespace vibecraft::app
 {
@@ -32,7 +33,6 @@ bool Application::startHostSession()
     hostSession_ = std::move(hostSession);
     multiplayerMode_ = MultiplayerRuntimeMode::Host;
     localClientId_ = 0;
-    worldSyncSentClients_.clear();
     clientChunkSyncCoordsById_.clear();
     clientChunkSyncCursorById_.clear();
     clientChunkSyncCenterById_.clear();
@@ -75,7 +75,6 @@ void Application::stopMultiplayerSessions()
     multiplayerMode_ = MultiplayerRuntimeMode::SinglePlayer;
     localClientId_ = 0;
     remotePlayers_.clear();
-    worldSyncSentClients_.clear();
     clientChunkSyncCoordsById_.clear();
     clientChunkSyncCursorById_.clear();
     clientChunkSyncCenterById_.clear();
@@ -114,43 +113,18 @@ void Application::beginClientJoinLoad()
 
 void Application::sendInitialWorldToClient(const std::uint16_t clientId)
 {
-    if (hostSession_ == nullptr)
-    {
-        return;
-    }
-
-    for (const auto& [coord, chunk] : world_.chunks())
-    {
-        multiplayer::protocol::ChunkSnapshotMessage snapshot{
-            .coord = coord,
-        };
-        const auto& blockStorage = chunk.blockStorage();
-        for (std::size_t i = 0; i < blockStorage.size(); ++i)
-        {
-            snapshot.blocks[i] = static_cast<std::uint8_t>(blockStorage[i]);
-        }
-        hostSession_->sendChunkSnapshot(clientId, snapshot);
-    }
+    constexpr std::size_t kInitialChunkBurstPerClient = 12;
+    sendChunkSnapshotsToClient(clientId, kInitialChunkBurstPerClient);
 }
 
 void Application::applyChunkSnapshot(const multiplayer::protocol::ChunkSnapshotMessage& chunkMessage)
 {
-    world::Chunk chunk(chunkMessage.coord);
-    auto& storage = chunk.mutableBlockStorage();
-    for (std::size_t i = 0; i < storage.size(); ++i)
-    {
-        storage[i] = static_cast<world::BlockType>(chunkMessage.blocks[i]);
-    }
-    world_.replaceChunk(std::move(chunk));
+    multiplayer::applyChunkSnapshot(world_, chunkMessage);
 }
 
 void Application::applyRemoteBlockEdit(const multiplayer::protocol::BlockEditEventMessage& editMessage)
 {
-    static_cast<void>(world_.applyEditCommand({
-        .action = editMessage.action,
-        .position = {editMessage.x, editMessage.y, editMessage.z},
-        .blockType = editMessage.blockType,
-    }));
+    static_cast<void>(multiplayer::applyBlockEditEvent(world_, editMessage));
 }
 
 multiplayer::protocol::ServerSnapshotMessage Application::buildServerSnapshot() const
@@ -309,6 +283,9 @@ void Application::clearClientWorldAwaitingHostChunks()
         renderer_.updateSceneMeshes({}, removedMeshIds);
     }
     residentChunkMeshIds_.clear();
+    residentChunkMeshVerticalBandById_.clear();
+    resetChunkGenerationPipeline();
+    resetChunkMeshingPipeline();
 
     vibecraft::world::World::ChunkMap emptyChunks;
     world_.replaceChunks(std::move(emptyChunks));

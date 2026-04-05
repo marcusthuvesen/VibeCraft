@@ -35,8 +35,15 @@ void Application::beginSingleplayerLoad()
     singleplayerLoadState_.active = true;
     singleplayerLoadState_.worldPrepared = false;
     singleplayerLoadState_.playerStateLoaded = false;
+    singleplayerLoadState_.spawnSearchActive = false;
     singleplayerLoadState_.progress = 0.0f;
     singleplayerLoadState_.label = "Loading world...";
+    singleplayerLoadState_.spawnProbePosition = glm::vec3(0.0f);
+    singleplayerLoadState_.spawnSearchOffsets.clear();
+    singleplayerLoadState_.spawnSearchIndex = 0;
+    singleplayerLoadState_.bestSpawnCandidate.reset();
+    singleplayerLoadState_.bestSpawnCrowding = std::numeric_limits<int>::max();
+    singleplayerLoadState_.bestSpawnPenalty = std::numeric_limits<int>::max();
 
     stopMultiplayerSessions();
     mainMenuSingleplayerPickerOpen_ = false;
@@ -56,13 +63,16 @@ void Application::beginSingleplayerLoad()
         renderer_.updateSceneMeshes({}, removedMeshIds);
     }
     residentChunkMeshIds_.clear();
+    residentChunkMeshVerticalBandById_.clear();
+    resetChunkGenerationPipeline();
+    resetChunkMeshingPipeline();
 
     vibecraft::world::World::ChunkMap emptyChunks;
     world_.replaceChunks(std::move(emptyChunks));
     droppedItems_.clear();
+    primedTntStates_.clear();
     furnaceStatesByPosition_.clear();
     remotePlayers_.clear();
-    worldSyncSentClients_.clear();
     clientChunkSyncCoordsById_.clear();
     clientChunkSyncCursorById_.clear();
     clientChunkSyncCenterById_.clear();
@@ -280,6 +290,7 @@ void Application::updateSingleplayerLoad()
             residentChunkMeshIds_,
             dirtyCoordSet,
             cameraChunk,
+            static_cast<int>(std::floor(camera_.position().y)),
             kStreamingSettings.residentChunkRadius,
             std::max<std::size_t>(12, kStreamingSettings.meshBuildBudgetPerFrame * 3));
         applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
@@ -414,16 +425,10 @@ void Application::updateSingleplayerLoad()
         const float spawnHeight = kPlayerMovementSettings.standingColliderHeight;
         if (!singleplayerLoadState_.playerStateLoaded)
         {
-            playerFeetPosition_ = resolveSpawnFeetPosition(
-                world_,
-                terrainGenerator_,
-                spawnPreset_,
-                spawnBiomeTarget_,
-                camera_.position(),
-                spawnHeight);
-            spawnFeetPosition_ = playerFeetPosition_;
-            camera_.setPosition(
-                playerFeetPosition_ + glm::vec3(0.0f, kPlayerMovementSettings.standingEyeHeight, 0.0f));
+            if (!continueSingleplayerSpawnSearch(spawnHeight))
+            {
+                return;
+            }
         }
         isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, spawnHeight);
         accumulatedFallDistance_ = 0.0f;
@@ -457,6 +462,7 @@ void Application::updateSingleplayerLoad()
         residentChunkMeshIds_,
         dirtyCoordSet,
         cameraChunk,
+        static_cast<int>(std::floor(camera_.position().y)),
         kStreamingSettings.residentChunkRadius,
         std::max<std::size_t>(12, kStreamingSettings.meshBuildBudgetPerFrame * 3));
     applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);

@@ -6,6 +6,7 @@
 #include <bgfx/bgfx.h>
 #include <fmt/format.h>
 
+#include "vibecraft/app/StartupFlow.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
 #include "vibecraft/render/Renderer.hpp"
 #include "vibecraft/render/RendererDetail.hpp"
@@ -39,17 +40,39 @@ void Application::processMainMenuInput()
         mainMenuNotice_.clear();
         return;
     }
+    const auto startSingleplayerFromRequest = [this](const SingleplayerStartRequest request)
+    {
+        pendingHostStartAfterWorldLoad_ = false;
+        switch (resolveSingleplayerStartAction(request, !singleplayerWorlds_.empty()))
+        {
+        case SingleplayerStartAction::StartSelectedWorld:
+            beginSingleplayerLoad();
+            return true;
+        case SingleplayerStartAction::CreateAndStartWorld:
+            if (createNewSingleplayerWorld())
+            {
+                beginSingleplayerLoad();
+                return true;
+            }
+            return false;
+        case SingleplayerStartAction::MissingSavedWorld:
+            mainMenuSingleplayerPickerOpen_ = true;
+            mainMenuNotice_ = "No saved worlds yet. Choose Start new world.";
+            return false;
+        }
+        return false;
+    };
     if (autoStartSingleplayerRequested_ && !autoStartSingleplayerConsumed_)
     {
         autoStartSingleplayerConsumed_ = true;
-        pendingHostStartAfterWorldLoad_ = false;
-        if (!autoStartCreatesNewWorld_ || createNewSingleplayerWorld())
+        if (!startSingleplayerFromRequest(
+                autoStartCreatesNewWorld_ ? SingleplayerStartRequest::CreateNewWorld
+                                          : SingleplayerStartRequest::LoadSavedWorld))
         {
-            beginSingleplayerLoad();
-        }
-        else
-        {
-            mainMenuNotice_ = "Auto-start singleplayer failed.";
+            if (autoStartCreatesNewWorld_)
+            {
+                mainMenuNotice_ = "Auto-start singleplayer failed.";
+            }
         }
         return;
     }
@@ -70,10 +93,13 @@ void Application::processMainMenuInput()
     }
     if (newWorldKeyDown && !newWorldKeyWasDown_)
     {
-        if (createNewSingleplayerWorld() && mainMenuSingleplayerPickerOpen_)
+        if (mainMenuSingleplayerPickerOpen_)
         {
-            pendingHostStartAfterWorldLoad_ = false;
-            beginSingleplayerLoad();
+            startSingleplayerFromRequest(SingleplayerStartRequest::CreateNewWorld);
+        }
+        else
+        {
+            createNewSingleplayerWorld();
         }
     }
     if (nextWorldKeyDown && !nextWorldKeyWasDown_)
@@ -278,15 +304,10 @@ void Application::processMainMenuInput()
             switch (hit)
             {
             case 0:
-                pendingHostStartAfterWorldLoad_ = false;
-                beginSingleplayerLoad();
+                startSingleplayerFromRequest(SingleplayerStartRequest::LoadSavedWorld);
                 break;
             case 1:
-                if (createNewSingleplayerWorld())
-                {
-                    pendingHostStartAfterWorldLoad_ = false;
-                    beginSingleplayerLoad();
-                }
+                startSingleplayerFromRequest(SingleplayerStartRequest::CreateNewWorld);
                 break;
             case 2:
                 spawnBiomeTarget_ = nextSpawnBiomeTarget(spawnBiomeTarget_);
@@ -351,11 +372,7 @@ void Application::processMainMenuInput()
                 mainMenuSingleplayerPickerOpen_ = true;
                 break;
             case 8:
-                if (createNewSingleplayerWorld() && mainMenuSingleplayerPickerOpen_)
-                {
-                    pendingHostStartAfterWorldLoad_ = false;
-                    beginSingleplayerLoad();
-                }
+                startSingleplayerFromRequest(SingleplayerStartRequest::CreateNewWorld);
                 break;
             case 9:
                 cycleSelectedSingleplayerWorld(1);

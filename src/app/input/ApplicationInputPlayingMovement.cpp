@@ -96,9 +96,22 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
         return true;
     }
 
-    const bool sneaking = inputState_.isKeyDown(SDL_SCANCODE_LSHIFT);
+    if (!creativeModeEnabled_)
+    {
+        creativeFlightActive_ = false;
+        creativeFlightToggleWindowSeconds_ = 0.0f;
+    }
+    else if (creativeFlightToggleWindowSeconds_ > 0.0f)
+    {
+        creativeFlightToggleWindowSeconds_ =
+            std::max(0.0f, creativeFlightToggleWindowSeconds_ - deltaTimeSeconds);
+    }
+
+    const bool descendHeld = inputState_.isKeyDown(SDL_SCANCODE_LSHIFT);
+    const bool sneaking = descendHeld && !creativeFlightActive_;
     const bool sprinting =
-        (inputState_.isKeyDown(SDL_SCANCODE_LCTRL) || inputState_.isKeyDown(SDL_SCANCODE_RCTRL)) && !sneaking;
+        (inputState_.isKeyDown(SDL_SCANCODE_LCTRL) || inputState_.isKeyDown(SDL_SCANCODE_RCTRL))
+        && !descendHeld;
     const float colliderHeight = sneaking ? kPlayerMovementSettings.sneakingColliderHeight
                                           : kPlayerMovementSettings.standingColliderHeight;
     const float eyeHeight = sneaking ? kPlayerMovementSettings.sneakingEyeHeight
@@ -113,6 +126,10 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     else if (sprinting)
     {
         currentMoveSpeed *= kInputTuning.sprintSpeedMultiplier;
+    }
+    if (creativeFlightActive_)
+    {
+        currentMoveSpeed *= 1.16f;
     }
     const game::EnvironmentalHazards movementHazardsBeforeStep =
         samplePlayerHazards(world_, playerFeetPosition_, colliderHeight, eyeHeight);
@@ -241,13 +258,36 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     isGrounded_ = isGroundedAtFeetPosition(world_, playerFeetPosition_, colliderHeight);
 
     const bool jumpHeld = inputState_.isKeyDown(SDL_SCANCODE_SPACE);
-    if (!inWaterForMovement && jumpHeld && !jumpWasHeld_ && isGrounded_)
+    if (creativeModeEnabled_ && jumpHeld && !jumpWasHeld_)
+    {
+        constexpr float kCreativeFlightToggleWindowSeconds = 0.28f;
+        if (creativeFlightToggleWindowSeconds_ > 0.0f)
+        {
+            creativeFlightActive_ = !creativeFlightActive_;
+            creativeFlightToggleWindowSeconds_ = 0.0f;
+            verticalVelocity_ = 0.0f;
+            accumulatedFallDistance_ = 0.0f;
+            autoJumpCooldownSeconds_ = 0.0f;
+            if (creativeFlightActive_)
+            {
+                isGrounded_ = false;
+            }
+        }
+        else
+        {
+            creativeFlightToggleWindowSeconds_ = kCreativeFlightToggleWindowSeconds;
+        }
+    }
+
+    if (!creativeFlightActive_ && !inWaterForMovement && jumpHeld && !jumpWasHeld_ && isGrounded_)
     {
         verticalVelocity_ = kPlayerMovementSettings.jumpVelocity;
         isGrounded_ = false;
         soundEffects_.playPlayerJump();
     }
     else if (
+        !creativeFlightActive_
+        &&
         !inWaterForMovement && !sneaking && autoJumpCooldownSeconds_ <= 0.0f && stuckLowProgress && isGrounded_
         && canAutoJumpOneBlockLedge(world_, playerFeetPosition_, wishXZ, colliderHeight))
     {
@@ -264,7 +304,22 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
         && (aabbTouchesBlockType(world_, playerBodyForVines, world::BlockType::Vines)
             || aabbTouchesBlockType(world_, playerBodyForVines, world::BlockType::Ladder));
 
-    if (inWaterForMovement)
+    if (creativeFlightActive_)
+    {
+        if (jumpHeld)
+        {
+            verticalVelocity_ = currentMoveSpeed;
+        }
+        else if (descendHeld)
+        {
+            verticalVelocity_ = -currentMoveSpeed;
+        }
+        else
+        {
+            verticalVelocity_ = 0.0f;
+        }
+    }
+    else if (inWaterForMovement)
     {
         WaterVerticalInput waterVert{};
         waterVert.settings = &kPlayerMovementSettings;
@@ -309,7 +364,7 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
 
     const glm::vec3 verticalStartPosition = playerFeetPosition_;
     float verticalDisplacement = verticalVelocity_ * deltaTimeSeconds;
-    if (inWaterForMovement)
+    if (!creativeFlightActive_ && inWaterForMovement)
     {
         verticalDisplacement += swimVerticalFromLook;
     }
@@ -358,7 +413,7 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
         accumulatedFallDistance_ += std::max(0.0f, verticalStartPosition.y - playerFeetPosition_.y);
     }
 
-    const bool landedThisFrame = !wasGrounded && isGrounded_;
+    const bool landedThisFrame = !creativeFlightActive_ && !wasGrounded && isGrounded_;
     bool playerTookDamageThisFrame = false;
     if (landedThisFrame)
     {
@@ -389,7 +444,7 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
         accumulatedFallDistance_ = 0.0f;
     }
 
-    if (isGrounded_ && !playerHazards_.bodyInWater && horizontalMoveDistance > 0.0001f)
+    if (!creativeFlightActive_ && isGrounded_ && !playerHazards_.bodyInWater && horizontalMoveDistance > 0.0001f)
     {
         const float stepIntervalMeters = sprinting ? 0.31f : 0.42f;
         footstepDistanceAccumulator_ += horizontalMoveDistance;
@@ -428,6 +483,10 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     else if (!isGrounded_)
     {
         footstepDistanceAccumulator_ = 0.0f;
+    }
+    if (creativeFlightActive_)
+    {
+        accumulatedFallDistance_ = 0.0f;
     }
 
     if (creativeModeEnabled_)

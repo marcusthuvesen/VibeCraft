@@ -7,6 +7,8 @@
 #include <limits>
 #include <vector>
 
+#include "ChunkMesherTorchGeometry.hpp"
+#include "ChunkMesherTorchLighting.hpp"
 #include "vibecraft/ChunkAtlasLayout.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/World.hpp"
@@ -273,7 +275,7 @@ struct IntOffset
     const int sampleOriginY = y + face.offsetY;
     const int sampleOriginZ = localZ + face.offsetZ;
 
-    const bool sideAOccluder = vibecraft::world::occludesFaces(sampledNeighborBlock(
+    const BlockType sideABlock = sampledNeighborBlock(
         currentStorage,
         westChunk,
         eastChunk,
@@ -281,8 +283,8 @@ struct IntOffset
         southChunk,
         sampleOriginX + axisA.x * signA,
         sampleOriginY + axisA.y * signA,
-        sampleOriginZ + axisA.z * signA));
-    const bool sideBOccluder = vibecraft::world::occludesFaces(sampledNeighborBlock(
+        sampleOriginZ + axisA.z * signA);
+    const BlockType sideBBlock = sampledNeighborBlock(
         currentStorage,
         westChunk,
         eastChunk,
@@ -290,8 +292,8 @@ struct IntOffset
         southChunk,
         sampleOriginX + axisB.x * signB,
         sampleOriginY + axisB.y * signB,
-        sampleOriginZ + axisB.z * signB));
-    const bool cornerOccluder = vibecraft::world::occludesFaces(sampledNeighborBlock(
+        sampleOriginZ + axisB.z * signB);
+    const BlockType cornerBlock = sampledNeighborBlock(
         currentStorage,
         westChunk,
         eastChunk,
@@ -299,119 +301,57 @@ struct IntOffset
         southChunk,
         sampleOriginX + axisA.x * signA + axisB.x * signB,
         sampleOriginY + axisA.y * signA + axisB.y * signB,
-        sampleOriginZ + axisA.z * signA + axisB.z * signB));
+        sampleOriginZ + axisA.z * signA + axisB.z * signB);
 
-    int occluders = (sideAOccluder ? 1 : 0) + (sideBOccluder ? 1 : 0) + (cornerOccluder ? 1 : 0);
-    if (sideAOccluder && sideBOccluder)
+    const auto occlusionWeight = [](const BlockType blockType)
     {
-        occluders = 3;
+        if (vibecraft::world::occludesFaces(blockType))
+        {
+            return 1.0f;
+        }
+        if (vibecraft::world::isLeafBlock(blockType))
+        {
+            return 0.45f;
+        }
+        return 0.0f;
+    };
+
+    const float sideAOcclusion = occlusionWeight(sideABlock);
+    const float sideBOcclusion = occlusionWeight(sideBBlock);
+    const float cornerOcclusion = occlusionWeight(cornerBlock);
+    float occlusion = sideAOcclusion + sideBOcclusion + cornerOcclusion;
+    if (sideAOcclusion > 0.0f && sideBOcclusion > 0.0f)
+    {
+        occlusion = std::max(occlusion, 2.5f);
     }
 
-    constexpr std::array<float, 4> kAoByOccluderCount{1.0f, 0.93f, 0.86f, 0.80f};
-    return kAoByOccluderCount[static_cast<std::size_t>(std::clamp(occluders, 0, 3))];
+    const float t = std::clamp(occlusion / 3.0f, 0.0f, 1.0f);
+    return std::clamp(1.0f - t * 0.20f, 0.80f, 1.0f);
 }
 
-struct TorchEmitter
+[[nodiscard]] float foliageColorMultiplier(
+    const BlockType blockType,
+    const vibecraft::world::BlockFace face,
+    const int worldX,
+    const int y,
+    const int worldZ)
 {
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
-};
-
-[[nodiscard]] std::vector<TorchEmitter> collectNearbyTorchEmitters(
-    const vibecraft::world::World& world,
-    const vibecraft::world::ChunkCoord& center)
-{
-    constexpr int kTorchEmitterChunkRadius = 1;
-    std::vector<TorchEmitter> emitters;
-    for (const auto& [chunkCoord, chunk] : world.chunks())
+    if (!vibecraft::world::isLeafBlock(blockType))
     {
-        if (std::abs(chunkCoord.x - center.x) > kTorchEmitterChunkRadius
-            || std::abs(chunkCoord.z - center.z) > kTorchEmitterChunkRadius)
-        {
-            continue;
-        }
-
-        const BlockStorage& storage = chunk.blockStorage();
-        const int chunkBaseX = chunkCoord.x * vibecraft::world::Chunk::kSize;
-        const int chunkBaseZ = chunkCoord.z * vibecraft::world::Chunk::kSize;
-        for (int localZ = 0; localZ < vibecraft::world::Chunk::kSize; ++localZ)
-        {
-            for (int localX = 0; localX < vibecraft::world::Chunk::kSize; ++localX)
-            {
-                for (int y = vibecraft::world::kWorldMinY; y <= vibecraft::world::kWorldMaxY; ++y)
-                {
-                    const BlockType torchBlockType = blockFromStorage(storage, localX, y, localZ);
-                    if (!vibecraft::world::isTorchBlock(torchBlockType))
-                    {
-                        continue;
-                    }
-                    float emitterOffsetX = 0.5f;
-                    float emitterOffsetY = 0.72f;
-                    float emitterOffsetZ = 0.5f;
-                    switch (torchBlockType)
-                    {
-                    case BlockType::TorchNorth:
-                        emitterOffsetZ = 0.30f;
-                        emitterOffsetY = 0.80f;
-                        break;
-                    case BlockType::TorchEast:
-                        emitterOffsetX = 0.70f;
-                        emitterOffsetY = 0.80f;
-                        break;
-                    case BlockType::TorchSouth:
-                        emitterOffsetZ = 0.70f;
-                        emitterOffsetY = 0.80f;
-                        break;
-                    case BlockType::TorchWest:
-                        emitterOffsetX = 0.30f;
-                        emitterOffsetY = 0.80f;
-                        break;
-                    case BlockType::Torch:
-                    default:
-                        break;
-                    }
-                    emitters.push_back(TorchEmitter{
-                        .x = static_cast<float>(chunkBaseX + localX) + emitterOffsetX,
-                        .y = static_cast<float>(y) + emitterOffsetY,
-                        .z = static_cast<float>(chunkBaseZ + localZ) + emitterOffsetZ,
-                    });
-                }
-            }
-        }
-    }
-    return emitters;
-}
-
-[[nodiscard]] float torchLightMultiplierAt(
-    const float x,
-    const float y,
-    const float z,
-    const std::vector<TorchEmitter>& emitters)
-{
-    constexpr float kTorchLightRadius = 8.0f;
-    constexpr float kTorchLightStrength = 0.85f;
-    constexpr float kTorchLightRadiusSq = kTorchLightRadius * kTorchLightRadius;
-
-    float bestIntensity = 0.0f;
-    for (const TorchEmitter& emitter : emitters)
-    {
-        const float dx = x - emitter.x;
-        const float dy = y - emitter.y;
-        const float dz = z - emitter.z;
-        const float distanceSq = dx * dx + dy * dy + dz * dz;
-        if (distanceSq >= kTorchLightRadiusSq)
-        {
-            continue;
-        }
-
-        const float distance = std::sqrt(distanceSq);
-        const float linear = 1.0f - distance / kTorchLightRadius;
-        const float intensity = linear * linear * (3.0f - 2.0f * linear);
-        bestIntensity = std::max(bestIntensity, intensity);
+        return 1.0f;
     }
 
-    return 1.0f + bestIntensity * kTorchLightStrength;
+    const float variation = 0.93f + hash01(worldX, y, worldZ, 0x98a46f13u) * 0.14f;
+    float faceBias = 1.0f;
+    if (face == vibecraft::world::BlockFace::Top)
+    {
+        faceBias = 1.08f;
+    }
+    else if (face == vibecraft::world::BlockFace::Bottom)
+    {
+        faceBias = 0.90f;
+    }
+    return variation * faceBias;
 }
 
 void appendCustomQuad(
@@ -455,33 +395,6 @@ enum class StairFacing : std::uint8_t
     South,
     West
 };
-
-enum class TorchFacing : std::uint8_t
-{
-    Standing = 0,
-    North,
-    East,
-    South,
-    West
-};
-
-[[nodiscard]] TorchFacing torchFacingForBlockType(const BlockType blockType)
-{
-    switch (blockType)
-    {
-    case BlockType::TorchNorth:
-        return TorchFacing::North;
-    case BlockType::TorchEast:
-        return TorchFacing::East;
-    case BlockType::TorchSouth:
-        return TorchFacing::South;
-    case BlockType::TorchWest:
-        return TorchFacing::West;
-    case BlockType::Torch:
-    default:
-        return TorchFacing::Standing;
-    }
-}
 
 [[nodiscard]] StairFacing stairFacingForBlockType(const BlockType blockType)
 {
@@ -698,229 +611,6 @@ void appendStairsGeometry(
     }
 }
 
-void appendTorchGeometry(
-    ChunkMeshData& meshData,
-    const BlockType blockType,
-    const int worldX,
-    const int y,
-    const int worldZ,
-    const std::uint32_t baseAbgr)
-{
-    const vibecraft::world::BlockMetadata metadata = vibecraft::world::blockMetadata(blockType);
-    const std::uint8_t tileIndex = metadata.textureTiles.side;
-    const std::uint32_t flameAbgr = modulateAbgrRgb(baseAbgr, 1.35f);
-    const TorchFacing facing = torchFacingForBlockType(blockType);
-    constexpr float kStemHalfWidth = 1.0f / 16.0f;
-    constexpr float kCoreHalfWidth = 1.5f / 16.0f;
-    constexpr float kFlameHalfWidth = 2.0f / 16.0f;
-
-    if (facing == TorchFacing::Standing)
-    {
-        appendBoxQuads(
-            meshData,
-            worldX,
-            y,
-            worldZ,
-            0.5f - kStemHalfWidth,
-            0.5f + kStemHalfWidth,
-            0.0f,
-            0.60f,
-            0.5f - kStemHalfWidth,
-            0.5f + kStemHalfWidth,
-            tileIndex,
-            tileIndex,
-            tileIndex,
-            baseAbgr);
-        appendBoxQuads(
-            meshData,
-            worldX,
-            y,
-            worldZ,
-            0.5f - kCoreHalfWidth,
-            0.5f + kCoreHalfWidth,
-            0.60f,
-            0.78f,
-            0.5f - kCoreHalfWidth,
-            0.5f + kCoreHalfWidth,
-            tileIndex,
-            tileIndex,
-            tileIndex,
-            baseAbgr);
-        appendBoxQuads(
-            meshData,
-            worldX,
-            y,
-            worldZ,
-            0.5f - kFlameHalfWidth,
-            0.5f + kFlameHalfWidth,
-            0.78f,
-            0.92f,
-            0.5f - kFlameHalfWidth,
-            0.5f + kFlameHalfWidth,
-            tileIndex,
-            tileIndex,
-            tileIndex,
-            flameAbgr);
-        return;
-    }
-
-    auto appendWallTorch = [&](const bool negativeDirection, const bool alongZAxis)
-    {
-        if (alongZAxis)
-        {
-            const float baseZ = negativeDirection ? 0.84f : 0.16f;
-            const float midZ = negativeDirection ? 0.67f : 0.33f;
-            const float tipZ = negativeDirection ? 0.50f : 0.50f;
-            const float flameCenterZ = negativeDirection ? 0.39f : 0.61f;
-            appendBoxQuads(
-                meshData,
-                worldX,
-                y,
-                worldZ,
-                0.5f - kStemHalfWidth,
-                0.5f + kStemHalfWidth,
-                0.18f,
-                0.36f,
-                std::min(baseZ, midZ) - kStemHalfWidth,
-                std::max(baseZ, midZ) + kStemHalfWidth,
-                tileIndex,
-                tileIndex,
-                tileIndex,
-                baseAbgr);
-            appendBoxQuads(
-                meshData,
-                worldX,
-                y,
-                worldZ,
-                0.5f - kStemHalfWidth,
-                0.5f + kStemHalfWidth,
-                0.36f,
-                0.56f,
-                std::min(midZ, tipZ) - kStemHalfWidth,
-                std::max(midZ, tipZ) + kStemHalfWidth,
-                tileIndex,
-                tileIndex,
-                tileIndex,
-                baseAbgr);
-            appendBoxQuads(
-                meshData,
-                worldX,
-                y,
-                worldZ,
-                0.5f - kCoreHalfWidth,
-                0.5f + kCoreHalfWidth,
-                0.56f,
-                0.74f,
-                std::min(tipZ, flameCenterZ) - kCoreHalfWidth,
-                std::max(tipZ, flameCenterZ) + kCoreHalfWidth,
-                tileIndex,
-                tileIndex,
-                tileIndex,
-                baseAbgr);
-            appendBoxQuads(
-                meshData,
-                worldX,
-                y,
-                worldZ,
-                0.5f - kFlameHalfWidth,
-                0.5f + kFlameHalfWidth,
-                0.74f,
-                0.90f,
-                flameCenterZ - kFlameHalfWidth,
-                flameCenterZ + kFlameHalfWidth,
-                tileIndex,
-                tileIndex,
-                tileIndex,
-                flameAbgr);
-            return;
-        }
-
-        const float baseX = negativeDirection ? 0.84f : 0.16f;
-        const float midX = negativeDirection ? 0.67f : 0.33f;
-        const float tipX = 0.50f;
-        const float flameCenterX = negativeDirection ? 0.39f : 0.61f;
-        appendBoxQuads(
-            meshData,
-            worldX,
-            y,
-            worldZ,
-            std::min(baseX, midX) - kStemHalfWidth,
-            std::max(baseX, midX) + kStemHalfWidth,
-            0.18f,
-            0.36f,
-            0.5f - kStemHalfWidth,
-            0.5f + kStemHalfWidth,
-            tileIndex,
-            tileIndex,
-            tileIndex,
-            baseAbgr);
-        appendBoxQuads(
-            meshData,
-            worldX,
-            y,
-            worldZ,
-            std::min(midX, tipX) - kStemHalfWidth,
-            std::max(midX, tipX) + kStemHalfWidth,
-            0.36f,
-            0.56f,
-            0.5f - kStemHalfWidth,
-            0.5f + kStemHalfWidth,
-            tileIndex,
-            tileIndex,
-            tileIndex,
-            baseAbgr);
-        appendBoxQuads(
-            meshData,
-            worldX,
-            y,
-            worldZ,
-            std::min(tipX, flameCenterX) - kCoreHalfWidth,
-            std::max(tipX, flameCenterX) + kCoreHalfWidth,
-            0.56f,
-            0.74f,
-            0.5f - kCoreHalfWidth,
-            0.5f + kCoreHalfWidth,
-            tileIndex,
-            tileIndex,
-            tileIndex,
-            baseAbgr);
-        appendBoxQuads(
-            meshData,
-            worldX,
-            y,
-            worldZ,
-            flameCenterX - kFlameHalfWidth,
-            flameCenterX + kFlameHalfWidth,
-            0.74f,
-            0.90f,
-            0.5f - kFlameHalfWidth,
-            0.5f + kFlameHalfWidth,
-            tileIndex,
-            tileIndex,
-            tileIndex,
-            flameAbgr);
-    };
-
-    switch (facing)
-    {
-    case TorchFacing::East:
-        appendWallTorch(false, false);
-        break;
-    case TorchFacing::West:
-        appendWallTorch(true, false);
-        break;
-    case TorchFacing::South:
-        appendWallTorch(false, true);
-        break;
-    case TorchFacing::North:
-        appendWallTorch(true, true);
-        break;
-    case TorchFacing::Standing:
-    default:
-        break;
-    }
-}
-
 void appendDoorGeometry(
     ChunkMeshData& meshData,
     const BlockType blockType,
@@ -1132,7 +822,8 @@ void appendBookshelfInsetFace(
 
 ChunkMeshData ChunkMesher::buildMesh(
     const vibecraft::world::World& world,
-    const vibecraft::world::ChunkCoord& coord) const
+    const vibecraft::world::ChunkCoord& coord,
+    const ChunkMeshBuildSettings& settings) const
 {
     ChunkMeshData meshData;
     const auto currentChunkIt = world.chunks().find(coord);
@@ -1162,12 +853,26 @@ ChunkMeshData ChunkMesher::buildMesh(
     columnMinY.fill(kNoRenderableBlock);
     columnMaxY.fill(kNoRenderableBlock);
 
+    int scanMinY = vibecraft::world::kWorldMinY;
+    int scanMaxY = vibecraft::world::kWorldMaxY;
+    if (settings.prioritizeVerticalWindow)
+    {
+        const int below = std::max(0, settings.renderBelowBlocks);
+        const int above = std::max(0, settings.renderAboveBlocks);
+        scanMinY = std::clamp(settings.focusCenterY - below, vibecraft::world::kWorldMinY, vibecraft::world::kWorldMaxY);
+        scanMaxY = std::clamp(settings.focusCenterY + above, vibecraft::world::kWorldMinY, vibecraft::world::kWorldMaxY);
+        if (scanMaxY < scanMinY)
+        {
+            std::swap(scanMinY, scanMaxY);
+        }
+    }
+
     for (int localZ = 0; localZ < vibecraft::world::Chunk::kSize; ++localZ)
     {
         for (int localX = 0; localX < vibecraft::world::Chunk::kSize; ++localX)
         {
             const std::size_t columnIndex = static_cast<std::size_t>(localZ * vibecraft::world::Chunk::kSize + localX);
-            for (int y = vibecraft::world::kWorldMinY; y <= vibecraft::world::kWorldMaxY; ++y)
+            for (int y = scanMinY; y <= scanMaxY; ++y)
             {
                 if (!vibecraft::world::isRenderable(blockFromStorage(currentStorage, localX, y, localZ)))
                 {
@@ -1210,13 +915,18 @@ ChunkMeshData ChunkMesher::buildMesh(
                         static_cast<float>(y) + 0.5f,
                         static_cast<float>(worldZ) + 0.5f,
                         torchEmitters);
+                    const std::uint32_t litTorchAbgr =
+                        modulateAbgrRgb(metadata.debugColor, torchLight);
                     appendTorchGeometry(
                         meshData,
                         blockType,
                         worldX,
                         y,
                         worldZ,
-                        modulateAbgrRgb(metadata.debugColor, torchLight));
+                        metadata.textureTiles.side,
+                        litTorchAbgr,
+                        modulateAbgrRgb(litTorchAbgr, 1.35f),
+                        &appendBoxQuads);
                     continue;
                 }
 
@@ -1378,6 +1088,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                         y + face.offsetY,
                         localZ + face.offsetZ);
                     if (neighborBlock == blockType
+                        || (vibecraft::world::isLeafBlock(blockType) && vibecraft::world::isLeafBlock(neighborBlock))
                         || vibecraft::world::occludesFaces(neighborBlock))
                     {
                         continue;
@@ -1385,6 +1096,9 @@ ChunkMeshData ChunkMesher::buildMesh(
 
                     const std::uint32_t baseIndex = static_cast<std::uint32_t>(meshData.vertices.size());
                     const auto metadata = vibecraft::world::blockMetadata(blockType);
+                    const std::uint32_t blockColor = modulateAbgrRgb(
+                        metadata.debugColor,
+                        foliageColorMultiplier(blockType, face.blockFace, worldX, y, worldZ));
                     const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(blockType, face.blockFace);
                     if (blockType == BlockType::Bookshelf
                         && (face.blockFace == vibecraft::world::BlockFace::East
@@ -1438,7 +1152,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                             .nz = static_cast<float>(face.offsetZ),
                             .u = atlasUv[0],
                             .v = atlasUv[1],
-                            .abgr = modulateAbgrRgb(metadata.debugColor, ao * torchLight),
+                            .abgr = modulateAbgrRgb(blockColor, ao * torchLight),
                         });
                     }
 
