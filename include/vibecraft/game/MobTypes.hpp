@@ -88,6 +88,6 @@ struct MobInstance
     float health = 1.0f;
     float halfWidth = 0.30f;
     /// Default kind is Zombie; keep in sync with `adultDimensionsForMobKind(MobKind::Zombie)`.
-    float height = 2.0f * (1.95f / 1.8f);
+    float height = 2.0f;
 };
 }  // namespace vibecraft::game

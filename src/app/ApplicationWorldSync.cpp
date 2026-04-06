@@ -55,12 +55,9 @@ inline constexpr int kMeshingVerticalFocusBandHeight = 24;
 
 [[nodiscard]] meshing::ChunkMeshBuildSettings focusedMeshBuildSettings(const int cameraWorldY)
 {
-    return meshing::ChunkMeshBuildSettings{
-        .prioritizeVerticalWindow = true,
-        .focusCenterY = cameraWorldY,
-        .renderAboveBlocks = 88,
-        .renderBelowBlocks = 52,
-    };
+    static_cast<void>(cameraWorldY);
+    // Full-height columns: vertical windows caused missing faces (x-ray) when terrain sat outside the camera Y slice.
+    return meshing::ChunkMeshBuildSettings{.prioritizeVerticalWindow = false};
 }
 
 [[nodiscard]] std::vector<world::ChunkCoord> prioritizedChunkCoordsAround(

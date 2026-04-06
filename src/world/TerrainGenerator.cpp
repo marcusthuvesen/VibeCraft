@@ -30,7 +30,7 @@ constexpr int kDeepslateTransitionEndY = 8;
 constexpr int kMountainStoneCapStartY = 110;
 constexpr int kMountainStoneCapThickness = 2;
 constexpr int kLowlandPondMaxHeightAboveSea = 1;
-constexpr int kStarterForestRadius = 224;
+constexpr int kStarterForestRadius = 160;
 constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
 constexpr int kSandstoneStratumDepth = 6;
 constexpr std::uint32_t kMoisturePocketNoiseSeed = 0xd47a38c1U;
@@ -112,21 +112,21 @@ struct ColumnContext
     // Keep them large enough to feel like regions, but not so large that spawn-adjacent
     // exploration stays locked in forest for too long.
     const double baseTemperature =
-        noise::fbmNoise2d(worldXd, worldZd, 2200.0, 4, mixedSeed(0x8b4d1e29U, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd, worldZd, 1600.0, 4, mixedSeed(0x8b4d1e29U, worldSeed)) * 2.0 - 1.0;
     const double variation =
-        noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 900.0, 3, mixedSeed(0x1c0f3aa7U, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 700.0, 3, mixedSeed(0x1c0f3aa7U, worldSeed)) * 2.0 - 1.0;
     const double altitudeCooling = std::clamp(
         static_cast<double>(surfaceHeight - kSeaLevel) / 120.0,
         0.0,
         0.55);
-    return baseTemperature + variation * 0.30 - altitudeCooling;
+    return baseTemperature + variation * 0.34 - altitudeCooling;
 }
 
 [[nodiscard]] double biomeHumidityAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 2000.0, 4, mixedSeed(0x32a7f1c4U, worldSeed)) * 2.0
+    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 1500.0, 4, mixedSeed(0x32a7f1c4U, worldSeed)) * 2.0
         - 1.0;
 }
 

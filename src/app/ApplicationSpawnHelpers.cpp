@@ -455,15 +455,26 @@ glm::vec3 resolveSpawnFeetPosition(
         return spawnFeet;
     }
 
-    constexpr int kSearchStep = 24;
-    constexpr int kSearchRadius = 4096;
+    constexpr int kSearchStep = 32;
+    constexpr int kSearchRadius = 3072;
+    constexpr int kMaxGeneratedTargetProbes = 224;
     std::optional<glm::vec3> bestSafeCandidate;
     int bestSafeCrowding = std::numeric_limits<int>::max();
     int bestSafePenalty = std::numeric_limits<int>::max();
+    int generatedProbeCount = 0;
+    bool generationBudgetExhausted = false;
     for (int radius = 0; radius <= kSearchRadius; radius += kSearchStep)
     {
+        if (generationBudgetExhausted)
+        {
+            break;
+        }
         for (int dz = -radius; dz <= radius; dz += kSearchStep)
         {
+            if (generationBudgetExhausted)
+            {
+                break;
+            }
             for (int dx = -radius; dx <= radius; dx += kSearchStep)
             {
                 if (radius > 0 && std::abs(dx) != radius && std::abs(dz) != radius)
@@ -480,7 +491,13 @@ glm::vec3 resolveSpawnFeetPosition(
                 {
                     continue;
                 }
+                if (generatedProbeCount >= kMaxGeneratedTargetProbes)
+                {
+                    generationBudgetExhausted = true;
+                    break;
+                }
                 ensureProbeGenerated(sampleX, sampleZ);
+                ++generatedProbeCount;
                 const glm::vec3 biomeProbe{
                     static_cast<float>(sampleX),
                     spawnProbePosition.y,
@@ -555,10 +572,8 @@ bool Application::continueSingleplayerSpawnSearch(const float colliderHeight)
         singleplayerLoadState_.bestSpawnPenalty = std::numeric_limits<int>::max();
     };
 
-    if (!singleplayerLoadState_.playerStateLoaded)
+    if (!singleplayerLoadState_.playerStateLoaded && spawnBiomeTarget_ == SpawnBiomeTarget::Any)
     {
-        // Fresh worlds already start in the forced starter biome near the chosen preset,
-        // so skip the expensive biome-target scan and just resolve a safe local spawn.
         commitSpawnFeetPosition(resolveSpawnFeetPosition(
             world_,
             terrainGenerator_,
@@ -569,7 +584,7 @@ bool Application::continueSingleplayerSpawnSearch(const float colliderHeight)
         return true;
     }
 
-    if (spawnBiomeTarget_ == SpawnBiomeTarget::Any)
+    if (singleplayerLoadState_.playerStateLoaded && spawnBiomeTarget_ == SpawnBiomeTarget::Any)
     {
         commitSpawnFeetPosition(resolveSpawnFeetPosition(
             world_,

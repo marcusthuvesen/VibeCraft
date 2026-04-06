@@ -208,21 +208,6 @@ struct FrameDebugData
     };
     std::vector<WorldProjectileHud> worldProjectiles;
 
-    struct WorldBirdHud
-    {
-        glm::vec3 worldPosition{0.0f};
-        float halfWidth = 1.0f;
-        float halfHeight = 0.45f;
-        glm::vec3 tint{1.0f};
-        float alpha = 1.0f;
-        float flapPhase = 0.0f;
-        /// Horizontal flight direction in the XZ plane (x, z), normalized when set by ambient life.
-        glm::vec2 flightForwardXZ{1.0f, 0.0f};
-        /// Extra body roll (radians) into path turns — combined with wing flap roll in the renderer.
-        float bankAngle = 0.0f;
-    };
-    std::vector<WorldBirdHud> worldBirds;
-
     struct ChatLineHud
     {
         std::string text;
@@ -479,7 +464,6 @@ class Renderer
     void drawInventoryPlayerPreview(float previewCenterX, float previewTop, float slotSize);
     void drawWorldPickupSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     void drawWorldProjectileSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
-    void drawWorldBirdSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     void drawWorldMobSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     [[nodiscard]] std::uint16_t mobTextureHandleForKind(vibecraft::game::MobKind kind) const;
     [[nodiscard]] TextureUvRect mobTextureUvForKind(vibecraft::game::MobKind kind) const;
@@ -557,7 +541,6 @@ class Renderer
     std::uint16_t burrowerTextureHandle_ = UINT16_MAX;
     std::uint16_t shardbackTextureHandle_ = UINT16_MAX;
     std::uint16_t skitterwingTextureHandle_ = UINT16_MAX;
-    std::uint16_t ambientBirdTextureHandle_ = UINT16_MAX;
     TextureUvRect zombieTextureUv_{};
     TextureUvRect playerMobTextureUv_{};
     TextureUvRect skeletonTextureUv_{};
@@ -567,7 +550,6 @@ class Renderer
     TextureUvRect burrowerTextureUv_{};
     TextureUvRect shardbackTextureUv_{};
     TextureUvRect skitterwingTextureUv_{};
-    TextureUvRect ambientBirdTextureUv_{};
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };
 }  // namespace vibecraft::render

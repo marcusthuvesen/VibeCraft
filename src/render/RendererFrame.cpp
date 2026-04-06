@@ -577,7 +577,6 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     }
 
     debugDrawEncoder.end();
-    drawWorldBirdSprites(frameDebugData, cameraFrameData);
     drawWorldMobSprites(frameDebugData, cameraFrameData);
     drawBlockBreakingOverlay(frameDebugData);
 
@@ -724,7 +723,10 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         detail::drawHotbarHud(hotbarRow, frameDebugData);
         detail::drawHotbarKeyHintsRow(hotbarKeyRow, width_, height_, textWidthForHud, textHeight, hotbarRow);
     }
-    detail::drawHotbarStackCounts(hotbarRow, frameDebugData, width_, height_, textWidthForHud, textHeight, hotbarRow);
+    if (inventoryUiSolidProgramHandle_ == UINT16_MAX)
+    {
+        detail::drawHotbarStackCounts(hotbarRow, frameDebugData, width_, height_, textWidthForHud, textHeight, hotbarRow);
+    }
     if (inventoryUiSolidProgramHandle_ == UINT16_MAX
         || fullHeartTextureHandle_ == UINT16_MAX
         || halfHeartTextureHandle_ == UINT16_MAX

@@ -28,12 +28,8 @@ namespace
 
 [[nodiscard]] meshing::ChunkMeshBuildSettings focusedMeshBuildSettings(const int cameraWorldY)
 {
-    return meshing::ChunkMeshBuildSettings{
-        .prioritizeVerticalWindow = true,
-        .focusCenterY = cameraWorldY,
-        .renderAboveBlocks = 88,
-        .renderBelowBlocks = 52,
-    };
+    static_cast<void>(cameraWorldY);
+    return meshing::ChunkMeshBuildSettings{.prioritizeVerticalWindow = false};
 }
 }  // namespace
 

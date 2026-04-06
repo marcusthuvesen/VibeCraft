@@ -281,31 +281,11 @@ void Application::processInput(const float deltaTimeSeconds)
             renderMode,
             craftingMenuState_.usesWorkbench,
             craftingMenuState_.bagStartRow);
-        // Minecraft-style: left down picks up when the cursor stack is empty; left up places/swap/drops when non-empty.
-        // If both press and release arrive in the same poll (common with tap-to-click), treat it as a single click
-        // against the pre-click carried state instead of immediately undoing the interaction on the same slot.
-        if (inputState_.leftMousePressed && inputState_.leftMouseClicked)
+        // Some devices can intermittently miss either down or up edges. Treat either edge as
+        // one primary interaction so pickup/place both remain reliable in all crafting UIs.
+        if (inputState_.leftMousePressed || inputState_.leftMouseClicked)
         {
-            const bool carriedWasEmpty = isInventorySlotEmpty(craftingMenuState_.carriedSlot);
             applyCraftingMenuPrimaryInteraction(hoveredCraftingHit);
-            if (!carriedWasEmpty)
-            {
-                return;
-            }
-        }
-        else
-        {
-            if (inputState_.leftMousePressed && isInventorySlotEmpty(craftingMenuState_.carriedSlot))
-            {
-                applyCraftingMenuPrimaryInteraction(hoveredCraftingHit);
-            }
-            // Placement should react to either edge: some input devices can intermittently
-            // miss the release event while still reporting the press event.
-            if ((inputState_.leftMousePressed || inputState_.leftMouseClicked)
-                && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
-            {
-                applyCraftingMenuPrimaryInteraction(hoveredCraftingHit);
-            }
         }
         if (inputState_.rightMousePressed)
         {

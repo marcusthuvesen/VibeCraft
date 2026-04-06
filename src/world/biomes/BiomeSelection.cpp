@@ -105,7 +105,7 @@ SurfaceBiome selectRawSurfaceBiome(
         return SurfaceBiome::SnowySlopes;
     }
 
-    if (isWarm(inputs.temperature) && inputs.humidity > 0.30 && inputs.surfaceHeight <= 76)
+    if (isWarm(inputs.temperature) && inputs.humidity > 0.34 && inputs.surfaceHeight <= 76)
     {
         return SurfaceBiome::Swamp;
     }
@@ -117,13 +117,13 @@ SurfaceBiome selectRawSurfaceBiome(
     {
         return SurfaceBiome::MushroomField;
     }
-    if (inputs.temperature > 0.30 && inputs.humidity > 0.38)
+    if (inputs.temperature > 0.18 && inputs.humidity > 0.20)
     {
         return SurfaceBiome::BambooJungle;
     }
-    if (isWarm(inputs.temperature) && inputs.humidity > 0.16)
+    if (isWarm(inputs.temperature) && inputs.humidity > 0.05)
     {
-        return inputs.humidity > 0.28 ? SurfaceBiome::Jungle : SurfaceBiome::SparseJungle;
+        return inputs.humidity > 0.14 ? SurfaceBiome::Jungle : SurfaceBiome::SparseJungle;
     }
     if (isWarm(inputs.temperature) && inputs.humidity < -0.16 && inputs.surfaceHeight <= 82)
     {
@@ -194,15 +194,15 @@ SurfaceBiome selectRawSurfaceBiome(
         return SurfaceBiome::SunflowerPlains;
     }
 
-    if (inputs.humidity > 0.40)
+    if (inputs.humidity > 0.46)
     {
         return SurfaceBiome::DarkForest;
     }
-    if (inputs.humidity > 0.20)
+    if (inputs.humidity > 0.26)
     {
         return SurfaceBiome::Forest;
     }
-    if (inputs.humidity > 0.02)
+    if (inputs.humidity > 0.08)
     {
         return SurfaceBiome::BirchForest;
     }

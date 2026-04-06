@@ -82,6 +82,7 @@ namespace
     const float feetZ,
     const glm::vec3& hostFeet,
     const float playerHalfWidth,
+    const float mobHalfWidth,
     const float minSeparation,
     const std::span<const glm::vec3> remoteFeet)
 {
@@ -90,7 +91,7 @@ namespace
             feetZ,
             hostFeet.x,
             hostFeet.z,
-            minSeparation + playerHalfWidth))
+            minSeparation + playerHalfWidth + mobHalfWidth))
     {
         return true;
     }
@@ -101,7 +102,7 @@ namespace
                 feetZ,
                 remoteFeetPosition.x,
                 remoteFeetPosition.z,
-                minSeparation + playerHalfWidth))
+                minSeparation + playerHalfWidth + mobHalfWidth))
         {
             return true;
         }
@@ -208,6 +209,7 @@ bool MobSpawnSystem::trySpawnOneHostile(
                 feetZ,
                 playerFeet,
                 playerHalfWidth,
+                dims.halfWidth,
                 settings_.minSeparationFromPlayer,
                 remotePlayerFeet))
         {
@@ -338,6 +340,7 @@ bool MobSpawnSystem::trySpawnOnePassive(
                 feetZ,
                 playerFeet,
                 playerHalfWidth,
+                dims.halfWidth,
                 settings_.minSeparationFromPlayer,
                 remotePlayerFeet))
         {

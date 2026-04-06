@@ -43,26 +43,31 @@ double localSurfaceHeightDelta(
         noise::ridgeNoise2d(wx + 17.0, wz - 33.0, 58.0, mixedSeed(0x1a2b3c4dU, worldSeed)),
         0.0,
         1.0);
+    const double shoulderNoise = std::clamp(
+        noise::fbmNoise2d(wx + 91.0, wz - 67.0, 148.0, 2, mixedSeed(0x3c4d5e6fU, worldSeed)) * 0.5 + 0.5,
+        0.0,
+        1.0);
     const double hollowNoise = std::clamp(
         noise::fbmNoise2d(wx - 49.0, wz + 27.0, 96.0, 2, mixedSeed(0x2b3c4d5eU, worldSeed)) * 0.5 + 0.5,
         0.0,
         1.0);
 
     double heightDelta = std::max(0.0, knollNoise - 0.42) * (variation.roughness * 2.6 + 0.30);
+    heightDelta += std::max(0.0, shoulderNoise - 0.58) * (variation.roughness * 1.35 + variation.canopyDensity * 0.40 + 0.10);
     heightDelta -= std::max(0.0, 0.60 - hollowNoise) * (variation.lushness * 1.8 + 0.20);
     heightDelta -= std::max(0.0, variation.dryness - 0.62) * std::max(0.0, 0.56 - variation.canopyDensity) * 1.8;
 
     if (variation.primaryVariant == WoodlandVariant::RockyRise)
     {
-        heightDelta += 0.85;
+        heightDelta += 1.15;
     }
     else if (variation.primaryVariant == WoodlandVariant::DryClearing
              || variation.primaryVariant == WoodlandVariant::MossyHollow)
     {
-        heightDelta -= 0.55;
+        heightDelta -= 0.75;
     }
 
-    return std::clamp(heightDelta, -2.4, 2.2);
+    return std::clamp(heightDelta, -3.0, 3.0);
 }
 
 SurfaceVariantDecision evaluateSurfaceVariantRules(

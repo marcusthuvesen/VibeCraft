@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <doctest/doctest.h>
+#include <limits>
 
 #include "vibecraft/world/TerrainGenerator.hpp"
 
@@ -68,9 +70,9 @@ TEST_CASE("starter core resolves to forest woodland by default")
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);
 
-    for (int worldX = -144; worldX <= 144; worldX += 32)
+    for (int worldX = -96; worldX <= 96; worldX += 32)
     {
-        for (int worldZ = -144; worldZ <= 144; worldZ += 32)
+        for (int worldZ = -96; worldZ <= 96; worldZ += 32)
         {
             CHECK(terrainGenerator.surfaceBiomeAt(worldX, worldZ) == vibecraft::world::SurfaceBiome::Forest);
         }
@@ -96,6 +98,28 @@ TEST_CASE("spawn-adjacent exploration reaches a different biome sooner than the 
     }
 
     CHECK(foundNonForestBiome);
+}
+
+TEST_CASE("forest biome override produces rolling woodland relief")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Forest);
+
+    int minSurface = std::numeric_limits<int>::max();
+    int maxSurface = std::numeric_limits<int>::min();
+
+    for (int worldX = -256; worldX <= 256; worldX += 16)
+    {
+        for (int worldZ = -256; worldZ <= 256; worldZ += 16)
+        {
+            const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            minSurface = std::min(minSurface, surfaceY);
+            maxSurface = std::max(maxSurface, surfaceY);
+        }
+    }
+
+    CHECK(maxSurface - minSurface >= 18);
 }
 
 TEST_CASE("forest-first biome pass discovers each woodland biome across a large sample")

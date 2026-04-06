@@ -21,6 +21,7 @@ constexpr std::uint32_t kTemperateClearingNoiseSeed = 0x9a46f48dU;
 constexpr std::uint32_t kTemperateShelfNoiseSeed = 0xab57059eU;
 constexpr std::uint32_t kSnowBasinNoiseSeed = 0xbc6816afU;
 constexpr std::uint32_t kForestRiseNoiseSeed = 0xcd7927baU;
+constexpr std::uint32_t kForestShelfNoiseSeed = 0xd98c31c7U;
 constexpr std::uint32_t kTaigaShelfNoiseSeed = 0xde8a38cbU;
 constexpr std::uint32_t kDarkForestNoiseSeed = 0xef9b49dcU;
 constexpr std::uint32_t kWindsweptRidgeNoiseSeed = 0xf0ac5aedU;
@@ -198,14 +199,33 @@ double biomeTerrainContribution(
     case SurfaceBiome::BambooJungle:
         return jungleContribution(worldXd, worldZd, ridges, worldSeed, 3.0, 1.1);
     case SurfaceBiome::Forest:
-        // Slightly more knolls and fewer "perfect" clearings than before; reads closer to vanilla forest relief.
-        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 2.25, 0.11, 0.36)
+        // Forests should read as rolling woodland with occasional shelves and dips, not a mostly flat carpet.
+        return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 2.55, 0.07, 0.46)
             + std::max(
                    0.0,
                    noise::fbmNoise2d(worldXd - 39.0, worldZd + 81.0, 190.0, 3, mixedSeed(kForestRiseNoiseSeed, worldSeed))
                        * 2.0
                        - 1.0)
-                * 0.62;
+                * 0.74
+            + std::max(
+                   0.0,
+                   noise::ridgeNoise2d(worldXd + 63.0, worldZd - 27.0, 118.0, mixedSeed(kForestShelfNoiseSeed, worldSeed))
+                       - 0.52)
+                * 0.90
+            - std::clamp(
+                  (0.12
+                      - (noise::fbmNoise2d(
+                              worldXd - 151.0,
+                              worldZd + 47.0,
+                              214.0,
+                              2,
+                              mixedSeed(kForestShelfNoiseSeed + 17U, worldSeed))
+                          * 2.0
+                          - 1.0))
+                      / 0.34,
+                  0.0,
+                  1.0)
+                * 0.38;
     case SurfaceBiome::FlowerForest:
         return temperateContribution(worldXd, worldZd, uplands, ridges, worldSeed, 1.9, 0.06, 0.22);
     case SurfaceBiome::OldGrowthBirchForest:

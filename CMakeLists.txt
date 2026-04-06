@@ -212,7 +212,6 @@ set(VIBECRAFT_HEADERS
 
 set(VIBECRAFT_SOURCES
     src/app/Application.cpp
-    src/app/ApplicationAmbientLife.cpp
     src/app/ApplicationBotanyRuntime.cpp
     src/app/ApplicationChunkStreaming.cpp
     src/app/ApplicationCombat.cpp
@@ -389,7 +388,6 @@ add_executable(vibecraft_tests
     tests/terraforming_runtime_tests.cpp
     tests/terrain_biome_pass_tests.cpp
     tests/world/world_biome_variation_tests.cpp
-    tests/world/world_ambient_smoke_tests.cpp
     tests/world/world_chunk_spawn_smoke_tests.cpp
     tests/world/world_persistence_smoke_tests.cpp
     tests/world/world_queries_smoke_tests.cpp
@@ -401,7 +399,6 @@ add_executable(vibecraft_tests
     src/app/crafting/CraftingRecipesVanilla.cpp
     src/app/Inventory.cpp
     src/app/ApplicationEquipment.cpp
-    src/app/ApplicationAmbientLife.cpp
     src/app/ApplicationBotanyRuntime.cpp
     src/app/ChatCommands.cpp
     src/app/Furnace.cpp

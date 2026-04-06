@@ -503,19 +503,20 @@ void drawBagHud(
     layout.centerCol = std::max(0, (textWidth - layout.outerWidth) / 2);
 
     constexpr int kButtonCount = 5;
+    const int reservedTopRow = std::clamp(contentTopRowOffset, 1, std::max(1, textHeight - 1));
+    const int availableRows = std::max(10, textHeight - reservedTopRow - 1);
     int buttonLineCount = kPreferredButtonLineCount;
     int contentRows = kSubtitleRuleAndGapRows + kButtonCount * buttonLineCount + 1;
-    while (contentRows > std::max(10, textHeight - 2) && buttonLineCount > kMinButtonLineCount)
+    while (contentRows > availableRows && buttonLineCount > kMinButtonLineCount)
     {
         buttonLineCount -= 2;
         contentRows = kSubtitleRuleAndGapRows + kButtonCount * buttonLineCount + 1;
     }
     layout.buttonLineCount = buttonLineCount;
     const int centeredBase = (textHeight - contentRows) / 2;
-    layout.firstContentRow = std::clamp(
-        centeredBase + contentTopRowOffset,
-        1,
-        std::max(1, textHeight - contentRows));
+    const int preferredFirstRow = std::max(centeredBase, reservedTopRow);
+    const int maxFirstRow = std::max(reservedTopRow, textHeight - contentRows);
+    layout.firstContentRow = std::clamp(preferredFirstRow, reservedTopRow, maxFirstRow);
 
     layout.subtitleRow = layout.firstContentRow;
     layout.ruleRow = layout.firstContentRow + 1;

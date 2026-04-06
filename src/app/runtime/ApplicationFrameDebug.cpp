@@ -10,7 +10,6 @@
 #include <optional>
 #include <vector>
 
-#include "vibecraft/app/ApplicationAmbientLife.hpp"
 #include "vibecraft/app/ApplicationConfig.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
@@ -405,13 +404,6 @@ void Application::buildFrameDebugData(
                 .heldItemUsesSwordPose = isSwordItem(remotePlayer.selectedEquippedItem),
             });
         }
-        frameDebugData.worldBirds = buildAmbientBirdHud(
-            terrainGenerator_,
-            camera_.position(),
-            playerSurfaceBiome,
-            weatherSample.elapsedSeconds,
-            weatherSample.rainIntensity,
-            dayNightSample.sunVisibility);
     }
 
     if (raycastHit.has_value())

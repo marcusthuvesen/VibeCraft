@@ -28,7 +28,6 @@
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
 #include "vibecraft/app/ApplicationMultiplayerLog.hpp"
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
-#include "vibecraft/app/ApplicationAmbientLife.hpp"
 #include "vibecraft/app/ApplicationBotanyRuntime.hpp"
 #include "vibecraft/app/StartupFlow.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"

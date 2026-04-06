@@ -767,32 +767,35 @@ void Renderer::drawInventoryItemIcons(
         }
     }
 
-    constexpr int kBagCellChars = 9;
-    constexpr int kBagGapChars = 1;
-    constexpr int kBagColumns = 9;
-    const int bagStartCol = detail::computeCenteredColumnStart(detail::computeBagGridWidthChars());
-    const std::array<std::uint16_t, 3> bagRows{bagRow0, bagRow1, bagRow2};
-    for (std::size_t row = 0; row < bagRows.size(); ++row)
+    if (!canDrawSolid)
     {
-        for (int col = 0; col < kBagColumns; ++col)
+        constexpr int kBagCellChars = 9;
+        constexpr int kBagGapChars = 1;
+        constexpr int kBagColumns = 9;
+        const int bagStartCol = detail::computeCenteredColumnStart(detail::computeBagGridWidthChars());
+        const std::array<std::uint16_t, 3> bagRows{bagRow0, bagRow1, bagRow2};
+        for (std::size_t row = 0; row < bagRows.size(); ++row)
         {
-            const std::size_t slotIndex = row * static_cast<std::size_t>(kBagColumns) + static_cast<std::size_t>(col);
-            const FrameDebugData::HotbarSlotHud& slotHud = frameDebugData.bagSlots[slotIndex];
-            if (slotHud.count == 0)
+            for (int col = 0; col < kBagColumns; ++col)
             {
-                continue;
+                const std::size_t slotIndex = row * static_cast<std::size_t>(kBagColumns) + static_cast<std::size_t>(col);
+                const FrameDebugData::HotbarSlotHud& slotHud = frameDebugData.bagSlots[slotIndex];
+                if (slotHud.count == 0)
+                {
+                    continue;
+                }
+                const float cellCol = static_cast<float>(bagStartCol + col * (kBagCellChars + kBagGapChars));
+                const float centerX = (cellCol + static_cast<float>(kBagCellChars) * 0.5f) * charWidthPx;
+                const float centerY = static_cast<float>(bagRows[row]) * charHeightPx + charHeightPx * 0.42f;
+                const float iconSize = std::clamp(charHeightPx * 0.95f, 13.0f, 24.0f);
+                const float iconHalf = iconSize * 0.5f;
+                drawHudSlotIconInRect(
+                    slotHud,
+                    centerX - iconHalf,
+                    centerY - iconHalf,
+                    centerX + iconHalf,
+                    centerY + iconHalf);
             }
-            const float cellCol = static_cast<float>(bagStartCol + col * (kBagCellChars + kBagGapChars));
-            const float centerX = (cellCol + static_cast<float>(kBagCellChars) * 0.5f) * charWidthPx;
-            const float centerY = static_cast<float>(bagRows[row]) * charHeightPx + charHeightPx * 0.42f;
-            const float iconSize = std::clamp(charHeightPx * 0.95f, 13.0f, 24.0f);
-            const float iconHalf = iconSize * 0.5f;
-            drawHudSlotIconInRect(
-                slotHud,
-                centerX - iconHalf,
-                centerY - iconHalf,
-                centerX + iconHalf,
-                centerY + iconHalf);
         }
     }
 }
@@ -1236,169 +1239,6 @@ void Renderer::drawWorldProjectileSprites(
             0,
             detail::toUniformHandle(inventoryUiSamplerHandle_),
             detail::toTextureHandle(textureHandle));
-        bgfx::setState(
-            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
-            | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS);
-        bgfx::submit(detail::kMainView, detail::toProgramHandle(inventoryUiProgramHandle_));
-    }
-}
-
-void Renderer::drawWorldBirdSprites(
-    const FrameDebugData& frameDebugData,
-    const CameraFrameData& cameraFrameData)
-{
-    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
-        || ambientBirdTextureHandle_ == UINT16_MAX)
-    {
-        return;
-    }
-
-    for (const FrameDebugData::WorldBirdHud& bird : frameDebugData.worldBirds)
-    {
-        const glm::vec3 toBird = bird.worldPosition - cameraFrameData.position;
-        const float distanceSq = glm::dot(toBird, toBird);
-        if (distanceSq < 16.0f * 16.0f || distanceSq > 220.0f * 220.0f)
-        {
-            continue;
-        }
-        if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4
-            || bgfx::getAvailTransientIndexBuffer(6) < 6)
-        {
-            break;
-        }
-
-        const float dist = std::sqrt(distanceSq);
-        // Softer pop-in / fade so flocks feel embedded in the scene depth.
-        float alpha = bird.alpha;
-        alpha *= glm::smoothstep(16.5f, 36.0f, dist);
-        alpha *= 1.0f - glm::smoothstep(168.0f, 218.0f, dist);
-        alpha = glm::clamp(alpha, 0.0f, 1.0f);
-        const float distScale = glm::clamp(0.86f + 38.0f / std::max(dist, 14.0f), 0.86f, 1.14f);
-
-        const float sp = std::sin(bird.flapPhase);
-        const float wingAsym = (sp < 0.0f) ? 1.14f : 0.93f;
-        const float wingSpan = std::abs(sp) * wingAsym;
-        const float halfWidth = std::max(
-            0.28f,
-            bird.halfWidth * distScale * (0.90f + wingSpan * 0.22f));
-        const float halfHeight = std::max(
-            0.14f,
-            bird.halfHeight * distScale * (1.04f - std::abs(std::cos(bird.flapPhase)) * 0.11f));
-
-        glm::vec3 fwd(bird.flightForwardXZ.x, 0.0f, bird.flightForwardXZ.y);
-        const float fwdLenSq = glm::dot(fwd, fwd);
-        if (fwdLenSq > 1.0e-10f)
-        {
-            fwd /= std::sqrt(fwdLenSq);
-        }
-        else
-        {
-            fwd = glm::vec3(0.0f, 0.0f, 1.0f);
-        }
-
-        glm::vec3 toCamera = cameraFrameData.position - bird.worldPosition;
-        toCamera.y = 0.0f;
-        if (glm::dot(toCamera, toCamera) > 1.0e-6f)
-        {
-            toCamera = glm::normalize(toCamera);
-            if (glm::dot(toCamera, fwd) < 0.0f)
-            {
-                fwd = -fwd;
-            }
-        }
-
-        const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
-        glm::vec3 wingAxis = glm::cross(worldUp, fwd);
-        if (glm::dot(wingAxis, wingAxis) < 1.0e-10f)
-        {
-            wingAxis = glm::cross(fwd, glm::vec3(1.0f, 0.0f, 0.0f));
-        }
-        wingAxis = glm::normalize(wingAxis);
-        const glm::vec3 bodyUp = glm::normalize(glm::cross(fwd, wingAxis));
-
-        const float roll = glm::clamp(
-            bird.bankAngle + 0.52f * std::sin(bird.flapPhase),
-            -0.92f,
-            0.92f);
-        const float cr = std::cos(roll);
-        const float sr = std::sin(roll);
-        const glm::vec3 wingR = wingAxis * cr + bodyUp * sr;
-        const glm::vec3 upR = -wingAxis * sr + bodyUp * cr;
-
-        const glm::vec3 right = wingR * halfWidth;
-        const glm::vec3 up = upR * halfHeight;
-        const std::uint32_t abgr = detail::packAbgr8(bird.tint, alpha);
-
-        detail::ChunkVertex vertices[4] = {
-            detail::ChunkVertex{
-                .x = bird.worldPosition.x - right.x - up.x,
-                .y = bird.worldPosition.y - right.y - up.y,
-                .z = bird.worldPosition.z - right.z - up.z,
-                .nx = 0.0f,
-                .ny = 1.0f,
-                .nz = 0.0f,
-                .u = ambientBirdTextureUv_.minU,
-                .v = ambientBirdTextureUv_.maxV,
-                .abgr = abgr},
-            detail::ChunkVertex{
-                .x = bird.worldPosition.x + right.x - up.x,
-                .y = bird.worldPosition.y + right.y - up.y,
-                .z = bird.worldPosition.z + right.z - up.z,
-                .nx = 0.0f,
-                .ny = 1.0f,
-                .nz = 0.0f,
-                .u = ambientBirdTextureUv_.maxU,
-                .v = ambientBirdTextureUv_.maxV,
-                .abgr = abgr},
-            detail::ChunkVertex{
-                .x = bird.worldPosition.x + right.x + up.x,
-                .y = bird.worldPosition.y + right.y + up.y,
-                .z = bird.worldPosition.z + right.z + up.z,
-                .nx = 0.0f,
-                .ny = 1.0f,
-                .nz = 0.0f,
-                .u = ambientBirdTextureUv_.maxU,
-                .v = ambientBirdTextureUv_.minV,
-                .abgr = abgr},
-            detail::ChunkVertex{
-                .x = bird.worldPosition.x - right.x + up.x,
-                .y = bird.worldPosition.y - right.y + up.y,
-                .z = bird.worldPosition.z - right.z + up.z,
-                .nx = 0.0f,
-                .ny = 1.0f,
-                .nz = 0.0f,
-                .u = ambientBirdTextureUv_.minU,
-                .v = ambientBirdTextureUv_.minV,
-                .abgr = abgr},
-        };
-
-        bgfx::TransientVertexBuffer tvb{};
-        bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
-        std::memcpy(tvb.data, vertices, sizeof(vertices));
-
-        bgfx::TransientIndexBuffer tib{};
-        bgfx::allocTransientIndexBuffer(&tib, 6);
-        auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
-        indices[0] = 0;
-        indices[1] = 1;
-        indices[2] = 2;
-        indices[3] = 0;
-        indices[4] = 2;
-        indices[5] = 3;
-
-        const float identity[16] = {
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f,
-        };
-        bgfx::setTransform(identity);
-        bgfx::setVertexBuffer(0, &tvb);
-        bgfx::setIndexBuffer(&tib);
-        bgfx::setTexture(
-            0,
-            detail::toUniformHandle(inventoryUiSamplerHandle_),
-            detail::toTextureHandle(ambientBirdTextureHandle_));
         bgfx::setState(
             BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
             | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS);

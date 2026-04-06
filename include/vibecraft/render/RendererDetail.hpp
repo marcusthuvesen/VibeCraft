@@ -21,8 +21,8 @@ namespace vibecraft::render::detail
 {
 namespace MainMenuLayout
 {
-constexpr int kPreferredButtonLineCount = 11;
-constexpr int kMinButtonLineCount = 7;
+constexpr int kPreferredButtonLineCount = 9;
+constexpr int kMinButtonLineCount = 3;
 constexpr int kMinOuterWidth = 104;
 constexpr int kMaxOuterWidth = 156;
 constexpr int kSubtitleRuleAndGapRows = 3;

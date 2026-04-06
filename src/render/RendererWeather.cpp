@@ -92,7 +92,10 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
 
     const glm::vec2 windDirection =
         normalizeOrFallback(cameraFrameData.weatherWindDirectionXZ, glm::vec2(1.0f, 0.0f));
-    const glm::vec2 windOffset = windDirection * cameraFrameData.weatherTimeSeconds * cameraFrameData.weatherWindSpeed;
+    // Keep cloud drift slower and steadier than rain gusts so cloud motion feels like Minecraft.
+    const float cloudDriftSpeed =
+        std::clamp(cameraFrameData.weatherWindSpeed * 0.28f, 0.45f, 1.75f);
+    const glm::vec2 windOffset = windDirection * cameraFrameData.weatherTimeSeconds * cloudDriftSpeed;
     constexpr float kCloudCellSize = 40.0f;
     const int cloudRadiusInCells =
         std::clamp(static_cast<int>(2.0f + cameraFrameData.cloudCoverage * 2.2f), 2, 4);
@@ -102,12 +105,12 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
     const float densityThreshold = std::clamp(0.84f - cameraFrameData.cloudCoverage * 0.60f, 0.28f, 0.82f);
     const bool drawSecondaryCloudLayer = cameraFrameData.cloudCoverage > 0.72f;
     const int cloudStride = cameraFrameData.cloudCoverage < 0.48f ? 2 : 1;
-    const glm::vec3 neutralCloudTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.90f, 0.93f, 0.97f), 0.60f);
-    const glm::vec3 sunCloudTint = glm::mix(neutralCloudTint, cameraFrameData.sunLightTint, 0.28f);
+    const glm::vec3 neutralCloudTint = glm::mix(cameraFrameData.cloudTint, glm::vec3(0.97f, 0.97f, 0.98f), 0.78f);
+    const glm::vec3 sunCloudTint = glm::mix(neutralCloudTint, cameraFrameData.sunLightTint, 0.12f);
     const glm::vec3 stormCloudTint = glm::mix(
         neutralCloudTint,
-        glm::vec3(0.58f, 0.64f, 0.74f),
-        std::clamp(cameraFrameData.rainIntensity * 0.62f + cameraFrameData.cloudCoverage * 0.18f, 0.0f, 0.75f));
+        glm::vec3(0.70f, 0.70f, 0.72f),
+        std::clamp(cameraFrameData.rainIntensity * 0.70f + cameraFrameData.cloudCoverage * 0.20f, 0.0f, 0.82f));
     const glm::vec3 cloudBaseTint = glm::mix(stormCloudTint, sunCloudTint, cameraFrameData.sunVisibility * 0.75f);
 
     debugDrawEncoder.push();
@@ -153,7 +156,7 @@ void drawWeatherClouds(DebugDrawEncoder& debugDrawEncoder, const CameraFrameData
             const float brightness = 0.80f + patchStrength * 0.22f;
             const glm::vec3 primaryTint = cloudBaseTint * brightness;
             const glm::vec3 secondaryTint = glm::mix(primaryTint, stormCloudTint, 0.30f);
-            const glm::vec3 softEdgeTint = glm::mix(primaryTint, cameraFrameData.skyTint, 0.28f);
+            const glm::vec3 softEdgeTint = glm::mix(primaryTint, neutralCloudTint, 0.35f);
 
             debugDrawEncoder.setColor(packAbgr8(softEdgeTint, 0.52f));
             debugDrawEncoder.drawQuad(

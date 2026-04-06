@@ -674,13 +674,6 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         vibecraft::game::MobKind::Chicken,
         skitterwingTextureHandle_,
         skitterwingTextureUv_);
-    const std::filesystem::path ambientBirdPath = "textures/entity/alien_bird.png";
-    const bgfx::TextureHandle ambientBirdTexture = detail::createTextureFromPng(ambientBirdPath);
-    if (bgfx::isValid(ambientBirdTexture))
-    {
-        ambientBirdTextureHandle_ = ambientBirdTexture.idx;
-        ambientBirdTextureUv_ = computePrimaryOpaqueUvRect(detail::runtimeAssetPath(ambientBirdPath));
-    }
 
     const bgfx::UniformHandle inventoryUiSampler = bgfx::createUniform("s_uiAtlas", bgfx::UniformType::Sampler);
     if (bgfx::isValid(inventoryUiSampler))
@@ -1068,11 +1061,6 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toTextureHandle(skitterwingTextureHandle_));
         skitterwingTextureHandle_ = UINT16_MAX;
-    }
-    if (ambientBirdTextureHandle_ != UINT16_MAX)
-    {
-        bgfx::destroy(detail::toTextureHandle(ambientBirdTextureHandle_));
-        ambientBirdTextureHandle_ = UINT16_MAX;
     }
     if (mainMenuBackgroundTextureHandle_ != UINT16_MAX)
     {
