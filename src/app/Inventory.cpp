@@ -176,6 +176,8 @@ std::uint16_t maxDurabilityForEquippedItem(const EquippedItem equippedItem)
     case EquippedItem::GoldPickaxe:
     case EquippedItem::GoldAxe:
         return 32;
+    case EquippedItem::Bow:
+        return 384;
     case EquippedItem::None:
     default:
         return 0;
@@ -196,6 +198,8 @@ std::uint16_t durabilityUseAmountForEquippedItem(const EquippedItem equippedItem
         return 4;
     case EquippedItem::GoldSword:
         return 5;
+    case EquippedItem::Bow:
+        return 1;
     case EquippedItem::None:
     default:
         return 1;
@@ -538,6 +542,14 @@ const char* equippedItemLabel(const EquippedItem equippedItem)
         return "Iron Ingot";
     case EquippedItem::GoldIngot:
         return "Gold Ingot";
+    case EquippedItem::Arrow:
+        return "Arrow";
+    case EquippedItem::Bow:
+        return "Bow";
+    case EquippedItem::String:
+        return "String";
+    case EquippedItem::Gunpowder:
+        return "Gunpowder";
     case EquippedItem::None:
     default:
         return "Empty";

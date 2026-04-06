@@ -100,39 +100,12 @@ SurfaceVariantDecision evaluateSurfaceVariantRules(
         return decision;
     }
 
-    if (variation.primaryVariant == WoodlandVariant::RockyRise && variation.roughness > 0.74)
-    {
-        decision.surfaceBlock = variation.dryness > 0.58 ? BlockType::CoarseDirt : BlockType::Podzol;
-        decision.topsoilDepthDelta = -1;
-        return decision;
-    }
-
-    if (variation.primaryVariant == WoodlandVariant::DryClearing
-        && variation.dryness > 0.66
-        && variation.canopyDensity < 0.48)
-    {
-        decision.surfaceBlock = variation.lushness > 0.44 ? BlockType::CoarseDirt : BlockType::Podzol;
-        decision.topsoilDepthDelta = -1;
-        return decision;
-    }
-
     if (variation.primaryVariant == WoodlandVariant::MossyHollow
         && variation.lushness > 0.68
         && (moisturePocket > 0.16 || variation.canopyDensity > 0.64))
     {
         decision.surfaceBlock = BlockType::MossBlock;
         decision.topsoilDepthDelta = 1;
-        return decision;
-    }
-
-    if ((biome == SurfaceBiome::Taiga
-            || biome == SurfaceBiome::OldGrowthSpruceTaiga
-            || biome == SurfaceBiome::OldGrowthPineTaiga
-            || biome == SurfaceBiome::SnowyTaiga
-            || variation.canopyDensity > 0.78)
-        && variation.canopyDensity > 0.62)
-    {
-        decision.surfaceBlock = variation.dryness > 0.54 ? BlockType::CoarseDirt : BlockType::Podzol;
         return decision;
     }
 

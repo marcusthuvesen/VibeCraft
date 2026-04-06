@@ -66,7 +66,7 @@ struct BiomeVisualProfile
     float horizonBrightness = 1.0f;
     float cloudBrightness = 1.0f;
     float terrainHazeBlend = 0.0f;
-    float terrainHazeStrength = 0.18f;
+    float terrainHazeStrength = 0.32f;
     float terrainSaturation = 1.05f;
 };
 [[nodiscard]] BiomeVisualProfile biomeVisualProfile(const world::SurfaceBiome biome)
@@ -92,7 +92,7 @@ struct BiomeVisualProfile
             .horizonBrightness = 1.01f,
             .cloudBrightness = 1.01f,
             .terrainHazeBlend = 0.08f,
-            .terrainHazeStrength = 0.04f,
+            .terrainHazeStrength = 0.28f,
             .terrainSaturation = 0.92f,
         };
     case B::SnowyPlains:
@@ -119,7 +119,7 @@ struct BiomeVisualProfile
             .horizonBrightness = 1.03f,
             .cloudBrightness = 1.02f,
             .terrainHazeBlend = 0.06f,
-            .terrainHazeStrength = 0.04f,
+            .terrainHazeStrength = 0.26f,
             .terrainSaturation = 0.84f,
         };
     case B::Jungle:
@@ -143,7 +143,7 @@ struct BiomeVisualProfile
             .horizonBrightness = 1.01f,
             .cloudBrightness = 1.01f,
             .terrainHazeBlend = 0.07f,
-            .terrainHazeStrength = 0.04f,
+            .terrainHazeStrength = 0.40f,
             .terrainSaturation = 0.90f,
         };
     case B::Plains:
@@ -171,7 +171,7 @@ struct BiomeVisualProfile
             .horizonBrightness = 1.01f,
             .cloudBrightness = 1.01f,
             .terrainHazeBlend = 0.04f,
-            .terrainHazeStrength = 0.03f,
+            .terrainHazeStrength = 0.24f,
             .terrainSaturation = 0.76f,
         };
     case B::Forest:
@@ -196,7 +196,7 @@ struct BiomeVisualProfile
             .horizonBrightness = 1.01f,
             .cloudBrightness = 1.01f,
             .terrainHazeBlend = 0.085f,
-            .terrainHazeStrength = 0.050f,
+            .terrainHazeStrength = 0.34f,
             .terrainSaturation = 0.90f,
         };
     case B::Taiga:
@@ -219,7 +219,7 @@ struct BiomeVisualProfile
             .horizonBrightness = 1.01f,
             .cloudBrightness = 1.01f,
             .terrainHazeBlend = 0.055f,
-            .terrainHazeStrength = 0.038f,
+            .terrainHazeStrength = 0.30f,
             .terrainSaturation = 0.82f,
         };
     case B::DarkForest:
@@ -240,7 +240,7 @@ struct BiomeVisualProfile
             .horizonBrightness = 1.00f,
             .cloudBrightness = 1.00f,
             .terrainHazeBlend = 0.09f,
-            .terrainHazeStrength = 0.055f,
+            .terrainHazeStrength = 0.42f,
             .terrainSaturation = 0.80f,
         };
     default:
@@ -566,6 +566,7 @@ void Application::update(const float deltaTimeSeconds)
             kPlayerMovementSettings.colliderHalfWidth,
             deltaTimeSeconds,
             dayNightSample.period,
+            dayNightSample.sunVisibility,
             mobSpawningEnabled_,
             playerVitals_,
             1.0f - armorProtection,
@@ -578,6 +579,55 @@ void Application::update(const float deltaTimeSeconds)
             for (std::size_t i = 0; i < remotePlayers_.size(); ++i)
             {
                 remotePlayers_[i].health = mobTickRemoteHealth[i];
+            }
+        }
+        for (const game::MobCombatEvent& combatEvent : mobSpawnSystem_.takeCombatEvents())
+        {
+            switch (combatEvent.type)
+            {
+            case game::MobCombatEventType::MeleeAttack:
+                break;
+            case game::MobCombatEventType::ProjectileFired:
+                if (combatEvent.projectileKind == game::HostileProjectileKind::Arrow)
+                {
+                    soundEffects_.playBowShoot();
+                }
+                break;
+            case game::MobCombatEventType::ProjectileHitBlock:
+            case game::MobCombatEventType::ProjectileHitPlayer:
+                if (combatEvent.projectileKind == game::HostileProjectileKind::Arrow)
+                {
+                    soundEffects_.playArrowImpact();
+                }
+                break;
+            case game::MobCombatEventType::ProjectileHitMob:
+                if (combatEvent.projectileKind == game::HostileProjectileKind::Arrow)
+                {
+                    soundEffects_.playArrowImpact();
+                }
+                if (combatEvent.projectileMobHitLethal)
+                {
+                    spawnMobKillDrops(combatEvent.actorKind, combatEvent.worldPosition);
+                    soundEffects_.playMobDefeat(combatEvent.actorKind);
+                }
+                else
+                {
+                    soundEffects_.playMobHit(combatEvent.actorKind);
+                }
+                break;
+            case game::MobCombatEventType::DaylightBurnDamage:
+                soundEffects_.playMobHit(combatEvent.actorKind);
+                break;
+            case game::MobCombatEventType::HostileMobBurnDeath:
+                soundEffects_.playMobDefeat(combatEvent.actorKind);
+                break;
+            case game::MobCombatEventType::CreeperFuseSound:
+                soundEffects_.playCreeperFuse();
+                break;
+            case game::MobCombatEventType::CreeperExplosion:
+                soundEffects_.playExplosion();
+                explodeTntAt(combatEvent.worldPosition, combatEvent.blastRadiusBlocks);
+                break;
             }
         }
         if (!creativeModeEnabled_ && playerVitals_.health() + 0.001f < healthBeforeMobTick)

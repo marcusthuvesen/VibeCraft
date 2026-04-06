@@ -17,8 +17,8 @@ struct MobDimensions
     switch (kind)
     {
     case MobKind::Zombie:
-        // Match classic Minecraft hostile silhouette (roughly player-scale height).
-        return {.halfWidth = 0.30f, .height = 1.95f};
+        // Minecraft: zombie hitbox 1.95m vs player 1.8m. MobKind::Player uses height 2.0 as the ~1.8m silhouette.
+        return {.halfWidth = 0.30f, .height = 2.0f * (1.95f / 1.8f)};
     case MobKind::Player:
         return {.halfWidth = 0.30f, .height = 2.0f};
     case MobKind::Skeleton:

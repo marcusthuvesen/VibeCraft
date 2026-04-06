@@ -596,15 +596,15 @@ void Renderer::drawInventoryItemIcons(
 
     if (canDrawSolid && hotbarLayout.slotSize > 0.0f)
     {
-        // Hytale-inspired: cool navy strip, steel-blue slots, bright gold selection ring.
-        const std::uint32_t hotbarFrameOuterAbgr = detail::packAbgr8(glm::vec3(0.03f, 0.06f, 0.10f), 0.95f);
-        const std::uint32_t hotbarFrameInnerAbgr = detail::packAbgr8(glm::vec3(0.10f, 0.17f, 0.27f), 0.94f);
-        const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.03f, 0.06f, 0.10f), 0.98f);
-        const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.14f, 0.24f, 0.38f), 0.96f);
-        const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.25f, 0.38f, 0.56f), 0.96f);
-        const std::uint32_t selectedOuterAbgr = detail::packAbgr8(glm::vec3(0.98f, 0.81f, 0.38f), 0.99f);
-        const std::uint32_t selectedInnerAbgr = detail::packAbgr8(glm::vec3(0.84f, 0.63f, 0.18f), 0.99f);
-        const std::uint32_t xpTrackAbgr = detail::packAbgr8(glm::vec3(0.03f, 0.07f, 0.11f), 0.94f);
+        // Minecraft-like gray HUD treatment with subtle contrast and white selection.
+        const std::uint32_t hotbarFrameOuterAbgr = detail::packAbgr8(glm::vec3(0.05f, 0.05f, 0.05f), 0.94f);
+        const std::uint32_t hotbarFrameInnerAbgr = detail::packAbgr8(glm::vec3(0.18f, 0.18f, 0.18f), 0.93f);
+        const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.08f, 0.08f, 0.08f), 0.98f);
+        const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.34f, 0.34f, 0.34f), 0.95f);
+        const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.46f, 0.46f, 0.46f), 0.90f);
+        const std::uint32_t selectedOuterAbgr = detail::packAbgr8(glm::vec3(1.0f, 1.0f, 1.0f), 0.98f);
+        const std::uint32_t selectedInnerAbgr = detail::packAbgr8(glm::vec3(0.76f, 0.76f, 0.76f), 0.96f);
+        const std::uint32_t xpTrackAbgr = detail::packAbgr8(glm::vec3(0.10f, 0.10f, 0.10f), 0.94f);
         const std::uint32_t xpFillAbgr = detail::packAbgr8(glm::vec3(0.54f, 0.88f, 0.25f), 0.98f);
 
         const float slot = hotbarLayout.slotSize;
@@ -797,65 +797,54 @@ void Renderer::drawInventoryItemIcons(
     }
 }
 
-void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
+void Renderer::drawInventoryPlayerPreview(
+    const float previewCenterX,
+    const float previewTop,
+    const float slotSize)
 {
-    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
-        || chunkAtlasTextureHandle_ == UINT16_MAX)
+    if (playerMobTextureHandle_ == UINT16_MAX)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
+    {
+        return;
+    }
+    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
     {
         return;
     }
 
-    float view[16];
-    bx::mtxIdentity(view);
-    float proj[16];
-    bx::mtxOrtho(
-        proj,
-        0.0f,
-        static_cast<float>(width_),
-        static_cast<float>(height_),
-        0.0f,
-        0.0f,
-        1000.0f,
-        0.0f,
-        bgfx::getCaps()->homogeneousDepth);
-    bgfx::setViewTransform(detail::kUiView, view, proj);
+    const float figurePixelHeight = 32.0f;
+    const float desiredHeight = slotSize * 4.3f;
+    const float scale = desiredHeight / figurePixelHeight;
+    const float figurePixelWidth = 16.0f;
+    const float previewWidth = figurePixelWidth * scale;
+    const float previewLeft = previewCenterX - previewWidth * 0.5f;
+    const float previewBottom = previewTop + desiredHeight;
+    const float padX = slotSize * 0.35f;
+    const float padY = slotSize * 0.25f;
+    const std::uint32_t bgAbgr = detail::packAbgr8(glm::vec3(0.12f, 0.12f, 0.12f), 0.88f);
+    const std::uint32_t borderAbgr = detail::packAbgr8(glm::vec3(0.72f, 0.72f, 0.72f), 0.94f);
+    drawUiSolidRect(
+        previewLeft - padX,
+        previewTop - padY,
+        previewLeft + previewWidth + padX,
+        previewBottom + padY * 0.7f,
+        bgAbgr);
+    drawUiSolidRect(
+        previewLeft - padX - 3.0f,
+        previewTop - padY - 3.0f,
+        previewLeft + previewWidth + padX + 3.0f,
+        previewBottom + padY * 0.7f + 3.0f,
+        borderAbgr);
 
-    const detail::CraftingOverlayLayoutPx layout =
-        detail::computeCraftingOverlayLayoutPx(
-            width_,
-            height_,
-            frameDebugData.craftingUiMode,
-            frameDebugData.craftingUsesWorkbench);
-    if (layout.slotSize <= 0.0f)
-    {
-        return;
-    }
-
-    const bgfx::Stats* const stats = bgfx::getStats();
-    const std::uint16_t textWidth =
-        stats != nullptr && stats->textWidth > 0 ? stats->textWidth : 100;
-    const std::uint16_t textHeight = stats != nullptr && stats->textHeight > 0 ? stats->textHeight : 30;
-    const float charWidthPx = static_cast<float>(width_) / static_cast<float>(std::max<std::uint16_t>(1, textWidth));
-    const float charHeightPx = static_cast<float>(height_) / static_cast<float>(std::max<std::uint16_t>(1, textHeight));
-    const bool inventoryMode = frameDebugData.craftingUiMode == CraftingUiMode::Inventory;
-    const bool workbenchMode = frameDebugData.craftingUiMode == CraftingUiMode::Workbench;
-    const bool chestMode = frameDebugData.craftingUiMode == CraftingUiMode::Chest;
-    const bool furnaceMode = frameDebugData.craftingUiMode == CraftingUiMode::Furnace;
-    const std::uint16_t containerBackgroundTextureHandle =
-        inventoryMode
-        ? (frameDebugData.craftingCreativeModeEnabled && craftingContainerCreativeTextureHandle_ != UINT16_MAX
-               ? craftingContainerCreativeTextureHandle_
-               : craftingContainerInventoryTextureHandle_)
-        : (workbenchMode
-               ? craftingContainerWorkbenchTextureHandle_
-               : (chestMode ? craftingContainerChestTextureHandle_ : craftingContainerFurnaceTextureHandle_));
-    const bool hasContainerBackground = containerBackgroundTextureHandle != UINT16_MAX;
-    const auto drawUiTextureRectUv = [&](const float x0,
-                                         const float y0,
-                                         const float x1,
-                                         const float y1,
-                                         const std::uint16_t textureHandle,
-                                         const TextureUvRect& uvRect)
+    const auto drawUiTextureRectUv = [this](const float x0,
+                                            const float y0,
+                                            const float x1,
+                                            const float y1,
+                                            const std::uint16_t textureHandle,
+                                            const TextureUvRect& uvRect)
     {
         if (textureHandle == UINT16_MAX)
         {
@@ -908,379 +897,29 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
             BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
         bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
     };
-    const bool canDrawSolid = inventoryUiSolidProgramHandle_ != UINT16_MAX;
-    if (!canDrawSolid)
-    {
-        return;
-    }
 
-    const std::uint32_t dimAbgr = detail::packAbgr8(glm::vec3(0.02f, 0.03f, 0.05f), hasContainerBackground ? 0.42f : 0.52f);
-    const std::uint32_t panelOuterAbgr = detail::packAbgr8(
-        glm::vec3(0.05f, 0.08f, 0.14f),
-        hasContainerBackground ? 0.18f : 0.97f);
-    const std::uint32_t panelInnerAbgr = detail::packAbgr8(
-        glm::vec3(0.11f, 0.17f, 0.27f),
-        hasContainerBackground ? 0.02f : 0.96f);
-    const std::uint32_t slotBorderAbgr = detail::packAbgr8(glm::vec3(0.04f, 0.08f, 0.12f), 0.98f);
-    const std::uint32_t slotFillAbgr = detail::packAbgr8(glm::vec3(0.16f, 0.25f, 0.38f), 0.97f);
-    const std::uint32_t slotTopHighlightAbgr = detail::packAbgr8(glm::vec3(0.26f, 0.39f, 0.58f), 0.97f);
-    const std::uint32_t resultGlowAbgr = detail::packAbgr8(glm::vec3(0.93f, 0.79f, 0.32f), 0.55f);
-    const std::uint32_t cursorOutlineAbgr = detail::packAbgr8(glm::vec3(1.0f, 1.0f, 1.0f), 0.95f);
-    const auto drawStairAtlasIconInRect = [&](const float x0,
-                                              const float y0,
-                                              const float x1,
-                                              const float y1,
-                                              const std::uint8_t tileIndex)
-    {
-        const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
-        const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
-        const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
-        const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
-        const TextureUvRect uvRect{
-            .minU = tileX * tileWidth + kTileInsetU,
-            .maxU = (tileX + 1.0f) * tileWidth - kTileInsetU,
-            .minV = tileY * tileHeight + kTileInsetV,
-            .maxV = (tileY + 1.0f) * tileHeight - kTileInsetV,
-        };
-        const float w = std::max(1.0f, x1 - x0);
-        const float h = std::max(1.0f, y1 - y0);
-        const float pad = std::max(1.0f, std::round(std::min(w, h) * 0.06f));
-        const float iconX0 = x0 + pad;
-        const float iconY0 = y0 + pad;
-        const float iconX1 = x1 - pad;
-        const float iconY1 = y1 - pad;
-        const float iconW = iconX1 - iconX0;
-        const float iconH = iconY1 - iconY0;
-        drawUiTextureRectUv(
-            iconX0,
-            iconY0 + iconH * 0.50f,
-            iconX1,
-            iconY1,
-            chunkAtlasTextureHandle_,
-            uvRect);
-        drawUiTextureRectUv(
-            iconX0 + iconW * 0.44f,
-            iconY0 + iconH * 0.16f,
-            iconX1,
-            iconY0 + iconH * 0.50f,
-            chunkAtlasTextureHandle_,
-            uvRect);
-    };
-
-    drawUiSolidRect(0.0f, 0.0f, static_cast<float>(width_), static_cast<float>(height_), dimAbgr);
-    if (hasContainerBackground)
+    const MobUvLayout playerUv = uvLayoutForMobKind(game::MobKind::Player);
+    const auto drawPart = [&](const TextureUvRect& uv, const float px, const float py, const float pw, const float ph)
     {
         drawUiTextureRectUv(
-            layout.panelLeft,
-            layout.panelTop,
-            layout.panelRight,
-            layout.panelBottom,
-            containerBackgroundTextureHandle,
-            TextureUvRect{});
-    }
-    drawUiSolidRect(layout.panelLeft - 2.0f, layout.panelTop - 2.0f, layout.panelRight + 2.0f, layout.panelBottom + 2.0f, panelOuterAbgr);
-    drawUiSolidRect(layout.panelLeft, layout.panelTop, layout.panelRight, layout.panelBottom, panelInnerAbgr);
-
-    const auto drawSlotFrame = [&](const float x, const float y, const bool highlight)
-    {
-        if (highlight)
-        {
-            drawUiSolidRect(x - 2.0f, y - 2.0f, x + layout.slotSize + 2.0f, y + layout.slotSize + 2.0f, resultGlowAbgr);
-        }
-        drawUiSolidRect(x, y, x + layout.slotSize, y + layout.slotSize, slotBorderAbgr);
-        drawUiSolidRect(x + 1.0f, y + 1.0f, x + layout.slotSize - 1.0f, y + layout.slotSize - 1.0f, slotFillAbgr);
-        drawUiSolidRect(
-            x + 1.0f,
-            y + 1.0f,
-            x + layout.slotSize - 1.0f,
-            y + std::max(2.0f, layout.slotSize * 0.22f),
-            slotTopHighlightAbgr);
+            previewLeft + px * scale,
+            previewTop + py * scale,
+            previewLeft + (px + pw) * scale,
+            previewTop + (py + ph) * scale,
+            playerMobTextureHandle_,
+            uv);
     };
 
-    const auto drawSlotContents = [&](const FrameDebugData::HotbarSlotHud& slotHud, const float x, const float y)
-    {
-        if (slotHud.count == 0)
-        {
-            return;
-        }
-
-        const float centerX = x + layout.slotSize * 0.5f;
-        const float centerY = y + layout.slotSize * 0.5f;
-        const float iconInset = std::max(2.0f, std::round(layout.slotSize * 0.09f));
-        const float iconMinX = x + iconInset;
-        const float iconMinY = y + iconInset;
-        const float iconMaxX = x + layout.slotSize - iconInset;
-        const float iconMaxY = y + layout.slotSize - iconInset;
-        const float iconSize = std::max(1.0f, std::min(iconMaxX - iconMinX, iconMaxY - iconMinY));
-        const std::uint16_t textureHandle = hudItemKindTextureHandle(slotHud.itemKind);
-
-        if (textureHandle != UINT16_MAX)
-        {
-            drawUiTextureRectUv(
-                iconMinX,
-                iconMinY,
-                iconMaxX,
-                iconMaxY,
-                textureHandle,
-                hudItemKindTextureUv(slotHud.itemKind));
-        }
-        else if (slotHud.blockType != vibecraft::world::BlockType::Air)
-        {
-            const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
-                slotHud.blockType,
-                vibecraft::world::BlockFace::Side);
-            if (vibecraft::world::isStairBlock(slotHud.blockType))
-            {
-                drawStairAtlasIconInRect(iconMinX, iconMinY, iconMaxX, iconMaxY, tileIndex);
-            }
-            else
-            {
-                drawAtlasIcon(centerX, centerY, iconSize, tileIndex);
-            }
-        }
-
-        if (slotHud.count > 1)
-        {
-            const std::string digits = fmt::format("{}", std::min(slotHud.count, 99u));
-            const float textX1 = x + layout.slotSize - std::max(2.0f, layout.slotSize * 0.05f);
-            const float textY1 = y + layout.slotSize - std::max(2.0f, layout.slotSize * 0.05f);
-            int col = static_cast<int>(std::floor((textX1 - charWidthPx * 0.55f) / charWidthPx))
-                - static_cast<int>(digits.size()) + 1;
-            int row = static_cast<int>(std::floor((textY1 - charHeightPx * 0.95f) / charHeightPx));
-            col = std::clamp(col, 0, static_cast<int>(textWidth) - static_cast<int>(digits.size()));
-            row = std::clamp(row, 0, static_cast<int>(textHeight) - 1);
-            bgfx::dbgTextPrintf(static_cast<std::uint16_t>(col), static_cast<std::uint16_t>(row), 0x0f, "%s", digits.c_str());
-        }
-
-        if (slotHud.durabilityMax > 0)
-        {
-            const float fraction = std::clamp(
-                static_cast<float>(slotHud.durabilityRemaining) / static_cast<float>(slotHud.durabilityMax),
-                0.0f,
-                1.0f);
-            const float trackH = std::max(3.0f, std::round(layout.slotSize * 0.08f));
-            const float trackX0 = x + std::max(2.0f, std::round(layout.slotSize * 0.10f));
-            const float trackX1 = x + layout.slotSize - std::max(2.0f, std::round(layout.slotSize * 0.10f));
-            const float trackY1 = y + layout.slotSize - std::max(2.0f, std::round(layout.slotSize * 0.08f));
-            const float trackY0 = trackY1 - trackH;
-            const std::uint32_t trackAbgr = detail::packAbgr8(glm::vec3(0.04f, 0.05f, 0.06f), 0.95f);
-            const glm::vec3 fillColor = glm::mix(
-                glm::vec3(0.86f, 0.19f, 0.14f),
-                glm::vec3(0.33f, 0.89f, 0.22f),
-                fraction);
-            const std::uint32_t fillAbgr = detail::packAbgr8(fillColor, 0.98f);
-            drawUiSolidRect(trackX0, trackY0, trackX1, trackY1, trackAbgr);
-            if (fraction > 0.001f)
-            {
-                drawUiSolidRect(trackX0, trackY0, trackX0 + (trackX1 - trackX0) * fraction, trackY1, fillAbgr);
-            }
-        }
-    };
-
-    constexpr std::array<const char*, 4> kEquipmentLabels{"HELM", "CHEST", "LEGS", "BOOTS"};
-    if (inventoryMode)
-    {
-        for (std::size_t slotIndex = 0; slotIndex < frameDebugData.equipmentSlots.size(); ++slotIndex)
-        {
-            const float slotX = layout.equipmentOriginX;
-            const float slotY = layout.equipmentOriginY + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-            drawSlotFrame(slotX, slotY, false);
-            drawSlotContents(frameDebugData.equipmentSlots[slotIndex], slotX, slotY);
-
-            const int labelCol = std::clamp(
-                static_cast<int>(std::floor((slotX + layout.slotSize + layout.slotGap * 0.7f) / charWidthPx)),
-                0,
-                static_cast<int>(textWidth) - 1);
-            const int labelRow = std::clamp(
-                static_cast<int>(std::floor((slotY + layout.slotSize * 0.38f) / charHeightPx)),
-                0,
-                static_cast<int>(textHeight) - 1);
-            bgfx::dbgTextPrintf(
-                static_cast<std::uint16_t>(labelCol),
-                static_cast<std::uint16_t>(labelRow),
-                0x0e,
-                "%s",
-                kEquipmentLabels[slotIndex]);
-        }
-    }
-
-    const auto drawInventoryPlayerPreview = [&](const float previewCenterX, const float previewTop) -> void
-    {
-        if (playerMobTextureHandle_ == UINT16_MAX)
-        {
-            return;
-        }
-        const float figurePixelHeight = 32.0f;
-        const float desiredHeight = layout.slotSize * 4.3f;
-        const float scale = desiredHeight / figurePixelHeight;
-        const float figurePixelWidth = 16.0f;
-        const float previewWidth = figurePixelWidth * scale;
-        const float previewLeft = previewCenterX - previewWidth * 0.5f;
-        const float previewBottom = previewTop + desiredHeight;
-        const float padX = layout.slotSize * 0.35f;
-        const float padY = layout.slotSize * 0.25f;
-        const std::uint32_t bgAbgr = detail::packAbgr8(glm::vec3(0.05f, 0.06f, 0.11f), 0.88f);
-        const std::uint32_t borderAbgr = detail::packAbgr8(glm::vec3(0.29f, 0.46f, 0.78f), 0.94f);
-        drawUiSolidRect(
-            previewLeft - padX,
-            previewTop - padY,
-            previewLeft + previewWidth + padX,
-            previewBottom + padY * 0.7f,
-            bgAbgr);
-        drawUiSolidRect(
-            previewLeft - padX - 3.0f,
-            previewTop - padY - 3.0f,
-            previewLeft + previewWidth + padX + 3.0f,
-            previewBottom + padY * 0.7f + 3.0f,
-            borderAbgr);
-
-        const MobUvLayout playerUv = uvLayoutForMobKind(game::MobKind::Player);
-        const auto drawPart = [&](const TextureUvRect& uv, const float px, const float py, const float pw, const float ph)
-        {
-            drawUiTextureRectUv(
-                previewLeft + px * scale,
-                previewTop + py * scale,
-                previewLeft + (px + pw) * scale,
-                previewTop + (py + ph) * scale,
-                playerMobTextureHandle_,
-                uv);
-        };
-
-        drawPart(playerUv.head.front, 4.0f, 0.0f, 8.0f, 8.0f);
-        drawPart(playerUv.body.front, 4.0f, 8.0f, 8.0f, 12.0f);
-        drawPart(playerUv.arm.front, 0.0f, 8.0f, 4.0f, 12.0f);
-        TextureUvRect armRight = playerUv.arm.front;
-        std::swap(armRight.minU, armRight.maxU);
-        drawPart(armRight, 12.0f, 8.0f, 4.0f, 12.0f);
-        drawPart(playerUv.leg.front, 4.0f, 20.0f, 4.0f, 12.0f);
-        TextureUvRect legRight = playerUv.leg.front;
-        std::swap(legRight.minU, legRight.maxU);
-        drawPart(legRight, 8.0f, 20.0f, 4.0f, 12.0f);
-    };
-
-    const int craftingColumns = workbenchMode || chestMode ? 3 : 2;
-    const int craftingRows = workbenchMode || chestMode ? 3 : 2;
-    if (furnaceMode)
-    {
-        constexpr std::size_t kFurnaceInputGridIndex = 1;
-        constexpr std::size_t kFurnaceFuelGridIndex = 7;
-        drawSlotFrame(layout.craftingOriginX, layout.craftingOriginY, false);
-        drawSlotContents(frameDebugData.craftingGridSlots[kFurnaceInputGridIndex], layout.craftingOriginX, layout.craftingOriginY);
-        drawSlotFrame(layout.furnaceFuelSlotX, layout.furnaceFuelSlotY, false);
-        drawSlotContents(frameDebugData.craftingGridSlots[kFurnaceFuelGridIndex], layout.furnaceFuelSlotX, layout.furnaceFuelSlotY);
-    }
-    else
-    {
-        for (int row = 0; row < craftingRows; ++row)
-        {
-            for (int col = 0; col < craftingColumns; ++col)
-            {
-                const std::size_t slotIndex = static_cast<std::size_t>(row * 3 + col);
-                const float slotX = layout.craftingOriginX + static_cast<float>(col) * (layout.slotSize + layout.slotGap);
-                const float slotY = layout.craftingOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
-                drawSlotFrame(slotX, slotY, false);
-                drawSlotContents(frameDebugData.craftingGridSlots[slotIndex], slotX, slotY);
-            }
-        }
-    }
-
-    if (frameDebugData.craftingMenuActive && inventoryMode && playerMobTextureHandle_ != UINT16_MAX)
-    {
-        float previewTop = layout.equipmentOriginY - layout.slotSize * 1.25f;
-        const float minPreviewTop = layout.panelTop + layout.slotSize * 0.35f;
-        if (previewTop < minPreviewTop)
-        {
-            previewTop = minPreviewTop;
-        }
-        const float previewCenterX = layout.equipmentOriginX + layout.slotSize * 0.85f;
-        drawInventoryPlayerPreview(previewCenterX, previewTop);
-    }
-
-    if (furnaceMode)
-    {
-        const float progressBarX = layout.craftingOriginX + layout.slotSize + layout.slotGap * 0.9f;
-        const float progressBarY = layout.resultSlotY + layout.slotSize * 0.42f;
-        const float progressBarWidth = std::max(10.0f, layout.resultSlotX - progressBarX - layout.slotGap * 0.9f);
-        const float progressBarHeight = std::max(6.0f, std::round(layout.slotSize * 0.16f));
-        const float fuelBarX = layout.craftingOriginX + layout.slotSize * 0.38f;
-        const float fuelBarY = layout.craftingOriginY + layout.slotSize + layout.slotGap * 0.18f;
-        const float fuelBarWidth = std::max(6.0f, std::round(layout.slotSize * 0.24f));
-        const float fuelBarHeight = std::max(10.0f, layout.furnaceFuelSlotY - fuelBarY - layout.slotGap * 0.18f);
-        const std::uint32_t progressBackAbgr = detail::packAbgr8(glm::vec3(0.14f, 0.16f, 0.20f), 0.98f);
-        const std::uint32_t progressFillAbgr = detail::packAbgr8(glm::vec3(0.86f, 0.86f, 0.84f), 0.98f);
-        const std::uint32_t fuelFillAbgr = detail::packAbgr8(glm::vec3(0.95f, 0.58f, 0.17f), 0.98f);
-        drawUiSolidRect(progressBarX, progressBarY, progressBarX + progressBarWidth, progressBarY + progressBarHeight, progressBackAbgr);
-        drawUiSolidRect(
-            progressBarX + 1.0f,
-            progressBarY + 1.0f,
-            progressBarX + 1.0f + std::max(0.0f, (progressBarWidth - 2.0f) * std::clamp(frameDebugData.craftingProgressFraction, 0.0f, 1.0f)),
-            progressBarY + progressBarHeight - 1.0f,
-            progressFillAbgr);
-        drawUiSolidRect(fuelBarX, fuelBarY, fuelBarX + fuelBarWidth, fuelBarY + fuelBarHeight, progressBackAbgr);
-        const float clampedFuel = std::clamp(frameDebugData.craftingFuelFraction, 0.0f, 1.0f);
-        const float fuelFillTop = fuelBarY + 1.0f + (fuelBarHeight - 2.0f) * (1.0f - clampedFuel);
-        drawUiSolidRect(
-            fuelBarX + 1.0f,
-            fuelFillTop,
-            fuelBarX + fuelBarWidth - 1.0f,
-            fuelBarY + fuelBarHeight - 1.0f,
-            fuelFillAbgr);
-        drawSlotFrame(layout.resultSlotX, layout.resultSlotY, frameDebugData.craftingResultSlot.count > 0);
-        drawSlotContents(frameDebugData.craftingResultSlot, layout.resultSlotX, layout.resultSlotY);
-    }
-    else if (!chestMode)
-    {
-        const float arrowY = layout.resultSlotY + layout.slotSize * 0.5f;
-        const float arrowX0 = layout.craftingOriginX
-            + static_cast<float>(craftingColumns) * layout.slotSize
-            + static_cast<float>(craftingColumns - 1) * layout.slotGap
-            + layout.slotGap * 0.9f;
-        const float arrowX1 = layout.resultSlotX - layout.slotGap * 0.9f;
-        const float arrowMidX = arrowX1 - layout.slotSize * 0.18f;
-        drawUiSolidRect(arrowX0, arrowY - 2.0f, arrowMidX, arrowY + 2.0f, cursorOutlineAbgr);
-        drawUiSolidRect(arrowMidX, arrowY - layout.slotSize * 0.16f, arrowX1, arrowY, cursorOutlineAbgr);
-        drawUiSolidRect(arrowMidX, arrowY, arrowX1, arrowY + layout.slotSize * 0.16f, cursorOutlineAbgr);
-
-        drawSlotFrame(layout.resultSlotX, layout.resultSlotY, frameDebugData.craftingResultSlot.count > 0);
-        drawSlotContents(frameDebugData.craftingResultSlot, layout.resultSlotX, layout.resultSlotY);
-    }
-
-    constexpr int kVisibleBagRows = 3;
-    constexpr std::size_t kBagColumns = 9;
-    const std::size_t maxBagStartRow =
-        (FrameDebugData::kBagHudSlotCount / kBagColumns) > kVisibleBagRows
-        ? (FrameDebugData::kBagHudSlotCount / kBagColumns) - kVisibleBagRows
-        : 0;
-    const std::size_t bagStartRow = std::min(static_cast<std::size_t>(frameDebugData.craftingBagStartRow), maxBagStartRow);
-    for (int row = 0; row < kVisibleBagRows; ++row)
-    {
-        for (int col = 0; col < 9; ++col)
-        {
-            const std::size_t slotIndex =
-                (bagStartRow + static_cast<std::size_t>(row)) * kBagColumns
-                + static_cast<std::size_t>(col);
-            const float slotX = layout.inventoryOriginX + static_cast<float>(col) * (layout.slotSize + layout.slotGap);
-            const float slotY = layout.inventoryOriginY + static_cast<float>(row) * (layout.slotSize + layout.slotGap);
-            drawSlotFrame(slotX, slotY, false);
-            drawSlotContents(frameDebugData.bagSlots[slotIndex], slotX, slotY);
-        }
-    }
-
-    for (int slotIndex = 0; slotIndex < 9; ++slotIndex)
-    {
-        const float slotX = layout.inventoryOriginX + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-        const float slotY = layout.inventoryOriginY + static_cast<float>(kVisibleBagRows) * (layout.slotSize + layout.slotGap);
-        const bool selected = static_cast<std::size_t>(slotIndex) == frameDebugData.hotbarSelectedIndex;
-        drawSlotFrame(slotX, slotY, selected);
-        drawSlotContents(frameDebugData.hotbarSlots[static_cast<std::size_t>(slotIndex)], slotX, slotY);
-    }
-
-    if (frameDebugData.craftingCursorSlot.count > 0)
-    {
-        const float cursorX = frameDebugData.uiCursorX - layout.slotSize * 0.34f;
-        const float cursorY = frameDebugData.uiCursorY - layout.slotSize * 0.34f;
-        drawSlotContents(frameDebugData.craftingCursorSlot, cursorX, cursorY);
-    }
+    drawPart(playerUv.head.front, 4.0f, 0.0f, 8.0f, 8.0f);
+    drawPart(playerUv.body.front, 4.0f, 8.0f, 8.0f, 12.0f);
+    drawPart(playerUv.arm.front, 0.0f, 8.0f, 4.0f, 12.0f);
+    TextureUvRect armRight = playerUv.arm.front;
+    std::swap(armRight.minU, armRight.maxU);
+    drawPart(armRight, 12.0f, 8.0f, 4.0f, 12.0f);
+    drawPart(playerUv.leg.front, 4.0f, 20.0f, 4.0f, 12.0f);
+    TextureUvRect legRight = playerUv.leg.front;
+    std::swap(legRight.minU, legRight.maxU);
+    drawPart(legRight, 8.0f, 20.0f, 4.0f, 12.0f);
 }
 
 void Renderer::drawWorldPickupSprites(
@@ -1421,6 +1060,153 @@ void Renderer::drawWorldPickupSprites(
                 .u = minU,
                 .v = minV,
                 .abgr = pickupAbgr},
+        };
+
+        bgfx::TransientVertexBuffer tvb{};
+        bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
+        std::memcpy(tvb.data, vertices, sizeof(vertices));
+
+        bgfx::TransientIndexBuffer tib{};
+        bgfx::allocTransientIndexBuffer(&tib, 6);
+        auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
+        indices[0] = 0;
+        indices[1] = 1;
+        indices[2] = 2;
+        indices[3] = 0;
+        indices[4] = 2;
+        indices[5] = 3;
+
+        const float identity[16] = {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f,
+        };
+        bgfx::setTransform(identity);
+        bgfx::setVertexBuffer(0, &tvb);
+        bgfx::setIndexBuffer(&tib);
+        bgfx::setTexture(
+            0,
+            detail::toUniformHandle(inventoryUiSamplerHandle_),
+            detail::toTextureHandle(textureHandle));
+        bgfx::setState(
+            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+            | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS);
+        bgfx::submit(detail::kMainView, detail::toProgramHandle(inventoryUiProgramHandle_));
+    }
+}
+
+void Renderer::drawWorldProjectileSprites(
+    const FrameDebugData& frameDebugData,
+    const CameraFrameData& cameraFrameData)
+{
+    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX)
+    {
+        return;
+    }
+
+    for (const FrameDebugData::WorldProjectileHud& projectile : frameDebugData.worldProjectiles)
+    {
+        const std::uint16_t textureHandle = hudItemKindTextureHandle(projectile.itemKind);
+        if (textureHandle == UINT16_MAX)
+        {
+            continue;
+        }
+        const TextureUvRect uv = hudItemKindTextureUv(projectile.itemKind);
+        const glm::vec3 toProjectile = projectile.worldPosition - cameraFrameData.position;
+        const float distanceSq = glm::dot(toProjectile, toProjectile);
+        if (distanceSq < 1.2f * 1.2f || distanceSq > 96.0f * 96.0f)
+        {
+            continue;
+        }
+        if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4
+            || bgfx::getAvailTransientIndexBuffer(6) < 6)
+        {
+            break;
+        }
+
+        glm::vec3 velocityDir = projectile.velocity;
+        if (glm::dot(velocityDir, velocityDir) > 1.0e-8f)
+        {
+            velocityDir = glm::normalize(velocityDir);
+        }
+        else
+        {
+            velocityDir = glm::normalize(cameraFrameData.forward);
+        }
+
+        glm::vec3 toCamera = cameraFrameData.position - projectile.worldPosition;
+        if (glm::dot(toCamera, toCamera) <= 1.0e-8f)
+        {
+            toCamera = -cameraFrameData.forward;
+        }
+        toCamera = glm::normalize(toCamera);
+
+        glm::vec3 right = glm::cross(toCamera, velocityDir);
+        if (glm::dot(right, right) <= 1.0e-8f)
+        {
+            right = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), velocityDir);
+        }
+        if (glm::dot(right, right) <= 1.0e-8f)
+        {
+            right = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
+        right = glm::normalize(right);
+        glm::vec3 up = glm::cross(velocityDir, right);
+        if (glm::dot(up, up) <= 1.0e-8f)
+        {
+            up = glm::vec3(0.0f, 1.0f, 0.0f);
+        }
+        up = glm::normalize(up);
+
+        const float distance = std::sqrt(distanceSq);
+        const float halfWidth = glm::clamp(0.03f + 0.2f / std::max(distance, 2.0f), 0.03f, 0.07f);
+        const float halfHeight = halfWidth * 2.6f;
+        right *= halfWidth;
+        up *= halfHeight;
+
+        const std::uint32_t arrowAbgr = detail::packAbgr8(glm::vec3(1.0f), 1.0f);
+        detail::ChunkVertex vertices[4] = {
+            detail::ChunkVertex{
+                .x = projectile.worldPosition.x - right.x - up.x,
+                .y = projectile.worldPosition.y - right.y - up.y,
+                .z = projectile.worldPosition.z - right.z - up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = uv.minU,
+                .v = uv.maxV,
+                .abgr = arrowAbgr},
+            detail::ChunkVertex{
+                .x = projectile.worldPosition.x + right.x - up.x,
+                .y = projectile.worldPosition.y + right.y - up.y,
+                .z = projectile.worldPosition.z + right.z - up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = uv.maxU,
+                .v = uv.maxV,
+                .abgr = arrowAbgr},
+            detail::ChunkVertex{
+                .x = projectile.worldPosition.x + right.x + up.x,
+                .y = projectile.worldPosition.y + right.y + up.y,
+                .z = projectile.worldPosition.z + right.z + up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = uv.maxU,
+                .v = uv.minV,
+                .abgr = arrowAbgr},
+            detail::ChunkVertex{
+                .x = projectile.worldPosition.x - right.x + up.x,
+                .y = projectile.worldPosition.y - right.y + up.y,
+                .z = projectile.worldPosition.z - right.z + up.z,
+                .nx = 0.0f,
+                .ny = 1.0f,
+                .nz = 0.0f,
+                .u = uv.minU,
+                .v = uv.minV,
+                .abgr = arrowAbgr},
         };
 
         bgfx::TransientVertexBuffer tvb{};
@@ -2689,486 +2475,6 @@ void Renderer::drawPauseMenuChrome(
     {
         drawButtonPanel(firstButtonRow + buttonIndex * kPitch, hovered == buttonIndex);
     }
-}
-
-void Renderer::drawMainMenuBackground()
-{
-    static bool loggedReady = false;
-    static bool loggedSkipped = false;
-    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
-        || mainMenuBackgroundTextureHandle_ == UINT16_MAX || width_ == 0 || height_ == 0
-        || mainMenuBackgroundWidthPx_ == 0 || mainMenuBackgroundHeightPx_ == 0)
-    {
-        if (!loggedSkipped)
-        {
-            core::logWarning(fmt::format(
-                "[menu-bg] skipped: program={} sampler={} texture={} win={}x{} tex={}x{}",
-                inventoryUiProgramHandle_,
-                inventoryUiSamplerHandle_,
-                mainMenuBackgroundTextureHandle_,
-                width_,
-                height_,
-                mainMenuBackgroundWidthPx_,
-                mainMenuBackgroundHeightPx_));
-            loggedSkipped = true;
-        }
-        return;
-    }
-    if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
-    {
-        if (!loggedSkipped)
-        {
-            core::logWarning("[menu-bg] skipped: transient vertex buffer unavailable");
-            loggedSkipped = true;
-        }
-        return;
-    }
-    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
-    {
-        if (!loggedSkipped)
-        {
-            core::logWarning("[menu-bg] skipped: transient index buffer unavailable");
-            loggedSkipped = true;
-        }
-        return;
-    }
-    if (!loggedReady)
-    {
-        core::logInfo(fmt::format(
-            "[menu-bg] drawing texture={} size={}x{} in window={}x{}",
-            mainMenuBackgroundTextureHandle_,
-            mainMenuBackgroundWidthPx_,
-            mainMenuBackgroundHeightPx_,
-            width_,
-            height_));
-        loggedReady = true;
-    }
-
-    const float winW = static_cast<float>(width_);
-    const float winH = static_cast<float>(height_);
-    const float imgW = static_cast<float>(mainMenuBackgroundWidthPx_);
-    const float imgH = static_cast<float>(mainMenuBackgroundHeightPx_);
-    const float imgAspect = imgW / imgH;
-    const float winAspect = winW / winH;
-
-    float u0 = 0.0f;
-    float u1 = 1.0f;
-    float v0 = 0.0f;
-    float v1 = 1.0f;
-    if (imgAspect > winAspect)
-    {
-        const float halfU = 0.5f * (winAspect / imgAspect);
-        u0 = 0.5f - halfU;
-        u1 = 0.5f + halfU;
-    }
-    else if (imgAspect < winAspect)
-    {
-        const float halfV = 0.5f * (imgAspect / winAspect);
-        v0 = 0.5f - halfV;
-        v1 = 0.5f + halfV;
-    }
-
-    float view[16];
-    bx::mtxIdentity(view);
-    float proj[16];
-    bx::mtxOrtho(
-        proj,
-        0.0f,
-        winW,
-        winH,
-        0.0f,
-        0.0f,
-        1000.0f,
-        0.0f,
-        bgfx::getCaps()->homogeneousDepth);
-    bgfx::setViewTransform(detail::kUiView, view, proj);
-
-    const float identity[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
-    };
-    bgfx::setTransform(identity);
-
-    constexpr std::uint32_t kWhiteAbgr = 0xffffffff;
-    detail::ChunkVertex vertices[4] = {
-        detail::ChunkVertex{.x = 0.0f, .y = 0.0f, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = u0, .v = v0, .abgr = kWhiteAbgr},
-        detail::ChunkVertex{.x = winW, .y = 0.0f, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = u1, .v = v0, .abgr = kWhiteAbgr},
-        detail::ChunkVertex{.x = winW, .y = winH, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = u1, .v = v1, .abgr = kWhiteAbgr},
-        detail::ChunkVertex{.x = 0.0f, .y = winH, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = u0, .v = v1, .abgr = kWhiteAbgr},
-    };
-
-    bgfx::TransientVertexBuffer tvb{};
-    bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
-    std::memcpy(tvb.data, vertices, sizeof(vertices));
-
-    bgfx::TransientIndexBuffer tib{};
-    bgfx::allocTransientIndexBuffer(&tib, 6);
-    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
-    indices[0] = 0;
-    indices[1] = 1;
-    indices[2] = 2;
-    indices[3] = 0;
-    indices[4] = 2;
-    indices[5] = 3;
-
-    bgfx::setVertexBuffer(0, &tvb);
-    bgfx::setIndexBuffer(&tib);
-    bgfx::setTexture(
-        0,
-        detail::toUniformHandle(inventoryUiSamplerHandle_),
-        detail::toTextureHandle(mainMenuBackgroundTextureHandle_));
-    bgfx::setState(
-        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
-    bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
-}
-
-void Renderer::drawMainMenuLogo()
-{
-    if (logoProgramHandle_ == UINT16_MAX || logoTextureHandle_ == UINT16_MAX || logoSamplerHandle_ == UINT16_MAX)
-    {
-        return;
-    }
-    if (logoWidthPx_ == 0 || logoHeightPx_ == 0 || width_ == 0 || height_ == 0)
-    {
-        return;
-    }
-    if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
-    {
-        return;
-    }
-    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
-    {
-        return;
-    }
-
-    const float aspect =
-        static_cast<float>(logoWidthPx_) / static_cast<float>(logoHeightPx_);
-    using namespace detail::MainMenuLogoDraw;
-    const float maxWidth = std::min(kMaxWidthCapPx, static_cast<float>(width_) * kMaxWidthFrac);
-    float drawW = maxWidth;
-    float drawH = drawW / aspect;
-    const float maxHeight = std::min(static_cast<float>(height_) * kMaxHeightFrac, kMaxHeightCapPx);
-    if (drawH > maxHeight)
-    {
-        drawH = maxHeight;
-        drawW = drawH * aspect;
-    }
-
-    const float x0 = (static_cast<float>(width_) - drawW) * 0.5f;
-    const float y0 = kMarginTopPx;
-    const float x1 = x0 + drawW;
-    const float y1 = y0 + drawH;
-
-    float view[16];
-    bx::mtxIdentity(view);
-    float proj[16];
-    bx::mtxOrtho(
-        proj,
-        0.0f,
-        static_cast<float>(width_),
-        static_cast<float>(height_),
-        0.0f,
-        0.0f,
-        1000.0f,
-        0.0f,
-        bgfx::getCaps()->homogeneousDepth);
-    bgfx::setViewTransform(detail::kUiView, view, proj);
-
-    const float identity[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
-    };
-    bgfx::setTransform(identity);
-
-    detail::ChunkVertex vertices[4] = {
-        detail::ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 0.0f, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 0.0f, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 1.0f, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 1.0f, .abgr = 0xffffffff},
-    };
-
-    bgfx::TransientVertexBuffer tvb{};
-    bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
-    std::memcpy(tvb.data, vertices, sizeof(vertices));
-
-    bgfx::TransientIndexBuffer tib{};
-    bgfx::allocTransientIndexBuffer(&tib, 6);
-    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
-    indices[0] = 0;
-    indices[1] = 1;
-    indices[2] = 2;
-    indices[3] = 0;
-    indices[4] = 2;
-    indices[5] = 3;
-
-    bgfx::setVertexBuffer(0, &tvb);
-    bgfx::setIndexBuffer(&tib);
-    bgfx::setTexture(0, detail::toUniformHandle(logoSamplerHandle_), detail::toTextureHandle(logoTextureHandle_));
-    bgfx::setState(
-        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
-    bgfx::submit(detail::kUiView, detail::toProgramHandle(logoProgramHandle_));
-}
-
-void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
-{
-    if (inventoryUiProgramHandle_ == UINT16_MAX || inventoryUiSamplerHandle_ == UINT16_MAX
-        || width_ == 0 || height_ == 0)
-    {
-        return;
-    }
-
-    const std::size_t selectedIndex = std::min<std::size_t>(
-        frameDebugData.hotbarSelectedIndex,
-        frameDebugData.hotbarSlots.size() - 1U);
-    const FrameDebugData::HotbarSlotHud selectedSlot = frameDebugData.hotbarSlots[selectedIndex];
-    if (selectedSlot.count == 0)
-    {
-        return;
-    }
-
-    std::uint16_t textureHandle = UINT16_MAX;
-    float minU = 0.0f;
-    float maxU = 1.0f;
-    float minV = 0.0f;
-    float maxV = 1.0f;
-    float halfW = 0.0f;
-    float halfH = 0.0f;
-    float baseRotationDeg = 0.0f;
-
-    textureHandle = hudItemKindTextureHandle(selectedSlot.itemKind);
-    if (textureHandle != UINT16_MAX)
-    {
-        const TextureUvRect uvRect = hudItemKindTextureUv(selectedSlot.itemKind);
-        minU = uvRect.minU;
-        maxU = uvRect.maxU;
-        minV = uvRect.minV;
-        maxV = uvRect.maxV;
-        if (selectedSlot.heldItemUsesSwordPose)
-        {
-            halfH = std::min(static_cast<float>(height_) * 0.46f, 420.0f);
-            halfW = halfH * 0.58f;
-            baseRotationDeg = -40.0f;
-        }
-        else
-        {
-            halfH = std::min(static_cast<float>(height_) * 0.24f, 192.0f);
-            halfW = halfH;
-            baseRotationDeg = -24.0f;
-        }
-    }
-    else if (
-        selectedSlot.itemKind == HudItemKind::None
-        && selectedSlot.blockType != vibecraft::world::BlockType::Air)
-    {
-        if (chunkAtlasTextureHandle_ == UINT16_MAX)
-        {
-            return;
-        }
-        textureHandle = chunkAtlasTextureHandle_;
-        const std::uint8_t tileIndex = vibecraft::world::textureTileIndex(
-            selectedSlot.blockType,
-            vibecraft::world::BlockFace::Side);
-        const float tileWidth = 1.0f / static_cast<float>(kChunkAtlasTileColumns);
-        const float tileHeight = 1.0f / static_cast<float>(kChunkAtlasTileRows);
-        const float tileX = static_cast<float>(tileIndex % kChunkAtlasTileColumns);
-        const float tileY = static_cast<float>(tileIndex / kChunkAtlasTileColumns);
-        minU = tileX * tileWidth;
-        maxU = minU + tileWidth;
-        minV = tileY * tileHeight;
-        maxV = minV + tileHeight;
-        halfH = std::min(static_cast<float>(height_) * 0.24f, 192.0f);
-        halfW = halfH;
-        baseRotationDeg = -24.0f;
-    }
-    else
-    {
-        return;
-    }
-
-    const float swing = std::clamp(frameDebugData.heldItemSwing, 0.0f, 1.0f);
-    const float swingEase = std::sin(swing * 3.1415926535f);
-
-    const float centerX =
-        static_cast<float>(width_) - halfW * 0.34f + swingEase * 28.0f;
-    const float centerY =
-        static_cast<float>(height_) - halfH * 0.26f + swingEase * 26.0f;
-    const float rotationRadians = (baseRotationDeg - swingEase * 28.0f) * (3.1415926535f / 180.0f);
-    const float cosA = std::cos(rotationRadians);
-    const float sinA = std::sin(rotationRadians);
-
-    float view[16];
-    bx::mtxIdentity(view);
-    float proj[16];
-    bx::mtxOrtho(
-        proj,
-        0.0f,
-        static_cast<float>(width_),
-        static_cast<float>(height_),
-        0.0f,
-        0.0f,
-        1000.0f,
-        0.0f,
-        bgfx::getCaps()->homogeneousDepth);
-    bgfx::setViewTransform(detail::kUiView, view, proj);
-
-    const float identity[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
-    };
-    bgfx::setTransform(identity);
-    const auto submitLayer = [&](const float offsetX,
-                                 const float offsetY,
-                                 const float scaleX,
-                                 const float scaleY,
-                                 const std::uint32_t abgr)
-    {
-        if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
-        {
-            return false;
-        }
-        if (bgfx::getAvailTransientIndexBuffer(6) < 6)
-        {
-            return false;
-        }
-
-        const auto rotatePoint = [centerX, centerY, cosA, sinA, offsetX, offsetY](const float x, const float y)
-        {
-            return glm::vec2{
-                centerX + offsetX + x * cosA - y * sinA,
-                centerY + offsetY + x * sinA + y * cosA,
-            };
-        };
-
-        const glm::vec2 p0 = rotatePoint(-halfW * scaleX, -halfH * scaleY);
-        const glm::vec2 p1 = rotatePoint(+halfW * scaleX, -halfH * scaleY);
-        const glm::vec2 p2 = rotatePoint(+halfW * scaleX, +halfH * scaleY);
-        const glm::vec2 p3 = rotatePoint(-halfW * scaleX, +halfH * scaleY);
-
-        detail::ChunkVertex vertices[4] = {
-            detail::ChunkVertex{.x = p0.x, .y = p0.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = minV, .abgr = abgr},
-            detail::ChunkVertex{.x = p1.x, .y = p1.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = minV, .abgr = abgr},
-            detail::ChunkVertex{.x = p2.x, .y = p2.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = maxV, .abgr = abgr},
-            detail::ChunkVertex{.x = p3.x, .y = p3.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = maxV, .abgr = abgr},
-        };
-
-        bgfx::TransientVertexBuffer tvb{};
-        bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
-        std::memcpy(tvb.data, vertices, sizeof(vertices));
-
-        bgfx::TransientIndexBuffer tib{};
-        bgfx::allocTransientIndexBuffer(&tib, 6);
-        auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
-        indices[0] = 0;
-        indices[1] = 1;
-        indices[2] = 2;
-        indices[3] = 0;
-        indices[4] = 2;
-        indices[5] = 3;
-
-        bgfx::setVertexBuffer(0, &tvb);
-        bgfx::setIndexBuffer(&tib);
-        bgfx::setTexture(
-            0,
-            detail::toUniformHandle(inventoryUiSamplerHandle_),
-            detail::toTextureHandle(textureHandle));
-        bgfx::setState(
-            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
-        bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
-        return true;
-    };
-
-    const bool usesSwordPose = selectedSlot.heldItemUsesSwordPose;
-    const float squashX = usesSwordPose ? 1.01f : 0.98f;
-    const float squashY = usesSwordPose ? 1.02f : 1.01f;
-    static_cast<void>(submitLayer(0.0f, 0.0f, squashX, squashY, 0xffffffff));
-}
-
-void Renderer::drawCrosshairOverlay()
-{
-    if (crosshairProgramHandle_ == UINT16_MAX
-        || crosshairTextureHandle_ == UINT16_MAX
-        || crosshairSamplerHandle_ == UINT16_MAX)
-    {
-        return;
-    }
-    if (width_ == 0 || height_ == 0)
-    {
-        return;
-    }
-    if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
-    {
-        return;
-    }
-    if (bgfx::getAvailTransientIndexBuffer(6) < 6)
-    {
-        return;
-    }
-
-    constexpr float kCrosshairSizePx = 15.0f;
-    const float x0 = std::floor((static_cast<float>(width_) - kCrosshairSizePx) * 0.5f);
-    const float y0 = std::floor((static_cast<float>(height_) - kCrosshairSizePx) * 0.5f);
-    const float x1 = x0 + kCrosshairSizePx;
-    const float y1 = y0 + kCrosshairSizePx;
-
-    float view[16];
-    bx::mtxIdentity(view);
-    float proj[16];
-    bx::mtxOrtho(
-        proj,
-        0.0f,
-        static_cast<float>(width_),
-        static_cast<float>(height_),
-        0.0f,
-        0.0f,
-        1000.0f,
-        0.0f,
-        bgfx::getCaps()->homogeneousDepth);
-    bgfx::setViewTransform(detail::kUiView, view, proj);
-
-    const float identity[16] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
-    };
-    bgfx::setTransform(identity);
-
-    detail::ChunkVertex vertices[4] = {
-        detail::ChunkVertex{.x = x0, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 0.0f, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = x1, .y = y0, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 0.0f, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = x1, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 1.0f, .v = 1.0f, .abgr = 0xffffffff},
-        detail::ChunkVertex{.x = x0, .y = y1, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = 0.0f, .v = 1.0f, .abgr = 0xffffffff},
-    };
-
-    bgfx::TransientVertexBuffer tvb{};
-    bgfx::allocTransientVertexBuffer(&tvb, 4, detail::ChunkVertex::layout());
-    std::memcpy(tvb.data, vertices, sizeof(vertices));
-
-    bgfx::TransientIndexBuffer tib{};
-    bgfx::allocTransientIndexBuffer(&tib, 6);
-    auto* indices = reinterpret_cast<std::uint16_t*>(tib.data);
-    indices[0] = 0;
-    indices[1] = 1;
-    indices[2] = 2;
-    indices[3] = 0;
-    indices[4] = 2;
-    indices[5] = 3;
-
-    bgfx::setVertexBuffer(0, &tvb);
-    bgfx::setIndexBuffer(&tib);
-    bgfx::setTexture(
-        0,
-        detail::toUniformHandle(crosshairSamplerHandle_),
-        detail::toTextureHandle(crosshairTextureHandle_));
-    bgfx::setState(
-        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
-    bgfx::submit(detail::kUiView, detail::toProgramHandle(crosshairProgramHandle_));
 }
 
 } // namespace vibecraft::render

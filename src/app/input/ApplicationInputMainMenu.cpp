@@ -99,7 +99,7 @@ void Application::processMainMenuInput()
         }
         else
         {
-            createNewSingleplayerWorld();
+            [[maybe_unused]] const bool createdNewWorld = createNewSingleplayerWorld();
         }
     }
     if (nextWorldKeyDown && !nextWorldKeyWasDown_)

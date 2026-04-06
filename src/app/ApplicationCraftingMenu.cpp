@@ -199,8 +199,6 @@ void Application::openCraftingMenu(
     craftingMenuState_.chestBlockPosition = glm::ivec3(0);
     craftingMenuState_.furnaceBlockPosition = glm::ivec3(0);
     craftingMenuState_.bagStartRow = 0;
-    craftingDragActive_ = false;
-    craftingDragLastHit_ = -1;
     craftingMenuState_.hint = useWorkbench
         ? "3x3 workbench crafting: left-click move, right-click split/place one."
         : "2x2 inventory crafting: logs -> planks, planks -> sticks/table. Gear slots are on the left.";
@@ -221,8 +219,6 @@ void Application::openChestMenu(const glm::ivec3& chestBlockPosition)
     craftingMenuState_.chestBlockPosition = chestBlockPosition;
     craftingMenuState_.furnaceBlockPosition = glm::ivec3(0);
     craftingMenuState_.bagStartRow = 0;
-    craftingDragActive_ = false;
-    craftingDragLastHit_ = -1;
     craftingMenuState_.hint = "Chest storage: move stacks between chest and inventory.";
     craftingMenuState_.gridSlots = chestSlotsByPosition_[blockStorageKey(chestBlockPosition)];
     soundEffects_.playChestOpen();
@@ -242,8 +238,6 @@ void Application::openFurnaceMenu(const glm::ivec3& furnaceBlockPosition)
     craftingMenuState_.chestBlockPosition = glm::ivec3(0);
     craftingMenuState_.furnaceBlockPosition = furnaceBlockPosition;
     craftingMenuState_.bagStartRow = 0;
-    craftingDragActive_ = false;
-    craftingDragLastHit_ = -1;
     craftingMenuState_.hint = "Furnace: top slot smelts, bottom slot burns fuel. Coal and wood both work.";
     craftingMenuState_.gridSlots.fill({});
     syncFurnaceStateToOpenMenu();
@@ -447,8 +441,6 @@ void Application::closeCraftingMenu()
     }
     returnCraftingSlotsToInventory(!(closingChest || closingFurnace));
     craftingMenuState_ = CraftingMenuState{};
-    craftingDragActive_ = false;
-    craftingDragLastHit_ = -1;
     if (closingChest)
     {
         soundEffects_.playChestClose();
@@ -460,23 +452,10 @@ void Application::closeCraftingMenu()
     recaptureMouseAfterMenu(mouseCaptured_, window_, inputState_);
 }
 
-void Application::handleCraftingMenuClick()
+void Application::applyCraftingMenuPrimaryInteraction(const int hit)
 {
     const bool chestMode = craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage;
     const bool furnaceMode = craftingMenuState_.mode == CraftingMenuState::Mode::Furnace;
-    const render::CraftingUiMode renderMode =
-        furnaceMode ? render::CraftingUiMode::Furnace
-        : chestMode ? render::CraftingUiMode::Chest
-        : craftingMenuState_.usesWorkbench ? render::CraftingUiMode::Workbench
-                                           : render::CraftingUiMode::Inventory;
-    const int hit = render::Renderer::hitTestCraftingMenu(
-        inputState_.mouseWindowX,
-        inputState_.mouseWindowY,
-        window_.width(),
-        window_.height(),
-        renderMode,
-        craftingMenuState_.usesWorkbench,
-        craftingMenuState_.bagStartRow);
     if (hit < 0)
     {
         if (!isInventorySlotEmpty(craftingMenuState_.carriedSlot))
@@ -538,7 +517,8 @@ void Application::handleCraftingMenuClick()
 
     InventorySlot* targetSlot = nullptr;
     bool isCraftingGridSlot = false;
-    if (hit >= render::Renderer::kCraftingGridHitBase && hit < render::Renderer::kCraftingGridHitBase + 9)
+    if (hit >= render::Renderer::kCraftingGridHitBase
+        && hit < render::Renderer::kCraftingGridHitBase + static_cast<int>(craftingMenuState_.gridSlots.size()))
     {
         targetSlot = &craftingMenuState_.gridSlots[static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase)];
         isCraftingGridSlot = true;
@@ -664,7 +644,8 @@ void Application::handleCraftingMenuRightClick()
 
     InventorySlot* targetSlot = nullptr;
     bool isCraftingGridSlot = false;
-    if (hit >= render::Renderer::kCraftingGridHitBase && hit < render::Renderer::kCraftingGridHitBase + 9)
+    if (hit >= render::Renderer::kCraftingGridHitBase
+        && hit < render::Renderer::kCraftingGridHitBase + static_cast<int>(craftingMenuState_.gridSlots.size()))
     {
         targetSlot = &craftingMenuState_.gridSlots[static_cast<std::size_t>(hit - render::Renderer::kCraftingGridHitBase)];
         isCraftingGridSlot = true;

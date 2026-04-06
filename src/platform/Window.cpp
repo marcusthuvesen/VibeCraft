@@ -121,6 +121,7 @@ void Window::pollEvents(InputState& inputState)
 
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
             inputState.windowFocused = true;
+            inputState.windowFocusGainedThisFrame = true;
             break;
 
         case SDL_EVENT_WINDOW_RESIZED:
@@ -161,7 +162,10 @@ void Window::pollEvents(InputState& inputState)
     if (window_ != nullptr)
     {
         const SDL_WindowFlags flags = SDL_GetWindowFlags(window_);
-        inputState.windowFocused = (flags & SDL_WINDOW_INPUT_FOCUS) != 0;
+        // Treat either keyboard or mouse focus as "focused" so a click-to-focus frame still runs UI
+        // input if one of the two flags lags behind the other on some platforms.
+        inputState.windowFocused =
+            (flags & (SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_FOCUS)) != 0;
     }
 
     float mouseX = 0.0f;

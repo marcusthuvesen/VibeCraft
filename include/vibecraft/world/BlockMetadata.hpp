@@ -130,7 +130,8 @@ struct BlockMetadata
     case BlockType::Water:
         // Tile 6 = first frame of the still-water strip (see build_chunk_atlas.sh).
         return {
-            .debugColor = 0xb8ffcf7a,
+            // Slightly more transparent than before to match Minecraft-like readability.
+            .debugColor = 0xa8ffcf7a,
             .textureTiles = {.top = 6, .bottom = 6, .side = 6},
             .hardness = 1000.0f,
             .breakable = false,

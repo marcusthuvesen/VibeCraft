@@ -80,6 +80,7 @@ TEST_CASE("MobSpawnSystem does not spawn hostiles during daytime")
             0.3f,
             0.02f,
             vibecraft::game::TimeOfDayPeriod::Day,
+            1.0f,
             true,
             vitals);
     }
@@ -120,6 +121,7 @@ TEST_CASE("MobSpawnSystem blocks hostile spawns near torches")
             0.3f,
             0.02f,
             vibecraft::game::TimeOfDayPeriod::Night,
+            0.0f,
             true,
             vitals);
     }
@@ -156,6 +158,7 @@ TEST_CASE("MobSpawnSystem hostiles can climb a one-block ledge while chasing")
             0.3f,
             0.02f,
             vibecraft::game::TimeOfDayPeriod::Night,
+            0.0f,
             true,
             vitals);
     }
@@ -182,16 +185,22 @@ TEST_CASE("MobSpawnSystem hostiles can climb a one-block ledge while chasing")
             .position = glm::ivec3{wx, wallBaseY, wz},
             .blockType = vibecraft::world::BlockType::Stone,
         }));
-        REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
-            .action = vibecraft::world::WorldEditAction::Remove,
-            .position = glm::ivec3{wx, wallBaseY + 1, wz},
-            .blockType = vibecraft::world::BlockType::Air,
-        }));
-        REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
-            .action = vibecraft::world::WorldEditAction::Remove,
-            .position = glm::ivec3{wx, wallBaseY + 2, wz},
-            .blockType = vibecraft::world::BlockType::Air,
-        }));
+        if (world.blockAt(wx, wallBaseY + 1, wz) != vibecraft::world::BlockType::Air)
+        {
+            REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
+                .action = vibecraft::world::WorldEditAction::Remove,
+                .position = glm::ivec3{wx, wallBaseY + 1, wz},
+                .blockType = vibecraft::world::BlockType::Air,
+            }));
+        }
+        if (world.blockAt(wx, wallBaseY + 2, wz) != vibecraft::world::BlockType::Air)
+        {
+            REQUIRE(world.applyEditCommand(vibecraft::world::WorldEditCommand{
+                .action = vibecraft::world::WorldEditAction::Remove,
+                .position = glm::ivec3{wx, wallBaseY + 2, wz},
+                .blockType = vibecraft::world::BlockType::Air,
+            }));
+        }
     }
 
     float maxObservedY = initialY;
@@ -204,6 +213,7 @@ TEST_CASE("MobSpawnSystem hostiles can climb a one-block ledge while chasing")
             0.3f,
             0.02f,
             vibecraft::game::TimeOfDayPeriod::Night,
+            0.0f,
             false,
             vitals);
 
@@ -250,6 +260,7 @@ TEST_CASE("MobSpawnSystem hostiles can swim upward toward a player")
             0.3f,
             0.02f,
             vibecraft::game::TimeOfDayPeriod::Night,
+            0.0f,
             true,
             vitals);
     }
@@ -287,6 +298,7 @@ TEST_CASE("MobSpawnSystem hostiles can swim upward toward a player")
             0.3f,
             0.02f,
             vibecraft::game::TimeOfDayPeriod::Night,
+            0.0f,
             false,
             vitals);
 

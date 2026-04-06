@@ -36,6 +36,8 @@ float meleeDamageForSlot(const InventorySlot& slot)
         return 2.25f;
     case EquippedItem::DiamondPickaxe:
         return 5.0f;
+    case EquippedItem::Bow:
+        return 1.0f;
     case EquippedItem::None:
     default:
         return 1.0f;
@@ -64,6 +66,8 @@ float meleeReachForSlot(const InventorySlot& slot)
     case EquippedItem::IronPickaxe:
     case EquippedItem::GoldPickaxe:
     case EquippedItem::DiamondPickaxe:
+        return 2.85f;
+    case EquippedItem::Bow:
         return 2.85f;
     case EquippedItem::None:
     default:
@@ -98,33 +102,11 @@ float knockbackDistanceForSlot(const InventorySlot& slot)
     case EquippedItem::GoldPickaxe:
     case EquippedItem::DiamondPickaxe:
         return 0.52f;
+    case EquippedItem::Bow:
+        return 0.45f;
     case EquippedItem::None:
     default:
         return 0.45f;
     }
-}
-
-EquippedItem mobDropItemForKind(const game::MobKind mobKind)
-{
-    using MK = game::MobKind;
-    switch (mobKind)
-    {
-    case MK::Zombie:
-    case MK::Skeleton:
-    case MK::Creeper:
-    case MK::Spider:
-        return EquippedItem::RottenFlesh;
-    case MK::Player:
-        return EquippedItem::None;
-    case MK::Cow:
-        return EquippedItem::Leather;
-    case MK::Pig:
-        return EquippedItem::Leather;
-    case MK::Sheep:
-        return EquippedItem::Mutton;
-    case MK::Chicken:
-        return EquippedItem::Feather;
-    }
-    return EquippedItem::RottenFlesh;
 }
 }  // namespace vibecraft::app

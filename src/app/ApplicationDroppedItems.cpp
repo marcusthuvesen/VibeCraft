@@ -1,5 +1,7 @@
 #include "vibecraft/app/Application.hpp"
 
+#include "vibecraft/game/MobTypes.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -88,6 +90,77 @@ void Application::spawnDroppedItemAtPosition(
         .pickupDelaySeconds = 0.2f,
         .spinRadians = 0.0f,
     });
+}
+
+void Application::spawnMobKillDrops(const game::MobKind mobKind, const glm::vec3& feetPosition)
+{
+    const glm::vec3 base = feetPosition + glm::vec3(0.0f, 0.35f, 0.0f);
+    const auto scatter = [&base](const int index)
+    {
+        const float s = static_cast<float>(index);
+        return base + glm::vec3(0.09f * s, 0.0f, 0.07f * s);
+    };
+    const auto hashRoll = [&base](const int salt) -> unsigned int
+    {
+        const glm::vec3 p = base + glm::vec3(static_cast<float>(salt) * 0.31f, 0.0f, static_cast<float>(salt) * 0.29f);
+        unsigned int h = static_cast<unsigned int>(std::lround(std::abs(p.x * 12.9898 + p.y * 78.233 + p.z * 37.719)));
+        h ^= h >> 16U;
+        h *= 2246822519U;
+        h ^= h >> 13U;
+        h *= 3266489917U;
+        h ^= h >> 16U;
+        return h % 3U;
+    };
+
+    using MK = game::MobKind;
+    switch (mobKind)
+    {
+    case MK::Zombie:
+        spawnDroppedItemAtPosition(EquippedItem::RottenFlesh, base);
+        break;
+    case MK::Skeleton:
+    {
+        const unsigned int arrowDrops = hashRoll(11);
+        for (unsigned int i = 0; i < arrowDrops; ++i)
+        {
+            spawnDroppedItemAtPosition(EquippedItem::Arrow, scatter(static_cast<int>(i)));
+        }
+        break;
+    }
+    case MK::Creeper:
+    {
+        const unsigned int powderDrops = hashRoll(17);
+        for (unsigned int i = 0; i < powderDrops; ++i)
+        {
+            spawnDroppedItemAtPosition(EquippedItem::Gunpowder, scatter(static_cast<int>(i)));
+        }
+        break;
+    }
+    case MK::Spider:
+    {
+        const unsigned int stringDrops = hashRoll(23);
+        for (unsigned int i = 0; i < stringDrops; ++i)
+        {
+            spawnDroppedItemAtPosition(EquippedItem::String, scatter(static_cast<int>(i)));
+        }
+        break;
+    }
+    case MK::Cow:
+        spawnDroppedItemAtPosition(EquippedItem::Leather, base);
+        break;
+    case MK::Pig:
+        spawnDroppedItemAtPosition(EquippedItem::RawPorkchop, base);
+        break;
+    case MK::Sheep:
+        spawnDroppedItemAtPosition(EquippedItem::Mutton, base);
+        break;
+    case MK::Chicken:
+        spawnDroppedItemAtPosition(EquippedItem::Feather, base);
+        break;
+    case MK::Player:
+    default:
+        break;
+    }
 }
 
 glm::vec3 Application::dropSpawnPositionInFront(

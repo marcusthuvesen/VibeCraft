@@ -1,6 +1,7 @@
 #include "vibecraft/game/MobSpawnSystem.hpp"
 
 #include "vibecraft/game/CollisionHelpers.hpp"
+#include "vibecraft/game/mobs/HostileMobBehavior.hpp"
 #include "vibecraft/game/mobs/MobTargeting.hpp"
 
 #include <glm/geometric.hpp>
@@ -181,6 +182,7 @@ std::optional<MobDamageResult> MobSpawnSystem::damageClosestAlongRay(
 
 void MobSpawnSystem::applyMelee(
     MobInstance& mob,
+    const glm::vec3& mobAttackOrigin,
     const glm::vec3& hostPlayerFeet,
     PlayerVitals& playerVitals,
     const float hostDamageMultiplier,
@@ -190,6 +192,10 @@ void MobSpawnSystem::applyMelee(
     const float remotePlayerDamageMultiplier)
 {
     if (!isHostileMob(mob.kind))
+    {
+        return;
+    }
+    if (mob.kind == MobKind::Creeper)
     {
         return;
     }
@@ -213,13 +219,14 @@ void MobSpawnSystem::applyMelee(
         return;
     }
 
+    const HostileMobBehavior behavior = hostileMobBehaviorForKind(mob.kind);
     const float dist = std::sqrt(horizontalDistSqXZ(mobFeet, target->feet));
-    if (dist > settings_.meleeReach)
+    if (dist > behavior.meleeReach)
     {
         return;
     }
 
-    const float baseDamage = settings_.meleeDamage;
+    const float baseDamage = behavior.meleeDamage;
     if (target->index == 0)
     {
         const float clampedDamageMultiplier = std::clamp(hostDamageMultiplier, 0.0f, 1.0f);
@@ -236,6 +243,12 @@ void MobSpawnSystem::applyMelee(
         remotePlayerHealth[remoteIndex] =
             std::clamp(remotePlayerHealth[remoteIndex] - amount, 0.0f, remotePlayerMaxHealth);
     }
-    mob.attackCooldownSeconds = settings_.attackCooldownSeconds;
+    combatEvents_.push_back(MobCombatEvent{
+        .type = MobCombatEventType::MeleeAttack,
+        .actorKind = mob.kind,
+        .worldPosition = mobAttackOrigin,
+        .projectileKind = HostileProjectileKind::Arrow,
+    });
+    mob.attackCooldownSeconds = behavior.attackCooldownSeconds;
 }
 }  // namespace vibecraft::game

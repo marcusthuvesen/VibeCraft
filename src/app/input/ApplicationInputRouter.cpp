@@ -17,8 +17,17 @@ void Application::processInput(const float deltaTimeSeconds)
             mouseCaptured_,
             inputState_.leftMousePressed,
             inputState_.leftMouseClicked);
+    // Chest, furnace, workbench, and inventory crafting: same as pause — process the refocus click
+    // instead of dropping a frame behind SDL focus / window-flag lag.
+    const bool allowCraftingPointerInputWhileUnfocused =
+        gameScreen_ == GameScreen::Playing
+        && craftingMenuState_.active
+        && shouldAllowPausedPointerInputWhileUnfocused(
+            mouseCaptured_,
+            inputState_.leftMousePressed,
+            inputState_.leftMouseClicked);
     if (!inputState_.windowFocused && !allowMainMenuPointerInputWhileUnfocused
-        && !allowPausedPointerInputWhileUnfocused)
+        && !allowPausedPointerInputWhileUnfocused && !allowCraftingPointerInputWhileUnfocused)
     {
         if (mouseCaptured_)
         {
@@ -26,6 +35,27 @@ void Application::processInput(const float deltaTimeSeconds)
             window_.setRelativeMouseMode(false);
         }
         return;
+    }
+
+    // Apply before Esc handling so a focus-loss release cannot undo resume capture in the same frame.
+    if (inputState_.releaseMouseRequested)
+    {
+        mouseCaptured_ = false;
+        window_.setRelativeMouseMode(false);
+    }
+
+    if (inputState_.windowFocusGainedThisFrame)
+    {
+        if (gameScreen_ == GameScreen::Paused)
+        {
+            // Clicking another app can drop the matching mouse-up; reset so pause menu clicks work again.
+            pauseMenuAwaitingMouseRelease_ = false;
+        }
+        if (gameScreen_ == GameScreen::Playing && craftingMenuState_.active)
+        {
+            // Avoid stale relative deltas if focus was lost while a menu had the cursor.
+            inputState_.clearMouseMotion();
+        }
     }
 
     const bool f3Down = inputState_.isKeyDown(SDL_SCANCODE_F3);
@@ -163,12 +193,6 @@ void Application::processInput(const float deltaTimeSeconds)
         }
     }
 
-    if (inputState_.releaseMouseRequested)
-    {
-        mouseCaptured_ = false;
-        window_.setRelativeMouseMode(false);
-    }
-
     if (inputState_.captureMouseRequested && gameScreen_ == GameScreen::Playing)
     {
         mouseCaptured_ = true;
@@ -244,8 +268,6 @@ void Application::processInput(const float deltaTimeSeconds)
                     craftingMenuState_.bagStartRow + static_cast<std::size_t>(-scrollDelta));
             }
         }
-        const std::uint32_t mouseButtons = SDL_GetMouseState(nullptr, nullptr);
-        const bool leftMouseHeld = (mouseButtons & SDL_BUTTON_LMASK) != 0U;
         const render::CraftingUiMode renderMode =
             craftingMenuState_.mode == CraftingMenuState::Mode::Furnace ? render::CraftingUiMode::Furnace
             : craftingMenuState_.mode == CraftingMenuState::Mode::ChestStorage ? render::CraftingUiMode::Chest
@@ -259,24 +281,31 @@ void Application::processInput(const float deltaTimeSeconds)
             renderMode,
             craftingMenuState_.usesWorkbench,
             craftingMenuState_.bagStartRow);
-        if (!leftMouseHeld)
+        // Minecraft-style: left down picks up when the cursor stack is empty; left up places/swap/drops when non-empty.
+        // If both press and release arrive in the same poll (common with tap-to-click), treat it as a single click
+        // against the pre-click carried state instead of immediately undoing the interaction on the same slot.
+        if (inputState_.leftMousePressed && inputState_.leftMouseClicked)
         {
-            craftingDragActive_ = false;
-            craftingDragLastHit_ = -1;
-        }
-        else if (!craftingDragActive_)
-        {
-            if (inputState_.leftMousePressed)
+            const bool carriedWasEmpty = isInventorySlotEmpty(craftingMenuState_.carriedSlot);
+            applyCraftingMenuPrimaryInteraction(hoveredCraftingHit);
+            if (!carriedWasEmpty)
             {
-                handleCraftingMenuClick();
-                craftingDragActive_ = true;
-                craftingDragLastHit_ = hoveredCraftingHit;
+                return;
             }
         }
-        else if (hoveredCraftingHit != craftingDragLastHit_)
+        else
         {
-            handleCraftingMenuClick();
-            craftingDragLastHit_ = hoveredCraftingHit;
+            if (inputState_.leftMousePressed && isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+            {
+                applyCraftingMenuPrimaryInteraction(hoveredCraftingHit);
+            }
+            // Placement should react to either edge: some input devices can intermittently
+            // miss the release event while still reporting the press event.
+            if ((inputState_.leftMousePressed || inputState_.leftMouseClicked)
+                && !isInventorySlotEmpty(craftingMenuState_.carriedSlot))
+            {
+                applyCraftingMenuPrimaryInteraction(hoveredCraftingHit);
+            }
         }
         if (inputState_.rightMousePressed)
         {

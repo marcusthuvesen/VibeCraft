@@ -30,6 +30,12 @@ enum class MobKind : std::uint8_t
     return !isHostileMob(kind);
 }
 
+/// Minecraft-like: undead hostiles burn in direct sunlight (not creepers/spiders).
+[[nodiscard]] constexpr bool burnsInDaylight(const MobKind kind)
+{
+    return kind == MobKind::Zombie || kind == MobKind::Skeleton;
+}
+
 /// Spawn / snapshot defaults when a precise health value is not on the wire.
 [[nodiscard]] constexpr float mobKindDefaultMaxHealth(const MobKind kind)
 {
@@ -65,7 +71,12 @@ struct MobInstance
     float feetY = 0.0f;
     float feetZ = 0.0f;
     float yawRadians = 0.0f;
+    float pitchRadians = 0.0f;
     float attackCooldownSeconds = 0.0f;
+    /// Creeper: seconds spent in blast range with line of sight (fuse). Other kinds ignore.
+    float creeperFuseSeconds = 0.0f;
+    /// Creeper: throttle for fuse hiss cues.
+    float creeperFuseSoundCooldownSeconds = 0.0f;
     /// Passive: countdown until a new wander heading is chosen.
     float wanderTimerSeconds = 0.0f;
     /// Passive: current wander heading on the XZ plane.
@@ -76,6 +87,7 @@ struct MobInstance
     float growthSecondsRemaining = 0.0f;
     float health = 1.0f;
     float halfWidth = 0.30f;
-    float height = 1.95f;
+    /// Default kind is Zombie; keep in sync with `adultDimensionsForMobKind(MobKind::Zombie)`.
+    float height = 2.0f * (1.95f / 1.8f);
 };
 }  // namespace vibecraft::game

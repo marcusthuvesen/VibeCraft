@@ -15,7 +15,7 @@ namespace vibecraft::app
 namespace
 {
 constexpr std::uint32_t kPlayerStateMagic = 0x56424350;  // VBCP
-constexpr std::uint32_t kPlayerStateVersion = 6;
+constexpr std::uint32_t kPlayerStateVersion = 7;
 
 template<typename T>
 bool writeBinary(std::ofstream& output, const T& value)
@@ -443,9 +443,10 @@ std::optional<SingleplayerPlayerState> SingleplayerSaveSerializer::loadPlayerSta
             return std::nullopt;
         }
         CraftingGridSlots slots{};
-        for (InventorySlot& slot : slots)
+        const std::size_t chestSlotCount = version >= 7 ? slots.size() : static_cast<std::size_t>(9);
+        for (std::size_t slotIndex = 0; slotIndex < chestSlotCount; ++slotIndex)
         {
-            if (!readInventorySlot(input, slot, version))
+            if (!readInventorySlot(input, slots[slotIndex], version))
             {
                 return std::nullopt;
             }

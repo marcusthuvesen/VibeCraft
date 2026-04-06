@@ -57,16 +57,16 @@ FloraPatchTuning floraPatchTuning(const FloraGenerationFamily family)
     case FloraGenerationFamily::Forest:
         return FloraPatchTuning{
             .flowerPatchMin = 0.54,
-            .flowerSpotChance = 0.033,
+            .flowerSpotChance = 0.011,
             .mushroomPatchMin = 0.64,
-            .mushroomSpotChance = 0.036,
+            .mushroomSpotChance = 0.012,
         };
     case FloraGenerationFamily::FlowerForest:
         return FloraPatchTuning{
             .flowerPatchMin = 0.32,
-            .flowerSpotChance = 0.095,
+            .flowerSpotChance = 0.045,
             .mushroomPatchMin = 0.68,
-            .mushroomSpotChance = 0.028,
+            .mushroomSpotChance = 0.012,
         };
     case FloraGenerationFamily::BirchForest:
         return FloraPatchTuning{
@@ -156,21 +156,21 @@ GrassTuftTuning grassTuftTuning(const FloraGenerationFamily family)
         };
     case FloraGenerationFamily::Forest:
         return GrassTuftTuning{
-            .baseChance = 0.0105,
+            .baseChance = 0.0025,
             .primaryTuft = BlockType::GrassTuft,
             .secondaryTuft = BlockType::CloverTuft,
             .primaryFraction = 0.78,
         };
     case FloraGenerationFamily::FlowerForest:
         return GrassTuftTuning{
-            .baseChance = 0.010,
+            .baseChance = 0.0035,
             .primaryTuft = BlockType::FlowerTuft,
             .secondaryTuft = BlockType::CloverTuft,
             .primaryFraction = 0.64,
         };
     case FloraGenerationFamily::BirchForest:
         return GrassTuftTuning{
-            .baseChance = 0.0115,
+            .baseChance = 0.003,
             .primaryTuft = BlockType::GrassTuft,
             .secondaryTuft = BlockType::CloverTuft,
             .primaryFraction = 0.76,
@@ -245,11 +245,11 @@ TemperateForestDecorProfile temperateForestDecorProfile(const SurfaceBiome biome
         profile.mossGroundRollDark = 0.07;
         profile.mossGroundRollOther = 0.08;
         profile.fernForestPatchMin = 0.48;
-        profile.fernChanceDense = 0.44;
-        profile.fernChanceSparse = 0.31;
+        profile.fernChanceDense = 0.15;
+        profile.fernChanceSparse = 0.10;
         profile.woodlandGroundPatchEnabled = true;
         profile.woodlandGroundPatchForestMin = 0.40;
-        profile.woodlandGroundPatchRollMax = 0.026;
+        profile.woodlandGroundPatchRollMax = 0.010;
         break;
     case SurfaceBiome::DarkForest:
         profile.patchEnterThreshold = 0.44;
@@ -260,21 +260,21 @@ TemperateForestDecorProfile temperateForestDecorProfile(const SurfaceBiome biome
         profile.patchEnterThreshold = 0.40;
         profile.denseForestThreshold = 0.65;
         profile.fernForestPatchMin = 0.55;
-        profile.fernChanceDense = 0.38;
-        profile.fernChanceSparse = 0.25;
+        profile.fernChanceDense = 0.13;
+        profile.fernChanceSparse = 0.08;
         profile.woodlandGroundPatchEnabled = true;
         profile.woodlandGroundPatchForestMin = 0.50;
-        profile.woodlandGroundPatchRollMax = 0.042;
+        profile.woodlandGroundPatchRollMax = 0.014;
         break;
     case SurfaceBiome::BirchForest:
         profile.patchEnterThreshold = 0.38;
         profile.denseForestThreshold = 0.63;
         profile.fernForestPatchMin = 0.52;
-        profile.fernChanceDense = 0.40;
-        profile.fernChanceSparse = 0.27;
+        profile.fernChanceDense = 0.14;
+        profile.fernChanceSparse = 0.09;
         profile.woodlandGroundPatchEnabled = true;
         profile.woodlandGroundPatchForestMin = 0.48;
-        profile.woodlandGroundPatchRollMax = 0.045;
+        profile.woodlandGroundPatchRollMax = 0.015;
         break;
     case SurfaceBiome::Taiga:
     case SurfaceBiome::SnowyTaiga:

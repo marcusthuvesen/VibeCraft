@@ -213,6 +213,8 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     const bgfx::UniformHandle chunkAnim = bgfx::createUniform("u_chunkAnim", bgfx::UniformType::Vec4);
     const bgfx::UniformHandle chunkBiomeHaze = bgfx::createUniform("u_biomeHaze", bgfx::UniformType::Vec4);
     const bgfx::UniformHandle chunkBiomeGrade = bgfx::createUniform("u_biomeGrade", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkCameraPos = bgfx::createUniform("u_cameraPos", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkFog = bgfx::createUniform("u_chunkFog", bgfx::UniformType::Vec4);
 
     if (!bgfx::isValid(chunkSunDirection)
         || !bgfx::isValid(chunkSunLightColor)
@@ -221,7 +223,9 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         || !bgfx::isValid(chunkAmbientLight)
         || !bgfx::isValid(chunkAnim)
         || !bgfx::isValid(chunkBiomeHaze)
-        || !bgfx::isValid(chunkBiomeGrade))
+        || !bgfx::isValid(chunkBiomeGrade)
+        || !bgfx::isValid(chunkCameraPos)
+        || !bgfx::isValid(chunkFog))
     {
         if (bgfx::isValid(chunkSunDirection))
         {
@@ -255,6 +259,14 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         {
             bgfx::destroy(chunkBiomeGrade);
         }
+        if (bgfx::isValid(chunkCameraPos))
+        {
+            bgfx::destroy(chunkCameraPos);
+        }
+        if (bgfx::isValid(chunkFog))
+        {
+            bgfx::destroy(chunkFog);
+        }
         bgfx::destroy(chunkAtlasSampler);
         bgfx::destroy(chunkAtlasTexture);
         bgfx::destroy(chunkProgram);
@@ -275,6 +287,8 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     chunkAnimUniformHandle_ = chunkAnim.idx;
     chunkBiomeHazeUniformHandle_ = chunkBiomeHaze.idx;
     chunkBiomeGradeUniformHandle_ = chunkBiomeGrade.idx;
+    chunkCameraPosUniformHandle_ = chunkCameraPos.idx;
+    chunkFogUniformHandle_ = chunkFog.idx;
 
     const bgfx::TextureHandle crosshairTexture = detail::createMinecraftStyleCrosshairTexture();
     if (bgfx::isValid(crosshairTexture))
@@ -443,6 +457,46 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     if (bgfx::isValid(goldIngotTexture))
     {
         goldIngotTextureHandle_ = goldIngotTexture.idx;
+    }
+    const bgfx::TextureHandle arrowTexture = detail::createTextureFromPng(
+        "textures/item/arrow.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(arrowTexture))
+    {
+        arrowTextureHandle_ = arrowTexture.idx;
+    }
+    const bgfx::TextureHandle bowTexture = detail::createTextureFromPng(
+        "textures/item/bow.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(bowTexture))
+    {
+        bowTextureHandle_ = bowTexture.idx;
+    }
+    const bgfx::TextureHandle stringTexture = detail::createTextureFromPng(
+        "textures/item/string.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(stringTexture))
+    {
+        stringTextureHandle_ = stringTexture.idx;
+    }
+    const bgfx::TextureHandle gunpowderTexture = detail::createTextureFromPng(
+        "textures/item/gunpowder.png",
+        kUiItemTextureFlags,
+        nullptr,
+        nullptr,
+        true);
+    if (bgfx::isValid(gunpowderTexture))
+    {
+        gunpowderTextureHandle_ = gunpowderTexture.idx;
     }
     const bgfx::TextureHandle scoutHelmetTexture = detail::createTextureFromPng(
         "textures/item/scout_helmet.png",
@@ -658,7 +712,7 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
             BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
             nullptr,
             nullptr,
-            true);
+            false);
         if (bgfx::isValid(craftingInventoryTexture))
         {
             craftingContainerInventoryTextureHandle_ = craftingInventoryTexture.idx;
@@ -668,7 +722,7 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
             BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
             nullptr,
             nullptr,
-            true);
+            false);
         if (bgfx::isValid(craftingCreativeTexture))
         {
             craftingContainerCreativeTextureHandle_ = craftingCreativeTexture.idx;
@@ -678,7 +732,7 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
             BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
             nullptr,
             nullptr,
-            true);
+            false);
         if (bgfx::isValid(craftingWorkbenchTexture))
         {
             craftingContainerWorkbenchTextureHandle_ = craftingWorkbenchTexture.idx;
@@ -688,7 +742,7 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
             BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
             nullptr,
             nullptr,
-            true);
+            false);
         if (bgfx::isValid(craftingChestTexture))
         {
             craftingContainerChestTextureHandle_ = craftingChestTexture.idx;
@@ -698,7 +752,7 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
             BGFX_SAMPLER_POINT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
             nullptr,
             nullptr,
-            true);
+            false);
         if (bgfx::isValid(craftingFurnaceTexture))
         {
             craftingContainerFurnaceTextureHandle_ = craftingFurnaceTexture.idx;
@@ -854,6 +908,26 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toTextureHandle(goldIngotTextureHandle_));
         goldIngotTextureHandle_ = UINT16_MAX;
+    }
+    if (arrowTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(arrowTextureHandle_));
+        arrowTextureHandle_ = UINT16_MAX;
+    }
+    if (bowTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(bowTextureHandle_));
+        bowTextureHandle_ = UINT16_MAX;
+    }
+    if (stringTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(stringTextureHandle_));
+        stringTextureHandle_ = UINT16_MAX;
+    }
+    if (gunpowderTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(gunpowderTextureHandle_));
+        gunpowderTextureHandle_ = UINT16_MAX;
     }
     if (scoutHelmetTextureHandle_ != UINT16_MAX)
     {
@@ -1063,6 +1137,16 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toUniformHandle(chunkBiomeGradeUniformHandle_));
         chunkBiomeGradeUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkCameraPosUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toUniformHandle(chunkCameraPosUniformHandle_));
+        chunkCameraPosUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkFogUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toUniformHandle(chunkFogUniformHandle_));
+        chunkFogUniformHandle_ = UINT16_MAX;
     }
     ddShutdown();
     bgfx::shutdown();
@@ -1276,6 +1360,14 @@ std::uint16_t Renderer::hudItemKindTextureHandle(const HudItemKind kind) const
         return goldIngotTextureHandle_ != UINT16_MAX
             ? goldIngotTextureHandle_
             : (stickTextureHandle_ != UINT16_MAX ? stickTextureHandle_ : coalTextureHandle_);
+    case HudItemKind::Arrow:
+        return arrowTextureHandle_ != UINT16_MAX ? arrowTextureHandle_ : stickTextureHandle_;
+    case HudItemKind::Bow:
+        return bowTextureHandle_ != UINT16_MAX ? bowTextureHandle_ : stickTextureHandle_;
+    case HudItemKind::String:
+        return stringTextureHandle_ != UINT16_MAX ? stringTextureHandle_ : stickTextureHandle_;
+    case HudItemKind::Gunpowder:
+        return gunpowderTextureHandle_ != UINT16_MAX ? gunpowderTextureHandle_ : stickTextureHandle_;
     case HudItemKind::WoodSword:
     case HudItemKind::StoneSword:
     case HudItemKind::IronSword:
@@ -1343,6 +1435,10 @@ TextureUvRect Renderer::hudItemKindTextureUv(const HudItemKind kind) const
     case HudItemKind::Charcoal:
     case HudItemKind::IronIngot:
     case HudItemKind::GoldIngot:
+    case HudItemKind::Arrow:
+    case HudItemKind::Bow:
+    case HudItemKind::String:
+    case HudItemKind::Gunpowder:
     case HudItemKind::ScoutHelmet:
     case HudItemKind::ScoutChestRig:
     case HudItemKind::ScoutGreaves:

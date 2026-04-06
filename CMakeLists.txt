@@ -172,6 +172,7 @@ set(VIBECRAFT_HEADERS
     include/vibecraft/game/CollisionHelpers.hpp
     include/vibecraft/game/MobNavigation.hpp
     include/vibecraft/game/mobs/MobBreeding.hpp
+    include/vibecraft/game/mobs/HostileMobBehavior.hpp
     include/vibecraft/game/mobs/MobSpecies.hpp
     include/vibecraft/game/mobs/MobTargeting.hpp
     include/vibecraft/game/MobTypes.hpp
@@ -264,6 +265,8 @@ set(VIBECRAFT_SOURCES
     src/game/MobNavigation.cpp
     src/game/mobs/MobBreeding.cpp
     src/game/mobs/MobCombat.cpp
+    src/game/mobs/HostileMobBehavior.cpp
+    src/game/mobs/MobProjectiles.cpp
     src/game/mobs/MobSpawning.cpp
     src/game/mobs/MobTargeting.cpp
     src/game/MobSpawnSystem.cpp
@@ -282,9 +285,11 @@ set(VIBECRAFT_SOURCES
     src/render/RendererCulling.cpp
     src/render/RendererDbgText.cpp
     src/render/RendererDebugOverlay.cpp
+    src/render/RendererCraftingUi.cpp
     src/render/RendererFrame.cpp
     src/render/RendererHudGpu.cpp
     src/render/RendererHitTests.cpp
+    src/render/RendererScreenOverlays.cpp
     src/render/RendererSkyEffects.cpp
     src/render/RendererShaderTexture.cpp
     src/render/RendererUiGpu.cpp
@@ -373,6 +378,7 @@ add_executable(vibecraft_tests
     tests/crafting/crafting_tests.cpp
     tests/furnace_tests.cpp
     tests/game/mob_breeding_tests.cpp
+    tests/game/mob_combat_tests.cpp
     tests/game/player_vitals_smoke_tests.cpp
     tests/multiplayer/multiplayer_smoke_tests.cpp
     tests/multiplayer/world_sync_tests.cpp
@@ -409,6 +415,8 @@ add_executable(vibecraft_tests
     src/game/MobNavigation.cpp
     src/game/mobs/MobBreeding.cpp
     src/game/mobs/MobCombat.cpp
+    src/game/mobs/HostileMobBehavior.cpp
+    src/game/mobs/MobProjectiles.cpp
     src/game/mobs/MobSpawning.cpp
     src/game/mobs/MobTargeting.cpp
     src/game/MobSpawnSystem.cpp

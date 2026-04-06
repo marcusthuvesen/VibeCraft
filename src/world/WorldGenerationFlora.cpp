@@ -160,12 +160,12 @@ bool tryPopulateSandyDecor(Chunk& chunk, const int localX, const int localZ, con
         return false;
     }
 
-    if (noise::random01(sample.worldX, sample.worldZ, kCactusChanceSeed) < 0.055f)
+    if (noise::random01(sample.worldX, sample.worldZ, kCactusChanceSeed) < 0.010f)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Cactus);
         return true;
     }
-    if (noise::random01(sample.worldX, sample.worldZ, kDeadBushChanceSeed) < 0.09f)
+    if (noise::random01(sample.worldX, sample.worldZ, kDeadBushChanceSeed) < 0.018f)
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::DeadBush);
         return true;
@@ -221,18 +221,11 @@ bool tryPopulateTemperateSurfaceDecor(Chunk& chunk, const int localX, const int 
         && denseForest
         && groundRoll < decor.taigaPodzolGroundRollMax)
     {
-        chunk.setBlock(
-            localX,
-            sample.surfaceY,
-            localZ,
-            wetness > decor.taigaPodzolWetnessPreferPodzol || forestPatch > decor.taigaPodzolForestPatchBoost
-                ? BlockType::Podzol
-                : BlockType::CoarseDirt);
         if (fernRoll < decor.taigaFernOnPodzolChance && sample.biome == SurfaceBiome::Taiga)
         {
             chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Fern);
+            return true;
         }
-        return true;
     }
 
     if (wetness > decor.mossWetnessMin && denseForest
@@ -257,17 +250,6 @@ bool tryPopulateTemperateSurfaceDecor(Chunk& chunk, const int localX, const int 
         && fernRoll < (denseForest ? decor.fernChanceDense : decor.fernChanceSparse))
     {
         chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Fern);
-        return true;
-    }
-
-    if (decor.woodlandGroundPatchEnabled && forestPatch > decor.woodlandGroundPatchForestMin
-        && groundRoll < decor.woodlandGroundPatchRollMax)
-    {
-        chunk.setBlock(
-            localX,
-            sample.surfaceY,
-            localZ,
-            wetness > decor.woodlandGroundPatchWetnessPodzol ? BlockType::Podzol : BlockType::CoarseDirt);
         return true;
     }
 

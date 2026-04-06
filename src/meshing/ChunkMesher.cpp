@@ -56,7 +56,8 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
     return blockType == BlockType::Dandelion || blockType == BlockType::Poppy
         || blockType == BlockType::BlueOrchid || blockType == BlockType::Allium
         || blockType == BlockType::OxeyeDaisy || blockType == BlockType::BrownMushroom
-        || blockType == BlockType::RedMushroom || blockType == BlockType::Vines
+        || blockType == BlockType::RedMushroom || blockType == BlockType::DeadBush
+        || blockType == BlockType::Vines
         || blockType == BlockType::Ladder
         || blockType == BlockType::Bamboo
         || blockType == BlockType::Fern

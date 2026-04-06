@@ -12,6 +12,8 @@ struct InputState
     bool captureMouseRequested = false;
     bool releaseMouseRequested = false;
     bool windowFocused = true;
+    /// Set when `SDL_EVENT_WINDOW_FOCUS_GAINED` is seen this poll (cleared in `beginFrame`).
+    bool windowFocusGainedThisFrame = false;
     bool windowSizeChanged = false;
     bool leftMousePressed = false;
     /// True when left mouse button is released this frame (menu-style click activation).
@@ -38,6 +40,7 @@ struct InputState
     {
         captureMouseRequested = false;
         releaseMouseRequested = false;
+        windowFocusGainedThisFrame = false;
         windowSizeChanged = false;
         leftMousePressed = false;
         leftMouseClicked = false;

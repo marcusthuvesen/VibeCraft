@@ -18,7 +18,7 @@ namespace
 // - Diamond concentrated near the deep deepslate floor.
 // - Emerald tied to mountain stone and higher terrain bands.
 constexpr int kMountainStoneCapStartY = 96;
-constexpr int kCoalPeakY = 96;
+constexpr int kCoalPeakY = 88;
 constexpr int kIronPeakY = 24;
 constexpr int kGoldPeakY = -18;
 constexpr int kDiamondPeakY = -59;
@@ -281,7 +281,7 @@ struct OrePlacementProfile
     return OrePlacementProfile{
         .kind = OreKind::Coal,
         .oreBlock = BlockType::CoalOre,
-        .heightProfile = {.minY = kUndergroundStartY, .peakY = 88, .maxY = 192},
+        .heightProfile = {.minY = kUndergroundStartY, .peakY = kCoalPeakY, .maxY = 192},
         .regionScale = 94.0,
         .clusterScale = 22.0,
         .regionSeed = 0x0ca11ab1U,

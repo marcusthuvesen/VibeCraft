@@ -48,6 +48,14 @@ class SoundEffects
     void playChestClose();
     /// General consume cue for currently usable items.
     void playItemConsume();
+    /// Skeleton bow release cue.
+    void playBowShoot();
+    /// Arrow thunk after hitting a block.
+    void playArrowImpact();
+    /// Entity explosion (TNT / creeper-style).
+    void playExplosion();
+    /// Creeper fuse hiss while charging.
+    void playCreeperFuse();
     /// Passive / hostile idle vocalizations.
     void playMobAmbient(vibecraft::game::MobKind mobKind);
     /// Mob movement cue distinct from terrain footsteps.

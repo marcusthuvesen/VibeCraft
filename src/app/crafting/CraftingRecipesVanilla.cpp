@@ -370,6 +370,75 @@ void appendVanillaBlockRecipes(std::vector<RecipeDefinition>& r)
             .equippedItem = EquippedItem::None,
         },
     });
+
+    const InventorySlot emptySlot{};
+
+    // Bow (workbench): three string (top row) + three sticks in column shape (Minecraft layout).
+    r.push_back(RecipeDefinition{
+        .width = 3,
+        .height = 3,
+        .requiresWorkbench = true,
+        .pattern = {
+            ingredientItem(EquippedItem::String),
+            ingredientItem(EquippedItem::String),
+            ingredientItem(EquippedItem::String),
+            ingredientItem(EquippedItem::Stick),
+            emptySlot,
+            ingredientItem(EquippedItem::Stick),
+            emptySlot,
+            ingredientItem(EquippedItem::Stick),
+            emptySlot,
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::Air,
+            .count = 1,
+            .equippedItem = EquippedItem::Bow,
+        },
+    });
+
+    // Arrows x4 from feather + stick (both shapeless orders on 2x2 grid).
+    r.push_back(RecipeDefinition{
+        .width = 2,
+        .height = 1,
+        .requiresWorkbench = false,
+        .pattern = {
+            ingredientItem(EquippedItem::Feather),
+            ingredientItem(EquippedItem::Stick),
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::Air,
+            .count = 4,
+            .equippedItem = EquippedItem::Arrow,
+        },
+    });
+    r.push_back(RecipeDefinition{
+        .width = 2,
+        .height = 1,
+        .requiresWorkbench = false,
+        .pattern = {
+            ingredientItem(EquippedItem::Stick),
+            ingredientItem(EquippedItem::Feather),
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+            emptySlot,
+        },
+        .output = InventorySlot{
+            .blockType = BlockType::Air,
+            .count = 4,
+            .equippedItem = EquippedItem::Arrow,
+        },
+    });
 }
 
 

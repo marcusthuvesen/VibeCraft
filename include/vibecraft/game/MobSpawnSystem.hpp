@@ -64,6 +64,54 @@ struct MobDamageResult
     bool killed = false;
 };
 
+enum class HostileProjectileKind : std::uint8_t
+{
+    Arrow = 0,
+};
+
+struct HostileProjectile
+{
+    std::uint32_t id = 0;
+    std::uint32_t ownerMobId = 0;
+    MobKind ownerMobKind = MobKind::Skeleton;
+    HostileProjectileKind kind = HostileProjectileKind::Arrow;
+    glm::vec3 position{0.0f};
+    glm::vec3 velocity{0.0f};
+    float radius = 0.14f;
+    float gravity = 12.0f;
+    float damage = 4.0f;
+    float remainingLifeSeconds = 2.0f;
+};
+
+enum class MobCombatEventType : std::uint8_t
+{
+    MeleeAttack = 0,
+    ProjectileFired,
+    ProjectileHitBlock,
+    ProjectileHitPlayer,
+    /// Player arrow hit a mob (`actorKind` is victim). `projectileMobHitLethal` if it killed.
+    ProjectileHitMob,
+    /// Creeper fuse hiss (throttled while charging).
+    CreeperFuseSound,
+    /// Creeper detonation at `worldPosition` with `blastRadiusBlocks`.
+    CreeperExplosion,
+    /// Throttled cue while undead mobs take daylight fire damage.
+    DaylightBurnDamage,
+    /// Hostile mob was removed after lethal daylight burn (play defeat cue).
+    HostileMobBurnDeath,
+};
+
+struct MobCombatEvent
+{
+    MobCombatEventType type = MobCombatEventType::MeleeAttack;
+    MobKind actorKind = MobKind::Zombie;
+    glm::vec3 worldPosition{0.0f};
+    HostileProjectileKind projectileKind = HostileProjectileKind::Arrow;
+    /// Valid for `CreeperExplosion` (matches `Application::explodeTntAt` radius clamp).
+    float blastRadiusBlocks = 3.0f;
+    bool projectileMobHitLethal = false;
+};
+
 /// Ray vs mob AABBs (same rules as `MobSpawnSystem::damageClosestAlongRay`).
 [[nodiscard]] std::optional<std::size_t> findClosestMobIndexAlongRay(
     const std::vector<MobInstance>& mobs,
@@ -77,7 +125,9 @@ class MobSpawnSystem
     explicit MobSpawnSystem(const MobSpawnSettings& settings = {});
 
     [[nodiscard]] const std::vector<MobInstance>& mobs() const;
+    [[nodiscard]] const std::vector<HostileProjectile>& projectiles() const;
     [[nodiscard]] const MobSpawnSettings& settings() const;
+    [[nodiscard]] std::vector<MobCombatEvent> takeCombatEvents();
     void setSettings(const MobSpawnSettings& settings);
     [[nodiscard]] std::optional<MobDamageResult> damageClosestAlongRay(
         const world::World& world,
@@ -98,8 +148,19 @@ class MobSpawnSystem
 
     void clearAllMobs();
 
+    /// Host/single-player: player-fired arrow (same simulation as skeleton arrows; hits mobs, not shooter).
+    void spawnPlayerArrow(
+        const glm::vec3& origin,
+        const glm::vec3& directionUnit,
+        float speed,
+        float gravity,
+        float damage,
+        float radius,
+        float lifeSeconds);
+
     /// Deterministic tests / repro.
     void setRngSeedForTests(std::uint32_t seed);
+    void addMobForTests(MobInstance mob);
 
     /// Hostile spawn (night) + passive animals (day on grass), movement, and hostile melee. Skips
     /// spawning when `spawningEnabled` is false; still runs AI on existing mobs unless you call
@@ -115,6 +176,7 @@ class MobSpawnSystem
         float playerHalfWidth,
         float deltaSeconds,
         TimeOfDayPeriod timePeriod,
+        float sunVisibility01,
         bool spawningEnabled,
         PlayerVitals& playerVitals,
         float playerDamageMultiplier = 1.0f,
@@ -126,7 +188,10 @@ class MobSpawnSystem
   private:
     MobSpawnSettings settings_{};
     std::vector<MobInstance> mobs_{};
+    std::vector<HostileProjectile> projectiles_{};
+    std::vector<MobCombatEvent> combatEvents_{};
     std::uint32_t nextId_ = 1;
+    std::uint32_t nextProjectileId_ = 1;
     float hostileSpawnAccumulatorSeconds_ = 0.0f;
     float passiveSpawnAccumulatorSeconds_ = 0.0f;
     std::mt19937 rng_{};
@@ -155,6 +220,7 @@ class MobSpawnSystem
         float displacement);
     void applyMelee(
         MobInstance& mob,
+        const glm::vec3& mobAttackOrigin,
         const glm::vec3& hostPlayerFeet,
         PlayerVitals& playerVitals,
         float hostDamageMultiplier,
@@ -162,5 +228,23 @@ class MobSpawnSystem
         std::span<float> remotePlayerHealth,
         float remotePlayerMaxHealth,
         float remotePlayerDamageMultiplier);
+    void tickProjectiles(
+        const world::World& world,
+        float playerHalfWidth,
+        float deltaSeconds,
+        const glm::vec3& hostPlayerFeet,
+        PlayerVitals& playerVitals,
+        float hostDamageMultiplier,
+        std::span<const glm::vec3> remotePlayerFeet,
+        std::span<float> remotePlayerHealth,
+        float remotePlayerMaxHealth,
+        float remotePlayerDamageMultiplier);
+
+    void applyDaylightBurn(
+        const world::World& world,
+        float sunVisibility01,
+        float deltaSeconds);
+
+    float daylightBurnSoundCooldownSeconds_ = 0.0f;
 };
 }  // namespace vibecraft::game

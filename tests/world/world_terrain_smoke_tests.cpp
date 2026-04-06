@@ -426,9 +426,7 @@ TEST_CASE("terrain generator produces snowy, jungle, and forested surface materi
         {
             const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
             const BlockType surfaceBlock = terrainGenerator.blockTypeAt(worldX, surface, worldZ);
-            foundForestSurface = foundForestSurface || surfaceBlock == BlockType::Grass
-                || surfaceBlock == BlockType::Podzol
-                || surfaceBlock == BlockType::CoarseDirt;
+            foundForestSurface = foundForestSurface || surfaceBlock == BlockType::Grass;
             foundSnowySurface = foundSnowySurface || surfaceBlock == BlockType::SnowGrass;
             foundJungleSurface = foundJungleSurface || surfaceBlock == BlockType::JungleGrass;
             if (foundForestSurface && foundSnowySurface && foundJungleSurface)
@@ -515,7 +513,7 @@ TEST_CASE("forest terrain generates birch trees and fern undergrowth")
     CHECK(foundFern);
 }
 
-TEST_CASE("taiga terrain generates spruce woods with podzol or coarse dirt patches")
+TEST_CASE("taiga terrain generates spruce woods with grassy tops")
 {
     using vibecraft::world::BlockType;
 
@@ -527,10 +525,10 @@ TEST_CASE("taiga terrain generates spruce woods with podzol or coarse dirt patch
     world.generateRadius(terrainGenerator, 10);
 
     bool foundSpruce = false;
-    bool foundForestFloorPatch = false;
-    for (int worldX = -160; worldX <= 160 && (!foundSpruce || !foundForestFloorPatch); ++worldX)
+    bool foundGrassTop = false;
+    for (int worldX = -160; worldX <= 160 && (!foundSpruce || !foundGrassTop); ++worldX)
     {
-        for (int worldZ = -160; worldZ <= 160 && (!foundSpruce || !foundForestFloorPatch); ++worldZ)
+        for (int worldZ = -160; worldZ <= 160 && (!foundSpruce || !foundGrassTop); ++worldZ)
         {
             const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
             const BlockType surfaceBlock = world.blockAt(worldX, surfaceY, worldZ);
@@ -538,14 +536,12 @@ TEST_CASE("taiga terrain generates spruce woods with podzol or coarse dirt patch
                 || world.blockAt(worldX, surfaceY + 1, worldZ) == BlockType::SpruceLog
                 || world.blockAt(worldX, surfaceY + 2, worldZ) == BlockType::SpruceLog
                 || world.blockAt(worldX, surfaceY + 3, worldZ) == BlockType::SpruceLeaves;
-            foundForestFloorPatch = foundForestFloorPatch
-                || surfaceBlock == BlockType::Podzol
-                || surfaceBlock == BlockType::CoarseDirt;
+            foundGrassTop = foundGrassTop || surfaceBlock == BlockType::Grass;
         }
     }
 
     CHECK(foundSpruce);
-    CHECK(foundForestFloorPatch);
+    CHECK(foundGrassTop);
 }
 
 TEST_CASE("ore distribution favors minecraft-like underground depth bands")

@@ -427,7 +427,7 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
                 playerTookDamageThisFrame = true;
             }
         }
-        if (!playerHazards_.bodyInWater)
+        if (!creativeModeEnabled_ && !playerHazards_.bodyInWater)
         {
             const bool hardLanding = landingDistance > 4.2f || playerTookDamageThisFrame;
             soundEffects_.playPlayerLand(hardLanding);
@@ -444,7 +444,8 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
         accumulatedFallDistance_ = 0.0f;
     }
 
-    if (!creativeFlightActive_ && isGrounded_ && !playerHazards_.bodyInWater && horizontalMoveDistance > 0.0001f)
+    if (!creativeModeEnabled_ && !creativeFlightActive_ && isGrounded_ && !playerHazards_.bodyInWater
+        && horizontalMoveDistance > 0.0001f)
     {
         const float stepIntervalMeters = sprinting ? 0.31f : 0.42f;
         footstepDistanceAccumulator_ += horizontalMoveDistance;
@@ -461,7 +462,7 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
             }
         }
     }
-    else if (playerHazards_.bodyInWater)
+    else if (!creativeModeEnabled_ && playerHazards_.bodyInWater)
     {
         const float verticalMoveDistance = std::abs(playerFeetPosition_.y - verticalStartPosition.y);
         const float waterMoveDistance = horizontalMoveDistance + verticalMoveDistance;

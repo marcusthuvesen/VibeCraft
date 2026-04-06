@@ -9,12 +9,12 @@
 #include <glm/vec3.hpp>
 
 #include "vibecraft/app/ApplicationConfig.hpp"
+#include "vibecraft/world/Chunk.hpp"
 #include "vibecraft/app/PauseMenuInputPolicy.hpp"
 #include "vibecraft/app/ApplicationSpawnHelpers.hpp"
 #include "vibecraft/app/ApplicationSurvival.hpp"
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
 #include "vibecraft/render/Renderer.hpp"
-#include "vibecraft/world/Chunk.hpp"
 
 namespace vibecraft::app
 {
@@ -92,17 +92,22 @@ void Application::processPausedInput()
             break;
         case 5:
         {
+            if (multiplayerMode_ == MultiplayerRuntimeMode::Client)
+            {
+                pauseMenuNotice_ = "Travel is not available while connected as a client.";
+                break;
+            }
             const glm::vec3 biomePreviewProbePosition =
                 preferredBiomePreviewProbePosition(spawnBiomeTarget_, camera_.position());
             const world::ChunkCoord biomePreviewChunk = world::worldToChunkCoord(
                 static_cast<int>(std::floor(biomePreviewProbePosition.x)),
                 static_cast<int>(std::floor(biomePreviewProbePosition.z)));
+            const int pregenRadius = kStreamingSettings.generationChunkRadius;
             world_.generateMissingChunksAround(
                 terrainGenerator_,
                 biomePreviewChunk,
-                kStreamingSettings.bootstrapChunkRadius,
-                static_cast<std::size_t>((kStreamingSettings.bootstrapChunkRadius * 2 + 1)
-                                         * (kStreamingSettings.bootstrapChunkRadius * 2 + 1)));
+                pregenRadius,
+                static_cast<std::size_t>((pregenRadius * 2 + 1) * (pregenRadius * 2 + 1)));
             spawnFeetPosition_ = resolveSpawnFeetPosition(
                 world_,
                 terrainGenerator_,
@@ -115,6 +120,10 @@ void Application::processPausedInput()
             accumulatedFallDistance_ = 0.0f;
             jumpWasHeld_ = false;
             autoJumpCooldownSeconds_ = 0.0f;
+            const world::ChunkCoord destinationChunk = world::worldToChunkCoord(
+                static_cast<int>(std::floor(playerFeetPosition_.x)),
+                static_cast<int>(std::floor(playerFeetPosition_.z)));
+            world_.generateMissingChunksAround(terrainGenerator_, destinationChunk, pregenRadius);
             isGrounded_ = isGroundedAtFeetPosition(
                 world_,
                 playerFeetPosition_,

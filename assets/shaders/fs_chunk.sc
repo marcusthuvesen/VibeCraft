@@ -1,4 +1,4 @@
-$input v_normal, v_uv, v_color0
+$input v_normal, v_uv, v_color0, v_worldPos
 
 #include "bgfx_shader.sh"
 
@@ -11,6 +11,8 @@ uniform vec4 u_ambientLight;
 uniform vec4 u_chunkAnim;
 uniform vec4 u_biomeHaze;
 uniform vec4 u_biomeGrade;
+uniform vec4 u_cameraPos;
+uniform vec4 u_chunkFog;
 
 void main()
 {
@@ -63,5 +65,14 @@ void main()
     }
     vec3 litColor = atlasColor.rgb * v_color0.rgb * lighting;
     litColor = clamp(litColor, 0.0, 1.0);
+    // Horizontal distance fog (Minecraft-style): hold terrain clarity nearby, then ramp toward the
+    // horizon color until the far draw cutoff disappears into haze instead of hard-cutting.
+    float distH = length(v_worldPos.xz - u_cameraPos.xz);
+    float hazeStrength = clamp(u_biomeHaze.w, 0.0, 1.0);
+    float fogStart = mix(u_chunkFog.x, u_chunkFog.x * 0.58, hazeStrength);
+    float fogBase = smoothstep(fogStart, u_chunkFog.y, distH);
+    float fogAmt = clamp(pow(fogBase, mix(1.35, 0.95, hazeStrength)), 0.0, 1.0);
+    vec3 fogColor = u_biomeHaze.rgb;
+    litColor = mix(litColor, fogColor, fogAmt);
     gl_FragColor = vec4(litColor, atlasColor.a * v_color0.a);
 }

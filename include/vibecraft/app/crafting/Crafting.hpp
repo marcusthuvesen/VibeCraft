@@ -14,7 +14,7 @@ enum class CraftingMode : std::uint8_t
     Workbench3x3,
 };
 
-using CraftingGridSlots = std::array<InventorySlot, 9>;
+using CraftingGridSlots = std::array<InventorySlot, 27>;
 
 struct CraftingMatch
 {

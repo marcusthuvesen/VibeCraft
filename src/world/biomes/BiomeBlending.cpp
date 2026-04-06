@@ -7,33 +7,33 @@ namespace vibecraft::world::biomes
 namespace
 {
 inline constexpr std::array<BiomeBlendOffset, kBiomeBlendNeighborCount> kOffsets{{
-    {16, 0},
-    {-16, 0},
-    {0, 16},
-    {0, -16},
-    {14, 14},
-    {-14, 14},
-    {14, -14},
-    {-14, -14},
-    {32, 0},
-    {-32, 0},
-    {0, 32},
-    {0, -32},
+    {8, 0},
+    {-8, 0},
+    {0, 8},
+    {0, -8},
+    {6, 6},
+    {-6, 6},
+    {6, -6},
+    {-6, -6},
+    {14, 0},
+    {-14, 0},
+    {0, 14},
+    {0, -14},
 }};
 
 inline constexpr std::array<float, kBiomeBlendNeighborCount> kWeights{{
-    1.00f,
-    1.00f,
-    1.00f,
-    1.00f,
-    0.82f,
-    0.82f,
-    0.82f,
-    0.82f,
-    0.56f,
-    0.56f,
-    0.56f,
-    0.56f,
+    0.74f,
+    0.74f,
+    0.74f,
+    0.74f,
+    0.52f,
+    0.52f,
+    0.52f,
+    0.52f,
+    0.24f,
+    0.24f,
+    0.24f,
+    0.24f,
 }};
 
 inline constexpr std::size_t kSurfaceBiomeCount = static_cast<std::size_t>(SurfaceBiome::IceSpikePlains) + 1;
@@ -54,7 +54,7 @@ SurfaceBiome selectBlendedSurfaceBiome(
     const std::array<SurfaceBiome, kBiomeBlendNeighborCount>& nearbyBiomes)
 {
     std::array<float, kSurfaceBiomeCount> biomeWeights{};
-    constexpr float kCenterWeight = 1.85f;
+    constexpr float kCenterWeight = 1.08f;
     biomeWeights[biomeIndex(centerBiome)] += kCenterWeight;
     float totalWeight = kCenterWeight;
 
@@ -83,11 +83,11 @@ SurfaceBiome selectBlendedSurfaceBiome(
     const float centerWeight = biomeWeights[biomeIndex(centerBiome)];
     const float centerShare = centerWeight / totalWeight;
     const float strongestShare = strongestWeight / totalWeight;
-    if (strongestShare < 0.34f)
+    if (strongestShare < 0.29f)
     {
         return centerBiome;
     }
-    if (centerShare >= 0.50f && strongestWeight < centerWeight + 0.35f)
+    if (centerShare >= 0.43f && strongestWeight < centerWeight + 0.25f)
     {
         return centerBiome;
     }

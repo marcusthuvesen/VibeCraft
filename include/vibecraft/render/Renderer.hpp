@@ -101,6 +101,10 @@ enum class HudItemKind : std::uint8_t
     ScoutBoots = 30,
     IronIngot = 31,
     GoldIngot = 32,
+    Arrow = 33,
+    Bow = 34,
+    String = 35,
+    Gunpowder = 36,
 };
 
 enum class CraftingUiMode : std::uint8_t
@@ -162,7 +166,7 @@ struct FrameDebugData
     std::string statusLine;
     std::array<HotbarSlotHud, 9> hotbarSlots{};
     std::array<HotbarSlotHud, kBagHudSlotCount> bagSlots{};
-    std::array<HotbarSlotHud, 9> craftingGridSlots{};
+    std::array<HotbarSlotHud, 27> craftingGridSlots{};
     std::array<HotbarSlotHud, 4> equipmentSlots{};
     HotbarSlotHud craftingResultSlot{};
     HotbarSlotHud craftingCursorSlot{};
@@ -195,6 +199,14 @@ struct FrameDebugData
         float mobHealthMax = 0.0f;
     };
     std::vector<WorldMobHud> worldMobs;
+
+    struct WorldProjectileHud
+    {
+        glm::vec3 worldPosition{0.0f};
+        glm::vec3 velocity{0.0f};
+        HudItemKind itemKind = HudItemKind::Arrow;
+    };
+    std::vector<WorldProjectileHud> worldProjectiles;
 
     struct WorldBirdHud
     {
@@ -404,12 +416,12 @@ class Renderer
         int multiplayerRowShift,
         int mainMenuContentTopBias);
 
-    /// Crafting screen hit ids: 0..8 grid, 9 result, 10..14 equipment, 15..23 hotbar, 24..104 bag.
+    /// Crafting screen hit ids: 0..26 storage/crafting grid, 27 result, 28..31 equipment, 32..40 hotbar, 41..121 bag.
     static constexpr int kCraftingGridHitBase = 0;
-    static constexpr int kCraftingResultHit = 9;
-    static constexpr int kCraftingEquipmentHitBase = 10;
-    static constexpr int kCraftingHotbarHitBase = 15;
-    static constexpr int kCraftingBagHitBase = 24;
+    static constexpr int kCraftingResultHit = 27;
+    static constexpr int kCraftingEquipmentHitBase = 28;
+    static constexpr int kCraftingHotbarHitBase = 32;
+    static constexpr int kCraftingBagHitBase = 41;
 
     [[nodiscard]] static int hitTestCraftingMenu(
         float mouseX,
@@ -464,7 +476,9 @@ class Renderer
         float iconSizePx,
         std::uint16_t textureHandle,
         const TextureUvRect& uvRect = {});
+    void drawInventoryPlayerPreview(float previewCenterX, float previewTop, float slotSize);
     void drawWorldPickupSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
+    void drawWorldProjectileSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     void drawWorldBirdSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     void drawWorldMobSprites(const FrameDebugData& frameDebugData, const CameraFrameData& cameraFrameData);
     [[nodiscard]] std::uint16_t mobTextureHandleForKind(vibecraft::game::MobKind kind) const;
@@ -486,6 +500,8 @@ class Renderer
     std::uint16_t chunkAnimUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkBiomeHazeUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkBiomeGradeUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkCameraPosUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkFogUniformHandle_ = UINT16_MAX;
     std::uint16_t logoProgramHandle_ = UINT16_MAX;
     std::uint16_t logoTextureHandle_ = UINT16_MAX;
     std::uint16_t logoSamplerHandle_ = UINT16_MAX;
@@ -510,6 +526,10 @@ class Renderer
     std::uint16_t charcoalTextureHandle_ = UINT16_MAX;
     std::uint16_t ironIngotTextureHandle_ = UINT16_MAX;
     std::uint16_t goldIngotTextureHandle_ = UINT16_MAX;
+    std::uint16_t arrowTextureHandle_ = UINT16_MAX;
+    std::uint16_t bowTextureHandle_ = UINT16_MAX;
+    std::uint16_t stringTextureHandle_ = UINT16_MAX;
+    std::uint16_t gunpowderTextureHandle_ = UINT16_MAX;
     std::uint16_t scoutHelmetTextureHandle_ = UINT16_MAX;
     std::uint16_t scoutChestRigTextureHandle_ = UINT16_MAX;
     std::uint16_t scoutGreavesTextureHandle_ = UINT16_MAX;

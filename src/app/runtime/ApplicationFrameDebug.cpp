@@ -369,12 +369,25 @@ void Application::buildFrameDebugData(
             frameDebugData.worldMobs.push_back(render::FrameDebugData::WorldMobHud{
                 .feetPosition = {mob.feetX, mob.feetY, mob.feetZ},
                 .yawRadians = mob.yawRadians,
-                .pitchRadians = 0.0f,
+                .pitchRadians = mob.pitchRadians,
                 .halfWidth = mob.halfWidth,
                 .height = mob.height,
                 .mobKind = mob.kind,
                 .mobHealthCurrent = mob.health,
                 .mobHealthMax = game::mobKindDefaultMaxHealth(mob.kind),
+            });
+        }
+        frameDebugData.worldProjectiles.reserve(mobSpawnSystem_.projectiles().size());
+        for (const game::HostileProjectile& projectile : mobSpawnSystem_.projectiles())
+        {
+            if (projectile.kind != game::HostileProjectileKind::Arrow)
+            {
+                continue;
+            }
+            frameDebugData.worldProjectiles.push_back(render::FrameDebugData::WorldProjectileHud{
+                .worldPosition = projectile.position,
+                .velocity = projectile.velocity,
+                .itemKind = render::HudItemKind::Arrow,
             });
         }
         constexpr float kDegreesToRadians = 0.01745329251994329577f;

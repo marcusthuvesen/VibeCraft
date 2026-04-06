@@ -272,6 +272,10 @@ void addAliasVariants(std::vector<std::string>& aliases, const std::string& valu
         EquippedItem::ScoutBoots,
         EquippedItem::IronIngot,
         EquippedItem::GoldIngot,
+        EquippedItem::Arrow,
+        EquippedItem::Bow,
+        EquippedItem::String,
+        EquippedItem::Gunpowder,
     };
     return kValues;
 }

@@ -20,6 +20,12 @@ namespace vibecraft::app
 {
 namespace
 {
+[[nodiscard]] std::size_t recommendedWorkerCount(const std::size_t hardCap)
+{
+    const std::size_t hardwareThreads = std::max<std::size_t>(std::thread::hardware_concurrency(), 2);
+    return std::clamp(hardwareThreads > 1 ? hardwareThreads - 1 : 1, std::size_t{2}, hardCap);
+}
+
 [[nodiscard]] glm::vec3 chunkBoundsMin(const world::ChunkCoord& coord)
 {
     return {
@@ -101,38 +107,44 @@ void Application::startChunkGenerationWorker()
     stopChunkGenerationWorker();
     resetChunkGenerationPipeline();
     chunkGenerationStopRequested_ = false;
-    chunkGenerationWorkerThread_ = std::thread([this]()
+    const std::size_t workerCount = recommendedWorkerCount(4);
+    chunkGenerationWorkerThreads_.clear();
+    chunkGenerationWorkerThreads_.reserve(workerCount);
+    for (std::size_t workerIndex = 0; workerIndex < workerCount; ++workerIndex)
     {
-        for (;;)
+        chunkGenerationWorkerThreads_.emplace_back([this]()
         {
-            AsyncChunkGenerationJob job;
+            for (;;)
             {
-                std::unique_lock<std::mutex> lock(chunkGenerationMutex_);
-                chunkGenerationCv_.wait(lock, [this]()
+                AsyncChunkGenerationJob job;
                 {
-                    return chunkGenerationStopRequested_ || !chunkGenerationPendingJobs_.empty();
-                });
-                if (chunkGenerationStopRequested_ && chunkGenerationPendingJobs_.empty())
-                {
-                    return;
+                    std::unique_lock<std::mutex> lock(chunkGenerationMutex_);
+                    chunkGenerationCv_.wait(lock, [this]()
+                    {
+                        return chunkGenerationStopRequested_ || !chunkGenerationPendingJobs_.empty();
+                    });
+                    if (chunkGenerationStopRequested_ && chunkGenerationPendingJobs_.empty())
+                    {
+                        return;
+                    }
+                    job = std::move(chunkGenerationPendingJobs_.front());
+                    chunkGenerationPendingJobs_.pop_front();
                 }
-                job = std::move(chunkGenerationPendingJobs_.front());
-                chunkGenerationPendingJobs_.pop_front();
+
+                world::Chunk chunk(job.coord);
+                world::populateChunkFromTerrain(chunk, job.coord, job.terrainGenerator);
+
+                AsyncChunkGenerationResult result{
+                    .coord = job.coord,
+                    .generation = job.generation,
+                    .chunk = std::move(chunk),
+                };
+
+                std::lock_guard<std::mutex> lock(chunkGenerationMutex_);
+                chunkGenerationCompletedResults_.push_back(std::move(result));
             }
-
-            world::Chunk chunk(job.coord);
-            world::populateChunkFromTerrain(chunk, job.coord, job.terrainGenerator);
-
-            AsyncChunkGenerationResult result{
-                .coord = job.coord,
-                .generation = job.generation,
-                .chunk = std::move(chunk),
-            };
-
-            std::lock_guard<std::mutex> lock(chunkGenerationMutex_);
-            chunkGenerationCompletedResults_.push_back(std::move(result));
-        }
-    });
+        });
+    }
 }
 
 void Application::stopChunkGenerationWorker()
@@ -142,10 +154,14 @@ void Application::stopChunkGenerationWorker()
         chunkGenerationStopRequested_ = true;
     }
     chunkGenerationCv_.notify_all();
-    if (chunkGenerationWorkerThread_.joinable())
+    for (std::thread& worker : chunkGenerationWorkerThreads_)
     {
-        chunkGenerationWorkerThread_.join();
+        if (worker.joinable())
+        {
+            worker.join();
+        }
     }
+    chunkGenerationWorkerThreads_.clear();
 }
 
 void Application::resetChunkGenerationPipeline()
@@ -162,94 +178,101 @@ void Application::startChunkMeshingWorker()
     stopChunkMeshingWorker();
     resetChunkMeshingPipeline();
     chunkMeshingStopRequested_ = false;
-    chunkMeshingWorkerThread_ = std::thread([this]()
+    const std::size_t workerCount = recommendedWorkerCount(3);
+    chunkMeshingWorkerThreads_.clear();
+    chunkMeshingWorkerThreads_.reserve(workerCount);
+    for (std::size_t workerIndex = 0; workerIndex < workerCount; ++workerIndex)
     {
-        for (;;)
+        chunkMeshingWorkerThreads_.emplace_back([this]()
         {
-            AsyncChunkMeshJob job;
+            for (;;)
             {
-                std::unique_lock<std::mutex> lock(chunkMeshingMutex_);
-                chunkMeshingCv_.wait(lock, [this]()
+                AsyncChunkMeshJob job;
                 {
-                    return chunkMeshingStopRequested_ || !chunkMeshingPendingJobs_.empty();
-                });
-                if (chunkMeshingStopRequested_ && chunkMeshingPendingJobs_.empty())
-                {
-                    return;
-                }
-                job = std::move(chunkMeshingPendingJobs_.front());
-                chunkMeshingPendingJobs_.pop_front();
-            }
-
-            world::World snapshotWorld;
-            snapshotWorld.replaceChunks(std::move(job.snapshotChunks));
-            const meshing::ChunkMeshData meshData = chunkMesher_.buildMesh(snapshotWorld, job.coord, job.buildSettings);
-
-            AsyncChunkMeshResult result{
-                .coord = job.coord,
-                .meshId = job.meshId,
-                .dirtyRevision = job.dirtyRevision,
-                .generation = job.generation,
-                .verticalFocusBand = job.verticalFocusBand,
-                .wasDirtyWhenQueued = job.wasDirtyWhenQueued,
-                .stats = {
-                    .faceCount = meshData.faceCount,
-                    .vertexCount = static_cast<std::uint32_t>(meshData.vertices.size()),
-                    .indexCount = static_cast<std::uint32_t>(meshData.indices.size()),
-                },
-                .hasRenderableMesh = !meshData.vertices.empty() && !meshData.indices.empty(),
-            };
-
-            if (result.hasRenderableMesh)
-            {
-                render::SceneMeshData sceneMesh;
-                sceneMesh.id = job.meshId;
-                sceneMesh.indices = meshData.indices;
-                sceneMesh.vertices.reserve(meshData.vertices.size());
-
-                glm::vec3 tightMin{0.0f};
-                glm::vec3 tightMax{0.0f};
-                bool haveBounds = false;
-                for (const meshing::DebugVertex& vertex : meshData.vertices)
-                {
-                    const glm::vec3 p{vertex.x, vertex.y, vertex.z};
-                    sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
-                        .position = p,
-                        .normal = {vertex.nx, vertex.ny, vertex.nz},
-                        .uv = {vertex.u, vertex.v},
-                        .abgr = vertex.abgr,
-                    });
-                    if (!haveBounds)
+                    std::unique_lock<std::mutex> lock(chunkMeshingMutex_);
+                    chunkMeshingCv_.wait(lock, [this]()
                     {
-                        tightMin = p;
-                        tightMax = p;
-                        haveBounds = true;
+                        return chunkMeshingStopRequested_ || !chunkMeshingPendingJobs_.empty();
+                    });
+                    if (chunkMeshingStopRequested_ && chunkMeshingPendingJobs_.empty())
+                    {
+                        return;
+                    }
+                    job = std::move(chunkMeshingPendingJobs_.front());
+                    chunkMeshingPendingJobs_.pop_front();
+                }
+
+                world::World snapshotWorld;
+                snapshotWorld.replaceChunks(std::move(job.snapshotChunks));
+                const meshing::ChunkMeshData meshData =
+                    chunkMesher_.buildMesh(snapshotWorld, job.coord, job.buildSettings);
+
+                AsyncChunkMeshResult result{
+                    .coord = job.coord,
+                    .meshId = job.meshId,
+                    .dirtyRevision = job.dirtyRevision,
+                    .generation = job.generation,
+                    .verticalFocusBand = job.verticalFocusBand,
+                    .wasDirtyWhenQueued = job.wasDirtyWhenQueued,
+                    .stats = {
+                        .faceCount = meshData.faceCount,
+                        .vertexCount = static_cast<std::uint32_t>(meshData.vertices.size()),
+                        .indexCount = static_cast<std::uint32_t>(meshData.indices.size()),
+                    },
+                    .hasRenderableMesh = !meshData.vertices.empty() && !meshData.indices.empty(),
+                };
+
+                if (result.hasRenderableMesh)
+                {
+                    render::SceneMeshData sceneMesh;
+                    sceneMesh.id = job.meshId;
+                    sceneMesh.indices = meshData.indices;
+                    sceneMesh.vertices.reserve(meshData.vertices.size());
+
+                    glm::vec3 tightMin{0.0f};
+                    glm::vec3 tightMax{0.0f};
+                    bool haveBounds = false;
+                    for (const meshing::DebugVertex& vertex : meshData.vertices)
+                    {
+                        const glm::vec3 p{vertex.x, vertex.y, vertex.z};
+                        sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
+                            .position = p,
+                            .normal = {vertex.nx, vertex.ny, vertex.nz},
+                            .uv = {vertex.u, vertex.v},
+                            .abgr = vertex.abgr,
+                        });
+                        if (!haveBounds)
+                        {
+                            tightMin = p;
+                            tightMax = p;
+                            haveBounds = true;
+                        }
+                        else
+                        {
+                            tightMin = glm::min(tightMin, p);
+                            tightMax = glm::max(tightMax, p);
+                        }
+                    }
+
+                    constexpr float kMeshBoundsPad = 0.02f;
+                    if (haveBounds)
+                    {
+                        sceneMesh.boundsMin = tightMin - kMeshBoundsPad;
+                        sceneMesh.boundsMax = tightMax + kMeshBoundsPad;
                     }
                     else
                     {
-                        tightMin = glm::min(tightMin, p);
-                        tightMax = glm::max(tightMax, p);
+                        sceneMesh.boundsMin = chunkBoundsMin(job.coord);
+                        sceneMesh.boundsMax = chunkBoundsMax(job.coord);
                     }
+                    result.sceneMesh = std::move(sceneMesh);
                 }
 
-                constexpr float kMeshBoundsPad = 0.02f;
-                if (haveBounds)
-                {
-                    sceneMesh.boundsMin = tightMin - kMeshBoundsPad;
-                    sceneMesh.boundsMax = tightMax + kMeshBoundsPad;
-                }
-                else
-                {
-                    sceneMesh.boundsMin = chunkBoundsMin(job.coord);
-                    sceneMesh.boundsMax = chunkBoundsMax(job.coord);
-                }
-                result.sceneMesh = std::move(sceneMesh);
+                std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
+                chunkMeshingCompletedResults_.push_back(std::move(result));
             }
-
-            std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
-            chunkMeshingCompletedResults_.push_back(std::move(result));
-        }
-    });
+        });
+    }
 }
 
 void Application::stopChunkMeshingWorker()
@@ -259,10 +282,14 @@ void Application::stopChunkMeshingWorker()
         chunkMeshingStopRequested_ = true;
     }
     chunkMeshingCv_.notify_all();
-    if (chunkMeshingWorkerThread_.joinable())
+    for (std::thread& worker : chunkMeshingWorkerThreads_)
     {
-        chunkMeshingWorkerThread_.join();
+        if (worker.joinable())
+        {
+            worker.join();
+        }
     }
+    chunkMeshingWorkerThreads_.clear();
 }
 
 void Application::resetChunkMeshingPipeline()

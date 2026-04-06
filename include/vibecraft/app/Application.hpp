@@ -326,6 +326,7 @@ class Application
     void processPausedInput();
     [[nodiscard]] bool processPlayingMovementInput(float deltaTimeSeconds, bool craftingKeyPressed);
     void processPlayingActionInput(float deltaTimeSeconds);
+    [[nodiscard]] bool tryFirePlayerBow();
     void refreshSingleplayerWorldList();
     [[nodiscard]] std::filesystem::path prefsRootPath() const;
     [[nodiscard]] std::filesystem::path singleplayerWorldsRootPath() const;
@@ -353,8 +354,8 @@ class Application
     void openChestMenu(const glm::ivec3& chestBlockPosition);
     void openFurnaceMenu(const glm::ivec3& furnaceBlockPosition);
     void closeCraftingMenu();
-    void handleCraftingMenuClick();
     void handleCraftingMenuRightClick();
+    void applyCraftingMenuPrimaryInteraction(int hit);
     void returnCraftingSlotsToInventory(bool includeGridSlots);
     void syncOpenFurnaceMenuToState();
     void syncFurnaceStateToOpenMenu();
@@ -363,6 +364,8 @@ class Application
     void spawnDroppedItem(vibecraft::world::BlockType blockType, const glm::ivec3& blockPosition);
     void spawnDroppedItemAtPosition(vibecraft::world::BlockType blockType, const glm::vec3& worldPosition);
     void spawnDroppedItemAtPosition(EquippedItem equippedItem, const glm::vec3& worldPosition);
+    /// Minecraft-like mob loot at feet (multiple stacks for some kinds).
+    void spawnMobKillDrops(vibecraft::game::MobKind mobKind, const glm::vec3& feetPosition);
     [[nodiscard]] glm::vec3 dropSpawnPositionInFront(
         float forwardDistance,
         float verticalOffset = 1.0f) const;
@@ -398,6 +401,7 @@ class Application
     bool isGrounded_ = false;
     bool jumpWasHeld_ = false;
     float autoJumpCooldownSeconds_ = 0.0f;
+    float playerBowCooldownSeconds_ = 0.0f;
     vibecraft::game::EnvironmentalHazards playerHazards_{};
     vibecraft::game::PlayerVitals playerVitals_{};
     vibecraft::game::MobSpawnSystem mobSpawnSystem_{};
@@ -498,8 +502,6 @@ class Application
     bool clientJoinLoggedFirstChunkSummary_ = false;
     std::uint8_t clientJoinAuthoritativeSnapLogsRemaining_ = 0;
     CraftingMenuState craftingMenuState_{};
-    bool craftingDragActive_ = false;
-    int craftingDragLastHit_ = -1;
     bool showWorldOriginGuides_ = false;
     bool debugF3KeyWasDown_ = false;
     ChatState chatState_{};
@@ -514,7 +516,7 @@ class Application
     std::unordered_map<std::uint32_t, MobAudioState> mobAudioStateById_;
     TerraformingRuntimeState terraformingRuntimeState_{};
     BotanyRuntimeState botanyRuntimeState_{};
-    std::thread chunkGenerationWorkerThread_;
+    std::vector<std::thread> chunkGenerationWorkerThreads_;
     std::mutex chunkGenerationMutex_;
     std::condition_variable chunkGenerationCv_;
     std::deque<AsyncChunkGenerationJob> chunkGenerationPendingJobs_;
@@ -522,7 +524,7 @@ class Application
     std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> chunkGenerationInFlightCoords_;
     bool chunkGenerationStopRequested_ = false;
     std::uint64_t chunkGenerationGeneration_ = 1;
-    std::thread chunkMeshingWorkerThread_;
+    std::vector<std::thread> chunkMeshingWorkerThreads_;
     std::mutex chunkMeshingMutex_;
     std::condition_variable chunkMeshingCv_;
     std::deque<AsyncChunkMeshJob> chunkMeshingPendingJobs_;

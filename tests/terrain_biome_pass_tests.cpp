@@ -34,9 +34,7 @@ TEST_CASE("terrain pass gives major biomes readable primary surface materials")
                     forestSawGrass = forestSawGrass || surfaceBlock == BlockType::Grass;
                     break;
                 case SurfaceBiome::Taiga:
-                    taigaSawGrass = taigaSawGrass || surfaceBlock == BlockType::Grass
-                        || surfaceBlock == BlockType::Podzol
-                        || surfaceBlock == BlockType::CoarseDirt;
+                    taigaSawGrass = taigaSawGrass || surfaceBlock == BlockType::Grass;
                     break;
                 case SurfaceBiome::SnowyTaiga:
                     snowyTaigaSawSnowShelf = snowyTaigaSawSnowShelf || surfaceBlock == BlockType::SnowGrass;
@@ -65,18 +63,39 @@ TEST_CASE("terrain pass gives major biomes readable primary surface materials")
     CHECK(jungleSawLivingGround);
 }
 
-TEST_CASE("starter region resolves to forest woodland by default")
+TEST_CASE("starter core resolves to forest woodland by default")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;
     terrainGenerator.setWorldSeed(0x42f0a17u);
 
-    for (int worldX = -256; worldX <= 256; worldX += 32)
+    for (int worldX = -144; worldX <= 144; worldX += 32)
     {
-        for (int worldZ = -256; worldZ <= 256; worldZ += 32)
+        for (int worldZ = -144; worldZ <= 144; worldZ += 32)
         {
             CHECK(terrainGenerator.surfaceBiomeAt(worldX, worldZ) == vibecraft::world::SurfaceBiome::Forest);
         }
     }
+}
+
+TEST_CASE("spawn-adjacent exploration reaches a different biome sooner than the old oversized forest ring")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+
+    bool foundNonForestBiome = false;
+    for (int worldX = 512; worldX <= 1600 && !foundNonForestBiome; worldX += 32)
+    {
+        for (int worldZ = -256; worldZ <= 256; worldZ += 32)
+        {
+            if (terrainGenerator.surfaceBiomeAt(worldX, worldZ) != vibecraft::world::SurfaceBiome::Forest)
+            {
+                foundNonForestBiome = true;
+                break;
+            }
+        }
+    }
+
+    CHECK(foundNonForestBiome);
 }
 
 TEST_CASE("forest-first biome pass discovers each woodland biome across a large sample")
@@ -121,12 +140,9 @@ TEST_CASE("forest-first biome pass discovers each woodland biome across a large 
                 foundTaiga = true;
                 break;
             case vibecraft::world::SurfaceBiome::SnowyTaiga:
-            case vibecraft::world::SurfaceBiome::SnowySlopes:
                 foundSnowyTaiga = true;
                 break;
             case vibecraft::world::SurfaceBiome::Plains:
-            case vibecraft::world::SurfaceBiome::WindsweptHills:
-            case vibecraft::world::SurfaceBiome::StonyPeaks:
             case vibecraft::world::SurfaceBiome::SavannaPlateau:
             case vibecraft::world::SurfaceBiome::WindsweptSavanna:
                 foundPlains = true;
@@ -154,8 +170,11 @@ TEST_CASE("forest-first biome pass discovers each woodland biome across a large 
             case vibecraft::world::SurfaceBiome::SnowyPlains:
             case vibecraft::world::SurfaceBiome::IcePlains:
             case vibecraft::world::SurfaceBiome::IceSpikePlains:
+            case vibecraft::world::SurfaceBiome::WindsweptHills:
+            case vibecraft::world::SurfaceBiome::SnowySlopes:
             case vibecraft::world::SurfaceBiome::FrozenPeaks:
             case vibecraft::world::SurfaceBiome::JaggedPeaks:
+            case vibecraft::world::SurfaceBiome::StonyPeaks:
                 break;
             }
         }

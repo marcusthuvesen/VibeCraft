@@ -614,6 +614,26 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     return {"random/eat1.ogg", "random/eat2.ogg", "random/eat3.ogg", "random/drink.ogg"};
 }
 
+[[nodiscard]] std::vector<std::string> bowShootOptions()
+{
+    return {"random/bow.ogg"};
+}
+
+[[nodiscard]] std::vector<std::string> arrowImpactOptions()
+{
+    return numberedClipRange("random/bowhit", 1, 4);
+}
+
+[[nodiscard]] std::vector<std::string> explosionOptions()
+{
+    return numberedClipRange("random/explode", 1, 4);
+}
+
+[[nodiscard]] std::vector<std::string> creeperFuseOptions()
+{
+    return numberedClipRange("mob/creeper/say", 1, 4);
+}
+
 [[nodiscard]] std::vector<std::string> waterEnterOptions()
 {
     return {"liquid/heavy_splash.ogg", "liquid/splash.ogg", "liquid/splash2.ogg", "liquid/water.ogg"};
@@ -630,10 +650,13 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
-    case MobKind::Skeleton:
-    case MobKind::Creeper:
-    case MobKind::Spider:
         return concatClipLists({numberedClipRange("mob/zombie/hurt", 1, 2), numberedClipRange("mob/zombie/say", 1, 3)});
+    case MobKind::Creeper:
+        return numberedClipRange("mob/creeper/say", 1, 4);
+    case MobKind::Skeleton:
+        return numberedClipRange("mob/skeleton/hurt", 1, 2);
+    case MobKind::Spider:
+        return numberedClipRange("mob/spider/say", 1, 4);
     case MobKind::Player:
         return playerHurtOptions();
     case MobKind::Cow:
@@ -654,10 +677,13 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
-    case MobKind::Skeleton:
-    case MobKind::Creeper:
-    case MobKind::Spider:
         return numberedClipRange("mob/zombie/say", 1, 3);
+    case MobKind::Creeper:
+        return numberedClipRange("mob/creeper/say", 1, 4);
+    case MobKind::Skeleton:
+        return numberedClipRange("mob/skeleton/say", 1, 3);
+    case MobKind::Spider:
+        return numberedClipRange("mob/spider/say", 1, 4);
     case MobKind::Player:
         return {};
     case MobKind::Cow:
@@ -678,10 +704,13 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
-    case MobKind::Skeleton:
-    case MobKind::Creeper:
-    case MobKind::Spider:
         return numberedClipRange("mob/zombie/step", 1, 5);
+    case MobKind::Creeper:
+        return numberedClipRange("mob/zombie/step", 1, 5);
+    case MobKind::Skeleton:
+        return numberedClipRange("mob/zombie/step", 1, 5);
+    case MobKind::Spider:
+        return numberedClipRange("mob/spider/step", 1, 4);
     case MobKind::Player:
         return {};
     case MobKind::Cow:
@@ -702,10 +731,13 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     switch (mobKind)
     {
     case MobKind::Zombie:
-    case MobKind::Skeleton:
-    case MobKind::Creeper:
-    case MobKind::Spider:
         return {"mob/zombie/death.ogg"};
+    case MobKind::Creeper:
+        return {"mob/creeper/death.ogg"};
+    case MobKind::Skeleton:
+        return {"mob/skeleton/death.ogg"};
+    case MobKind::Spider:
+        return {"mob/spider/death.ogg"};
     case MobKind::Player:
         return playerDeathOptions();
     case MobKind::Cow:
@@ -759,6 +791,10 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
     append(chestOpenOptions());
     append(chestCloseOptions());
     append(itemConsumeOptions());
+    append(bowShootOptions());
+    append(arrowImpactOptions());
+    append(explosionOptions());
+    append(creeperFuseOptions());
 
     using MK = vibecraft::game::MobKind;
     append(mobAmbientOptions(MK::Zombie));
@@ -1003,6 +1039,42 @@ void SoundEffects::playItemConsume()
         return;
     }
     playRandomClipWithGain(itemConsumeOptions(), 0.44f);
+}
+
+void SoundEffects::playBowShoot()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(bowShootOptions(), 0.58f);
+}
+
+void SoundEffects::playArrowImpact()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(arrowImpactOptions(), 0.46f);
+}
+
+void SoundEffects::playExplosion()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(explosionOptions(), 0.72f);
+}
+
+void SoundEffects::playCreeperFuse()
+{
+    if (stream_ == nullptr)
+    {
+        return;
+    }
+    playRandomClipWithGain(creeperFuseOptions(), 0.44f);
 }
 
 void SoundEffects::playWaterEnter()

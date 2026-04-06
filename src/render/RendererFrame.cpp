@@ -10,6 +10,7 @@
 #include <cstring>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
+#include <glm/vec4.hpp>
 #include <string>
 
 #include "debugdraw.h"
@@ -440,12 +441,18 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         };
         bx::buildFrustumPlanes(frustumPlanes, viewProjection);
 
-        // Keep rendering local, but allow farther ground-level visibility.
-        constexpr float kChunkHorizontalRenderDistance = 64.0f;
+        // Keep rendering local, but leave enough horizontal headroom for a Minecraft-style distance fog ramp
+        // instead of hard-cutting terrain just beyond the player's view.
+        constexpr float kChunkHorizontalRenderDistance = 160.0f;
         constexpr float kBelowCameraDistanceWeight = 2.3f;
         constexpr float kAboveCameraDistanceWeight = 1.0f;
         const float chunkMaxDrawDistance = std::min(cameraFrameData.farClip * 1.08f, kChunkHorizontalRenderDistance);
         const float chunkMaxDrawDistanceSq = chunkMaxDrawDistance * chunkMaxDrawDistance;
+        const float fogStart = chunkMaxDrawDistance * 0.55f;
+        const float fogEnd = chunkMaxDrawDistance * 0.92f;
+        detail::setVec4Uniform(chunkCameraPosUniformHandle_, cameraFrameData.position, 1.0f);
+        detail::setVec4Uniform(
+            chunkFogUniformHandle_, glm::vec4(fogStart, fogEnd, chunkMaxDrawDistance, 0.0f));
 
         for (const auto& [sceneMeshId, sceneMesh] : sceneMeshes_)
         {
@@ -519,6 +526,7 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     }
 
     drawWorldPickupSprites(frameDebugData, cameraFrameData);
+    drawWorldProjectileSprites(frameDebugData, cameraFrameData);
 
     DebugDrawEncoder debugDrawEncoder;
     debugDrawEncoder.begin(detail::kMainView);

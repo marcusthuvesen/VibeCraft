@@ -173,7 +173,7 @@ TEST_CASE("strong biome edge tempers forest decor tuning")
     CHECK(softened.woodlandGroundPatchRollMax < base.woodlandGroundPatchRollMax);
 }
 
-TEST_CASE("natural forest biomes yield varied woodland floor materials")
+TEST_CASE("natural forest biomes keep grassy tops with occasional moss accents")
 {
     using vibecraft::world::BlockType;
     using vibecraft::world::SurfaceBiome;
@@ -206,7 +206,7 @@ TEST_CASE("natural forest biomes yield varied woodland floor materials")
 
     CHECK(sawGrass);
     CHECK(sawMoss);
-    CHECK(sawEarthyPatch);
+    CHECK_FALSE(sawEarthyPatch);
 }
 
 TEST_CASE("starter forest keeps stone patches rare on normal terrain")

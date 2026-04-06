@@ -30,7 +30,7 @@ constexpr int kDeepslateTransitionEndY = 8;
 constexpr int kMountainStoneCapStartY = 110;
 constexpr int kMountainStoneCapThickness = 2;
 constexpr int kLowlandPondMaxHeightAboveSea = 1;
-constexpr int kStarterForestRadius = 640;
+constexpr int kStarterForestRadius = 224;
 constexpr std::uint32_t kPondNoiseSeed = 0xa53f210bU;
 constexpr int kSandstoneStratumDepth = 6;
 constexpr std::uint32_t kMoisturePocketNoiseSeed = 0xd47a38c1U;
@@ -109,23 +109,24 @@ struct ColumnContext
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
     // Broad climate bands keep the world readable: plains, desert, snowy plains, and jungle.
-    // Use much broader climate scales so players stay within one biome for longer stretches.
+    // Keep them large enough to feel like regions, but not so large that spawn-adjacent
+    // exploration stays locked in forest for too long.
     const double baseTemperature =
-        noise::fbmNoise2d(worldXd, worldZd, 12000.0, 4, mixedSeed(0x8b4d1e29U, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd, worldZd, 2200.0, 4, mixedSeed(0x8b4d1e29U, worldSeed)) * 2.0 - 1.0;
     const double variation =
-        noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 5200.0, 3, mixedSeed(0x1c0f3aa7U, worldSeed)) * 2.0 - 1.0;
+        noise::fbmNoise2d(worldXd + 73.0, worldZd - 59.0, 900.0, 3, mixedSeed(0x1c0f3aa7U, worldSeed)) * 2.0 - 1.0;
     const double altitudeCooling = std::clamp(
         static_cast<double>(surfaceHeight - kSeaLevel) / 120.0,
         0.0,
         0.55);
-    return baseTemperature + variation * 0.18 - altitudeCooling;
+    return baseTemperature + variation * 0.30 - altitudeCooling;
 }
 
 [[nodiscard]] double biomeHumidityAt(const int worldX, const int worldZ, const std::uint32_t worldSeed)
 {
     const double worldXd = static_cast<double>(worldX);
     const double worldZd = static_cast<double>(worldZ);
-    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 11000.0, 4, mixedSeed(0x32a7f1c4U, worldSeed)) * 2.0
+    return noise::fbmNoise2d(worldXd - 31.0, worldZd + 43.0, 2000.0, 4, mixedSeed(0x32a7f1c4U, worldSeed)) * 2.0
         - 1.0;
 }
 
@@ -172,10 +173,10 @@ struct ColumnContext
     return static_cast<double>(kSeaLevel)
         - 1.0
         + continents * 16.0
-        + uplands * 4.8
+        + uplands * 6.0
         + ridgeHeightContribution(ridges, continents, uplands)
-        + hills * 4.8
-        + rolling * 3.8
+        + hills * 5.6
+        + rolling * 4.2
         + detail * 1.4
         + starterSpawnRegionUplift(worldX, worldZ)
         - basinDepthFromContinents(continents);
@@ -193,9 +194,11 @@ struct ColumnContext
         return *biomeOverride;
     }
 
-    const long long wx = static_cast<long long>(worldX);
-    const long long wz = static_cast<long long>(worldZ);
     const long long starterRadiusSq = static_cast<long long>(kStarterForestRadius) * kStarterForestRadius;
+    if (static_cast<long long>(worldX) * worldX + static_cast<long long>(worldZ) * worldZ <= starterRadiusSq)
+    {
+        return SurfaceBiome::Forest;
+    }
     const auto rawBiomeAt = [&](const int sampleX, const int sampleZ, const int sampleSurfaceHeight) {
         const double sampleTemperature = biomeTemperatureAt(sampleX, sampleZ, sampleSurfaceHeight, worldSeed);
         const double sampleHumidity = biomeHumidityAt(sampleX, sampleZ, worldSeed);
@@ -359,7 +362,7 @@ struct ColumnContext
 {
     const double ridgeMask = std::clamp((continents + uplands * 0.24 + 0.20) / 1.20, 0.0, 1.0);
     const double shapedRidges = std::pow(std::clamp(ridges, 0.0, 1.0), 1.8);
-    return shapedRidges * (1.8 + ridgeMask * 7.5);
+    return shapedRidges * (2.2 + ridgeMask * 9.4);
 }
 
 [[nodiscard]] bool isMountainStoneCapLayer(const int y, const int surfaceHeight)

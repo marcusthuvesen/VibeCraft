@@ -15,6 +15,7 @@
 #include "vibecraft/app/input/ApplicationInputMenuHelpers.hpp"
 #include "vibecraft/game/CollisionHelpers.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
+#include "vibecraft/world/biomes/BiomeProfile.hpp"
 
 namespace vibecraft::app
 {
@@ -201,13 +202,16 @@ namespace
     case SpawnBiomeTarget::Any:
         return true;
     case SpawnBiomeTarget::Temperate:
-        return biome == SB::Forest || biome == SB::BirchForest || biome == SB::Plains;
+        // UI label "Forest": green overworld biomes (exclude desert, cold, jungle, dry savanna).
+        return biome == SB::Plains || biome == SB::SunflowerPlains || biome == SB::Meadow
+            || biome == SB::Forest || biome == SB::FlowerForest || biome == SB::BirchForest
+            || biome == SB::OldGrowthBirchForest || biome == SB::DarkForest || biome == SB::WindsweptHills;
     case SpawnBiomeTarget::Sandy:
         return biome == SB::Desert;
     case SpawnBiomeTarget::Snowy:
-        return biome == SB::SnowyPlains || biome == SB::SnowyTaiga;
+        return world::biomes::isSnowySurfaceBiome(biome);
     case SpawnBiomeTarget::Jungle:
-        return biome == SB::Jungle || biome == SB::SparseJungle || biome == SB::BambooJungle;
+        return world::biomes::isJungleSurfaceBiome(biome);
     }
     return true;
 }
@@ -223,16 +227,14 @@ namespace
         return true;
     }
 
-    constexpr std::array<std::array<int, 2>, 9> kCoreOffsets{{
+    // Local consistency only (not a huge homogeneous region). The old 9-point ±96 grid
+    // rejected valid spawns on normal biome edges and made "Travel now" often fall back incorrectly.
+    constexpr std::array<std::array<int, 2>, 5> kCoreOffsets{{
         {{0, 0}},
-        {{64, 0}},
-        {{-64, 0}},
-        {{0, 64}},
-        {{0, -64}},
-        {{96, 96}},
-        {{96, -96}},
-        {{-96, 96}},
-        {{-96, -96}},
+        {{24, 0}},
+        {{-24, 0}},
+        {{0, 24}},
+        {{0, -24}},
     }};
 
     for (const auto& offset : kCoreOffsets)
@@ -367,27 +369,6 @@ namespace
     return offsets;
 }
 
-[[nodiscard]] std::uint32_t inventoryBlockCount(
-    const HotbarSlots& hotbarSlots,
-    const BagSlots& bagSlots,
-    const world::BlockType blockType)
-{
-    const auto accumulateCount = [blockType](const auto& slots)
-    {
-        std::uint32_t total = 0;
-        for (const InventorySlot& slot : slots)
-        {
-            if (slot.blockType == blockType && slot.equippedItem == EquippedItem::None && slot.count > 0)
-            {
-                total += slot.count;
-            }
-        }
-        return total;
-    };
-
-    return accumulateCount(hotbarSlots) + accumulateCount(bagSlots);
-}
-
 [[nodiscard]] bool aabbTouchesBlockType(
     const world::World& worldState,
     const game::Aabb& aabb,
@@ -439,7 +420,7 @@ glm::vec3 resolveSpawnFeetPosition(
     const glm::vec3& fallbackCameraPosition,
     const float colliderHeight)
 {
-    constexpr int kSpawnProbeChunkRadius = 1;
+    constexpr int kSpawnProbeChunkRadius = 2;
     constexpr std::size_t kSpawnProbeChunkBudget =
         static_cast<std::size_t>((kSpawnProbeChunkRadius * 2 + 1) * (kSpawnProbeChunkRadius * 2 + 1));
     const auto ensureProbeGenerated = [&](const int worldX, const int worldZ)
@@ -600,7 +581,7 @@ bool Application::continueSingleplayerSpawnSearch(const float colliderHeight)
         return true;
     }
 
-    constexpr int kSpawnProbeChunkRadius = 1;
+    constexpr int kSpawnProbeChunkRadius = 2;
     constexpr std::size_t kSpawnProbeChunkBudget =
         static_cast<std::size_t>((kSpawnProbeChunkRadius * 2 + 1) * (kSpawnProbeChunkRadius * 2 + 1));
     const auto ensureProbeGenerated = [&](const int worldX, const int worldZ)

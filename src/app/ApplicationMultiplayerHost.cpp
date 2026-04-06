@@ -321,9 +321,7 @@ void Application::updateHostMultiplayer(const float deltaTimeSeconds)
                 if (mobDamage->killed)
                 {
                     soundEffects_.playMobDefeat(mobDamage->mobKind);
-                    spawnDroppedItemAtPosition(
-                        mobDropItemForKind(mobDamage->mobKind),
-                        mobDamage->feetPosition + glm::vec3(0.0f, 0.35f, 0.0f));
+                    spawnMobKillDrops(mobDamage->mobKind, mobDamage->feetPosition);
                 }
                 else
                 {

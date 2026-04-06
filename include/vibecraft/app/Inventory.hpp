@@ -48,6 +48,10 @@ enum class EquippedItem : std::uint8_t
     ScoutBoots = 30,
     IronIngot = 31,
     GoldIngot = 32,
+    Arrow = 33,
+    Bow = 34,
+    String = 35,
+    Gunpowder = 36,
 };
 
 struct InventorySlot

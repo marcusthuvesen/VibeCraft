@@ -16,6 +16,7 @@
 #include "vibecraft/app/Mining.hpp"
 #include "vibecraft/app/ApplicationMovementHelpers.hpp"
 #include "vibecraft/app/TorchPlacement.hpp"
+#include "vibecraft/app/crafting/Crafting.hpp"
 #include "vibecraft/world/BlockMetadata.hpp"
 #include "vibecraft/world/WorldEditCommand.hpp"
 
@@ -23,6 +24,35 @@ namespace vibecraft::app
 {
 namespace
 {
+[[nodiscard]] bool consumeOneArrowFromInventory(HotbarSlots& hotbarSlots, BagSlots& bagSlots)
+{
+    for (InventorySlot& slot : hotbarSlots)
+    {
+        if (slot.equippedItem == EquippedItem::Arrow && slot.count > 0)
+        {
+            --slot.count;
+            if (slot.count == 0)
+            {
+                clearInventorySlot(slot);
+            }
+            return true;
+        }
+    }
+    for (InventorySlot& slot : bagSlots)
+    {
+        if (slot.equippedItem == EquippedItem::Arrow && slot.count > 0)
+        {
+            --slot.count;
+            if (slot.count == 0)
+            {
+                clearInventorySlot(slot);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] std::int64_t blockStorageKey(const glm::ivec3& blockPosition)
 {
     constexpr std::int64_t offset = 1LL << 20;
@@ -168,11 +198,19 @@ namespace
 
 void Application::processPlayingActionInput(const float deltaTimeSeconds)
 {
+    playerBowCooldownSeconds_ = std::max(0.0f, playerBowCooldownSeconds_ - deltaTimeSeconds);
     bool attackedMobThisFrame = false;
     if (inputState_.leftMousePressed)
     {
         const InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
-        if (multiplayerMode_ == MultiplayerRuntimeMode::Client && clientSession_ != nullptr
+        if (multiplayerMode_ != MultiplayerRuntimeMode::Client && selectedSlot.equippedItem == EquippedItem::Bow)
+        {
+            if (tryFirePlayerBow())
+            {
+                attackedMobThisFrame = true;
+            }
+        }
+        if (!attackedMobThisFrame && multiplayerMode_ == MultiplayerRuntimeMode::Client && clientSession_ != nullptr
             && clientSession_->connected())
         {
             pendingClientMobMeleeSwing_ = false;
@@ -211,9 +249,7 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
             if (mobDamage->killed)
             {
                 soundEffects_.playMobDefeat(mobDamage->mobKind);
-                spawnDroppedItemAtPosition(
-                    mobDropItemForKind(mobDamage->mobKind),
-                    mobDamage->feetPosition + glm::vec3(0.0f, 0.35f, 0.0f));
+                spawnMobKillDrops(mobDamage->mobKind, mobDamage->feetPosition);
             }
             else
             {
@@ -228,9 +264,12 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
         if (!creativeModeEnabled_)
         {
             InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
-            consumeEquippedItemDurability(
-                selectedSlot,
-                durabilityUseAmountForEquippedItem(selectedSlot.equippedItem));
+            if (selectedSlot.equippedItem != EquippedItem::Bow)
+            {
+                [[maybe_unused]] const bool durabilityConsumed = consumeEquippedItemDurability(
+                    selectedSlot,
+                    durabilityUseAmountForEquippedItem(selectedSlot.equippedItem));
+            }
         }
         return;
     }
@@ -430,7 +469,7 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
                 if (!creativeModeEnabled_)
                 {
                     InventorySlot& selectedSlot = hotbarSlots_[selectedHotbarIndex_];
-                    consumeEquippedItemDurability(
+                    [[maybe_unused]] const bool durabilityConsumed = consumeEquippedItemDurability(
                         selectedSlot,
                         durabilityUseAmountForEquippedItem(selectedSlot.equippedItem));
                     const glm::ivec3 dropPosition = world::isDoorUpperHalf(raycastHit->blockType)
@@ -633,5 +672,34 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
         soundEffects_.playBlockPlace(command.blockType);
         relayWorldEdit(command);
     }
+}
+
+bool Application::tryFirePlayerBow()
+{
+    if (playerBowCooldownSeconds_ > 0.0f)
+    {
+        return false;
+    }
+    InventorySlot& bowSlot = hotbarSlots_[selectedHotbarIndex_];
+    if (bowSlot.equippedItem != EquippedItem::Bow || bowSlot.count == 0)
+    {
+        return false;
+    }
+    if (!creativeModeEnabled_)
+    {
+        if (!consumeOneArrowFromInventory(hotbarSlots_, bagSlots_))
+        {
+            return false;
+        }
+        static_cast<void>(consumeEquippedItemDurability(
+            bowSlot,
+            durabilityUseAmountForEquippedItem(EquippedItem::Bow)));
+    }
+    const glm::vec3 origin = camera_.position();
+    const glm::vec3 forward = camera_.forward();
+    mobSpawnSystem_.spawnPlayerArrow(origin, forward, 18.0f, 8.5f, 4.0f, 0.14f, 2.6f);
+    soundEffects_.playBowShoot();
+    playerBowCooldownSeconds_ = 0.36f;
+    return true;
 }
 }  // namespace vibecraft::app

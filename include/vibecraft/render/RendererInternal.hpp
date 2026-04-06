@@ -5,6 +5,7 @@
 
 #include <bgfx/bgfx.h>
 #include <glm/common.hpp>
+#include <glm/vec4.hpp>
 
 #include "vibecraft/ChunkAtlasLayout.hpp"
 
@@ -20,7 +21,7 @@ inline constexpr std::uint32_t kDefaultResetFlags = BGFX_RESET_VSYNC;
 inline constexpr std::uint32_t kMainMenuClearColor = 0x1d2a40ff;
 inline constexpr std::uint64_t kChunkRenderState =
     BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
-    | BGFX_STATE_DEPTH_TEST_LESS;
+    | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_LESS;
 inline constexpr std::uint16_t kChunkAtlasWidth = vibecraft::kChunkAtlasWidthPx;
 inline constexpr std::uint16_t kChunkAtlasHeight = vibecraft::kChunkAtlasHeightPx;
 
@@ -119,6 +120,22 @@ inline void setVec4Uniform(
         xyz.y,
         xyz.z,
         w,
+    };
+    bgfx::setUniform(toUniformHandle(handleIndex), values);
+}
+
+inline void setVec4Uniform(const std::uint16_t handleIndex, const glm::vec4& xyzw)
+{
+    if (handleIndex == UINT16_MAX)
+    {
+        return;
+    }
+
+    const float values[4] = {
+        xyzw.x,
+        xyzw.y,
+        xyzw.z,
+        xyzw.w,
     };
     bgfx::setUniform(toUniformHandle(handleIndex), values);
 }

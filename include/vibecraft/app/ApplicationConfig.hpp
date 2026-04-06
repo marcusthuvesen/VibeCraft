@@ -14,17 +14,17 @@ struct WindowSettings
 struct StreamingSettings
 {
     int bootstrapChunkRadius = 2;
-    int residentChunkRadius = 4;
-    int generationChunkRadius = 6;
-    std::size_t generationChunkBudgetPerFrame = 12;
-    std::size_t generationApplyBudgetPerFrame = 4;
-    std::size_t prefetchGenerationBudgetPerFrame = 6;
-    std::size_t maxQueuedGenerationJobs = 96;
+    int residentChunkRadius = 6;
+    int generationChunkRadius = 8;
+    std::size_t generationChunkBudgetPerFrame = 18;
+    std::size_t generationApplyBudgetPerFrame = 12;
+    std::size_t prefetchGenerationBudgetPerFrame = 12;
+    std::size_t maxQueuedGenerationJobs = 192;
     std::size_t meshBuildBudgetPerFrame = 6;
     std::size_t meshUploadBudgetPerFrame = 3;
-    std::size_t maxQueuedMeshJobs = 128;
+    std::size_t maxQueuedMeshJobs = 192;
     std::size_t offResidentDirtyRebuildBudget = 8;
-    int forwardPrefetchChunks = 2;
+    int forwardPrefetchChunks = 4;
 };
 
 struct InputTuning

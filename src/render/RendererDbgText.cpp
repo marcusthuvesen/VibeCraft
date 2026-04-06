@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <string>
+#include <utility>
 
 namespace vibecraft::render::detail
 {
@@ -142,91 +143,86 @@ void dbgTextPrintfCenteredRow(
     }
     (void)useWorkbench;
 
-    const float maxWidth = static_cast<float>(windowWidth) * 0.98f;
-    const float maxHeight = static_cast<float>(windowHeight) * 0.98f;
+    // Align slot coordinates with vanilla-style container pixel layouts so rendering and hit tests
+    // match exactly (drag/drop correctness depends on this shared layout).
+    constexpr float kBaseContainerWidth = 176.0f;
+    constexpr float kInventoryContainerHeight = 166.0f;
+    constexpr float kChestContainerHeight = 222.0f;
+    constexpr float kSlotPx = 16.0f;
+    constexpr float kSlotStepPx = 18.0f;
+    constexpr float kSlotGapPx = kSlotStepPx - kSlotPx;
+
     const bool inventoryMode = mode == vibecraft::render::CraftingUiMode::Inventory;
     const bool workbenchMode = mode == vibecraft::render::CraftingUiMode::Workbench;
     const bool chestMode = mode == vibecraft::render::CraftingUiMode::Chest;
     const bool furnaceMode = mode == vibecraft::render::CraftingUiMode::Furnace;
-    const int craftingColumns = workbenchMode || chestMode ? 3 : 2;
-    const int craftingRows = furnaceMode ? 2 : (workbenchMode || chestMode ? 3 : 2);
-    constexpr int kVisibleInventoryRows = 3;
-    constexpr int kVisibleHotbarRows = 1;
 
-    const auto panelMetricsForSlot = [&](const float candidateSlotSize)
-    {
-        const float candidateGap = std::max(3.0f, std::round(candidateSlotSize * 0.14f));
-        const float craftWidth = static_cast<float>(craftingColumns) * candidateSlotSize
-            + static_cast<float>(craftingColumns - 1) * candidateGap;
-        const float inventoryWidth = 9.0f * candidateSlotSize + 8.0f * candidateGap;
-        const float resultGap = std::max(18.0f, std::round(candidateSlotSize * 1.1f));
-        const float equipmentSectionGap = std::max(14.0f, std::round(candidateSlotSize * 0.65f));
-        const float equipmentSectionWidth = candidateSlotSize * 1.7f;
-        const float topSectionWidth = furnaceMode
-            ? candidateSlotSize + resultGap + candidateSlotSize
-            : inventoryMode
-                ? equipmentSectionWidth + equipmentSectionGap + craftWidth + resultGap + candidateSlotSize
-                : craftWidth + resultGap + candidateSlotSize;
-        const float panelWidth = std::max(inventoryWidth, topSectionWidth) + candidateSlotSize * 1.8f;
-        const float craftingSectionHeight = static_cast<float>(craftingRows) * candidateSlotSize
-            + static_cast<float>(craftingRows - 1) * candidateGap;
-        const float equipmentSectionHeight = inventoryMode
-            ? 5.0f * candidateSlotSize + 4.0f * candidateGap
-            : 0.0f;
-        const float topSectionHeight = std::max(craftingSectionHeight, equipmentSectionHeight);
-        const float inventoryHeight =
-            static_cast<float>(kVisibleInventoryRows + kVisibleHotbarRows) * candidateSlotSize
-            + static_cast<float>(kVisibleInventoryRows + kVisibleHotbarRows - 1) * candidateGap;
-        const float panelHeight = topSectionHeight + inventoryHeight + candidateSlotSize * 3.2f;
-        return std::array<float, 6>{
-            candidateGap,
-            craftWidth,
-            resultGap,
-            topSectionWidth,
-            panelWidth,
-            panelHeight,
-        };
-    };
-
-    const float previousBaselineSize =
-        std::floor(std::min(maxWidth / 12.8f, maxHeight / 15.2f));
-    float slotSize = std::clamp(previousBaselineSize * 3.0f, 22.0f, 160.0f);
-    auto metrics = panelMetricsForSlot(slotSize);
-    while (slotSize > 22.0f && (metrics[4] > maxWidth || metrics[5] > maxHeight))
-    {
-        slotSize -= 1.0f;
-        metrics = panelMetricsForSlot(slotSize);
-    }
-
-    const float slotGap = metrics[0];
-    const float craftWidth = metrics[1];
-    const float resultGap = metrics[2];
-    const float topSectionWidth = metrics[3];
-    const float panelWidth = metrics[4];
-    const float panelHeight = metrics[5];
-    const float craftingSectionHeight = static_cast<float>(craftingRows) * slotSize
-        + static_cast<float>(craftingRows - 1) * slotGap;
-    const float equipmentSectionHeight = inventoryMode ? 5.0f * slotSize + 4.0f * slotGap : 0.0f;
-    const float topSectionHeight = std::max(craftingSectionHeight, equipmentSectionHeight);
+    const float baseHeight = chestMode ? kChestContainerHeight : kInventoryContainerHeight;
+    const float maxWidth = static_cast<float>(windowWidth) * 0.96f;
+    const float maxHeight = static_cast<float>(windowHeight) * 0.96f;
+    // Fit the vanilla logical panel (176×166 / 176×222) into the window; allow fractional scale so tiny
+    // windows still get a usable GUI (integer-only scaling would force >=1 and clip small screens).
+    const float scaleFit = std::min(maxWidth / kBaseContainerWidth, maxHeight / baseHeight);
+    const float scale = std::clamp(scaleFit, 0.28f, 64.0f);
+    const float panelWidth = kBaseContainerWidth * scale;
+    const float panelHeight = baseHeight * scale;
     const float panelLeft = std::floor((static_cast<float>(windowWidth) - panelWidth) * 0.5f);
     const float panelTop = std::floor((static_cast<float>(windowHeight) - panelHeight) * 0.5f);
-    const float panelInnerX = panelLeft + slotSize * 0.9f;
-    const float equipmentSectionGap = std::max(14.0f, std::round(slotSize * 0.65f));
-    const float equipmentSectionWidth = slotSize * 1.7f;
-    const float topSectionOriginX = panelInnerX + std::floor((panelWidth - slotSize * 1.8f - topSectionWidth) * 0.5f);
-    const float equipmentOriginX = topSectionOriginX;
-    const float craftingOriginX = inventoryMode
-        ? equipmentOriginX + equipmentSectionWidth + equipmentSectionGap
-        : topSectionOriginX;
-    const float craftingOriginY = panelTop + slotSize * 1.5f;
-    const float resultSlotX = furnaceMode
-        ? craftingOriginX + slotSize + resultGap
-        : craftingOriginX + craftWidth + resultGap;
-    const float resultSlotY = furnaceMode
-        ? craftingOriginY + (slotSize + slotGap) * 0.5f
-        : craftingOriginY + (craftingSectionHeight - slotSize) * 0.5f;
-    const float inventoryOriginX = panelInnerX;
-    const float inventoryOriginY = craftingOriginY + topSectionHeight + slotSize * 1.55f;
+    const auto px = [panelLeft, panelTop, scale](const float x, const float y)
+    {
+        return std::pair<float, float>{panelLeft + x * scale, panelTop + y * scale};
+    };
+
+    const float slotSize = kSlotPx * scale;
+    const float slotGap = kSlotGapPx * scale;
+
+    // Shared player inventory region used by inventory/workbench/furnace/chest screens.
+    const auto [invX, invY] = px(8.0f, chestMode ? 140.0f : 84.0f);
+    layout.inventoryOriginX = invX;
+    layout.inventoryOriginY = invY;
+
+    if (inventoryMode)
+    {
+        const auto [eqX, eqY] = px(8.0f, 8.0f);
+        const auto [craftX, craftY] = px(98.0f, 26.0f);
+        const auto [resultX, resultY] = px(154.0f, 28.0f);
+        layout.equipmentOriginX = eqX;
+        layout.equipmentOriginY = eqY;
+        layout.craftingOriginX = craftX;
+        layout.craftingOriginY = craftY;
+        layout.resultSlotX = resultX;
+        layout.resultSlotY = resultY;
+    }
+    else if (workbenchMode)
+    {
+        const auto [craftX, craftY] = px(30.0f, 17.0f);
+        const auto [resultX, resultY] = px(124.0f, 35.0f);
+        layout.craftingOriginX = craftX;
+        layout.craftingOriginY = craftY;
+        layout.resultSlotX = resultX;
+        layout.resultSlotY = resultY;
+    }
+    else if (chestMode)
+    {
+        // Reuse 3x3 crafting-grid hits as chest storage slots in the top-left chest area.
+        const auto [craftX, craftY] = px(8.0f, 18.0f);
+        layout.craftingOriginX = craftX;
+        layout.craftingOriginY = craftY;
+        layout.resultSlotX = 0.0f;
+        layout.resultSlotY = 0.0f;
+    }
+    else if (furnaceMode)
+    {
+        const auto [inputX, inputY] = px(56.0f, 17.0f);
+        const auto [fuelX, fuelY] = px(56.0f, 53.0f);
+        const auto [resultX, resultY] = px(116.0f, 35.0f);
+        layout.craftingOriginX = inputX;
+        layout.craftingOriginY = inputY;
+        layout.furnaceFuelSlotX = fuelX;
+        layout.furnaceFuelSlotY = fuelY;
+        layout.resultSlotX = resultX;
+        layout.resultSlotY = resultY;
+    }
 
     layout.panelLeft = panelLeft;
     layout.panelTop = panelTop;
@@ -234,16 +230,13 @@ void dbgTextPrintfCenteredRow(
     layout.panelBottom = panelTop + panelHeight;
     layout.slotSize = slotSize;
     layout.slotGap = slotGap;
-    layout.equipmentOriginX = equipmentOriginX;
-    layout.equipmentOriginY = craftingOriginY;
-    layout.craftingOriginX = craftingOriginX;
-    layout.craftingOriginY = craftingOriginY;
-    layout.furnaceFuelSlotX = craftingOriginX;
-    layout.furnaceFuelSlotY = craftingOriginY + slotSize + slotGap;
-    layout.resultSlotX = resultSlotX;
-    layout.resultSlotY = resultSlotY;
-    layout.inventoryOriginX = inventoryOriginX;
-    layout.inventoryOriginY = inventoryOriginY;
+
+    if (!furnaceMode)
+    {
+        layout.furnaceFuelSlotX = layout.craftingOriginX;
+        layout.furnaceFuelSlotY = layout.craftingOriginY + slotSize + slotGap;
+    }
+
     return layout;
 }
 
