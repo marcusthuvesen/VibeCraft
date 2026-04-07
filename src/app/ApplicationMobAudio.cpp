@@ -32,6 +32,12 @@ namespace
         return 0.84f;
     case MK::Spider:
         return 0.64f;
+    case MK::Wolf:
+        return 0.70f;
+    case MK::Bear:
+        return 1.10f;
+    case MK::SandScorpion:
+        return 0.55f;
     case MK::Player:
         return 0.0f;
     }
@@ -59,6 +65,12 @@ namespace
         return 11.0f;
     case MK::Spider:
         return 8.0f;
+    case MK::Wolf:
+        return 9.0f;
+    case MK::Bear:
+        return 14.0f;
+    case MK::SandScorpion:
+        return 9.0f;
     case MK::Player:
         return 1000.0f;
     }
@@ -85,6 +97,12 @@ namespace
     case MK::Creeper:
         return 6.5f;
     case MK::Spider:
+        return 5.0f;
+    case MK::Wolf:
+        return 5.0f;
+    case MK::Bear:
+        return 7.0f;
+    case MK::SandScorpion:
         return 5.0f;
     case MK::Player:
         return 0.0f;

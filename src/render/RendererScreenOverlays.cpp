@@ -275,13 +275,13 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
         maxV = uvRect.maxV;
         if (selectedSlot.heldItemUsesSwordPose)
         {
-            halfH = std::min(static_cast<float>(height_) * 0.46f, 420.0f);
+            halfH = std::min(static_cast<float>(height_) * 0.52f, 480.0f);
             halfW = halfH * 0.58f;
             baseRotationDeg = -40.0f;
         }
         else
         {
-            halfH = std::min(static_cast<float>(height_) * 0.24f, 192.0f);
+            halfH = std::min(static_cast<float>(height_) * 0.34f, 280.0f);
             halfW = halfH;
             baseRotationDeg = -24.0f;
         }
@@ -306,7 +306,7 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
         maxU = minU + tileWidth;
         minV = tileY * tileHeight;
         maxV = minV + tileHeight;
-        halfH = std::min(static_cast<float>(height_) * 0.24f, 192.0f);
+        halfH = std::min(static_cast<float>(height_) * 0.34f, 280.0f);
         halfW = halfH;
         baseRotationDeg = -24.0f;
     }
@@ -316,13 +316,14 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
     }
 
     const float swing = std::clamp(frameDebugData.heldItemSwing, 0.0f, 1.0f);
+    // Phase 0..1: one forward arc then return (matches Application heldItemSwing_ advance).
     const float swingEase = std::sin(swing * 3.1415926535f);
 
     const float centerX =
-        static_cast<float>(width_) - halfW * 0.34f + swingEase * 28.0f;
+        static_cast<float>(width_) - halfW * 0.34f + swingEase * 42.0f;
     const float centerY =
-        static_cast<float>(height_) - halfH * 0.26f + swingEase * 26.0f;
-    const float rotationRadians = (baseRotationDeg - swingEase * 28.0f) * (3.1415926535f / 180.0f);
+        static_cast<float>(height_) - halfH * 0.26f + swingEase * 38.0f;
+    const float rotationRadians = (baseRotationDeg - swingEase * 38.0f) * (3.1415926535f / 180.0f);
     const float cosA = std::cos(rotationRadians);
     const float sinA = std::sin(rotationRadians);
 
@@ -352,7 +353,12 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
                                  const float offsetY,
                                  const float scaleX,
                                  const float scaleY,
-                                 const std::uint32_t abgr)
+                                 const std::uint32_t abgr,
+                                 const std::uint16_t layerTextureHandle,
+                                 const float layerMinU,
+                                 const float layerMaxU,
+                                 const float layerMinV,
+                                 const float layerMaxV)
     {
         if (bgfx::getAvailTransientVertexBuffer(4, detail::ChunkVertex::layout()) < 4)
         {
@@ -377,10 +383,10 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
         const glm::vec2 p3 = rotatePoint(-halfW * scaleX, +halfH * scaleY);
 
         detail::ChunkVertex vertices[4] = {
-            detail::ChunkVertex{.x = p0.x, .y = p0.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = minV, .abgr = abgr},
-            detail::ChunkVertex{.x = p1.x, .y = p1.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = minV, .abgr = abgr},
-            detail::ChunkVertex{.x = p2.x, .y = p2.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = maxU, .v = maxV, .abgr = abgr},
-            detail::ChunkVertex{.x = p3.x, .y = p3.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = minU, .v = maxV, .abgr = abgr},
+            detail::ChunkVertex{.x = p0.x, .y = p0.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = layerMinU, .v = layerMinV, .abgr = abgr},
+            detail::ChunkVertex{.x = p1.x, .y = p1.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = layerMaxU, .v = layerMinV, .abgr = abgr},
+            detail::ChunkVertex{.x = p2.x, .y = p2.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = layerMaxU, .v = layerMaxV, .abgr = abgr},
+            detail::ChunkVertex{.x = p3.x, .y = p3.y, .z = 0.0f, .nx = 0.0f, .ny = 0.0f, .nz = 1.0f, .u = layerMinU, .v = layerMaxV, .abgr = abgr},
         };
 
         bgfx::TransientVertexBuffer tvb{};
@@ -402,17 +408,54 @@ void Renderer::drawHeldItemOverlay(const FrameDebugData& frameDebugData)
         bgfx::setTexture(
             0,
             detail::toUniformHandle(inventoryUiSamplerHandle_),
-            detail::toTextureHandle(textureHandle));
+            detail::toTextureHandle(layerTextureHandle));
         bgfx::setState(
             BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_BLEND_ALPHA | BGFX_STATE_DEPTH_TEST_ALWAYS);
         bgfx::submit(detail::kUiView, detail::toProgramHandle(inventoryUiProgramHandle_));
         return true;
     };
 
+    if (playerMobTextureHandle_ != UINT16_MAX)
+    {
+        constexpr float kPlayerTexW = 64.0f;
+        constexpr float kPlayerTexH = 32.0f;
+        const float skinInsetU = 0.5f / kPlayerTexW;
+        const float skinInsetV = 0.5f / kPlayerTexH;
+        // Right arm front face from classic player skin, mirrored for first-person right hand.
+        const float armMinU = (44.0f + skinInsetU) / kPlayerTexW;
+        const float armMaxU = (48.0f - skinInsetU) / kPlayerTexW;
+        const float armMinV = (20.0f + skinInsetV) / kPlayerTexH;
+        const float armMaxV = (32.0f - skinInsetV) / kPlayerTexH;
+
+        const float armScaleX = selectedSlot.heldItemUsesSwordPose ? 0.46f : 0.50f;
+        const float armScaleY = selectedSlot.heldItemUsesSwordPose ? 0.88f : 0.82f;
+        static_cast<void>(submitLayer(
+            -halfW * 0.76f,
+            +halfH * 0.62f,
+            armScaleX,
+            armScaleY,
+            0xffffffff,
+            playerMobTextureHandle_,
+            armMaxU,
+            armMinU,
+            armMinV,
+            armMaxV));
+    }
+
     const bool usesSwordPose = selectedSlot.heldItemUsesSwordPose;
     const float squashX = usesSwordPose ? 1.01f : 0.98f;
     const float squashY = usesSwordPose ? 1.02f : 1.01f;
-    static_cast<void>(submitLayer(0.0f, 0.0f, squashX, squashY, 0xffffffff));
+    static_cast<void>(submitLayer(
+        0.0f,
+        0.0f,
+        squashX,
+        squashY,
+        0xffffffff,
+        textureHandle,
+        minU,
+        maxU,
+        minV,
+        maxV));
 }
 
 void Renderer::drawCrosshairOverlay()

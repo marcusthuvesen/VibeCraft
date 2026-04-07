@@ -129,13 +129,13 @@ float effectiveTreeSpawnChance(
                                : std::clamp(baseSettings.spawnChance + (density - 0.16f) * 0.36f, 0.0f, 0.50f);
     case TreeGenerationFamily::Jungle:
         return density < 0.12f ? std::clamp(density * 0.12f, 0.0f, 0.04f)
-                               : std::clamp(baseSettings.spawnChance + density * 0.28f, 0.0f, 0.58f);
+                               : std::clamp(baseSettings.spawnChance + density * 0.38f, 0.0f, 0.76f);
     case TreeGenerationFamily::SparseJungle:
         return density < 0.14f ? std::clamp(density * 0.10f, 0.0f, 0.03f)
-                               : std::clamp(baseSettings.spawnChance + density * 0.16f, 0.0f, 0.34f);
+                               : std::clamp(baseSettings.spawnChance + density * 0.20f, 0.0f, 0.42f);
     case TreeGenerationFamily::BambooJungle:
         return density < 0.12f ? std::clamp(density * 0.12f, 0.0f, 0.04f)
-                               : std::clamp(baseSettings.spawnChance + density * 0.32f, 0.0f, 0.64f);
+                               : std::clamp(baseSettings.spawnChance + density * 0.42f, 0.0f, 0.82f);
     case TreeGenerationFamily::None:
     default:
         return 0.0f;

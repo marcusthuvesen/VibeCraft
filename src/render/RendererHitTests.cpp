@@ -147,7 +147,9 @@ int Renderer::hitTestMainMenuSingleplayerPanel(
     const std::uint32_t windowWidth,
     const std::uint32_t windowHeight,
     const std::uint16_t textWidth,
-    const std::uint16_t textHeight)
+    const std::uint16_t textHeight,
+    const std::uint16_t menuLogoWidthPx,
+    const std::uint16_t menuLogoHeightPx)
 {
     if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
     {
@@ -161,16 +163,18 @@ int Renderer::hitTestMainMenuSingleplayerPanel(
     const int clampedCol = std::clamp(col, 0, tw - 1);
     const int clampedRow = std::clamp(row, 0, th - 1);
 
-    constexpr int kWide = 72;
-    constexpr int kButtonSpan = 5;
-    constexpr int kPitch = 7;
-    const int centerCol = std::max(0, (tw - kWide) / 2);
-    const int firstButtonRow = std::max(8, (th - 31) / 2 + 13);
-    for (int buttonIndex = 0; buttonIndex < 4; ++buttonIndex)
+    const int titleMenuRowBias = detail::mainMenuLogoReservedDbgRows(
+        windowWidth, windowHeight, textHeight, menuLogoWidthPx, menuLogoHeightPx);
+    const detail::MainMenuComputedLayout menu =
+        detail::computeMainMenuLayout(tw, th, titleMenuRowBias);
+    const int rowShift = detail::SingleplayerMenuLayout::singleplayerMenuRowShift(
+        th, menu.buttonLineCount, titleMenuRowBias);
+    for (int buttonIndex = 0; buttonIndex < detail::SingleplayerMenuLayout::kButtonCount; ++buttonIndex)
     {
-        const int row0 = firstButtonRow + buttonIndex * kPitch;
-        if (clampedRow >= row0 && clampedRow <= row0 + kButtonSpan - 1
-            && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+        const int row0 =
+            detail::SingleplayerMenuLayout::kFirstButtonRow + rowShift + buttonIndex * menu.buttonLineCount;
+        if (clampedRow >= row0 && clampedRow <= row0 + menu.buttonLineCount - 1
+            && clampedCol >= menu.centerCol && clampedCol <= menu.centerCol + menu.outerWidth - 1)
         {
             return buttonIndex;
         }
@@ -280,6 +284,54 @@ int Renderer::hitTestPauseGameSettingsMenu(
             mouseY))
     {
         return 6;
+    }
+
+    return -1;
+}
+
+int Renderer::hitTestMainMenuOptions(
+    const float mouseX,
+    const float mouseY,
+    const std::uint32_t windowWidth,
+    const std::uint32_t windowHeight,
+    const std::uint16_t textWidth,
+    const std::uint16_t textHeight)
+{
+    if (windowWidth == 0 || windowHeight == 0 || textWidth == 0 || textHeight == 0)
+    {
+        return -1;
+    }
+
+    const int col = static_cast<int>(mouseX * static_cast<float>(textWidth) / static_cast<float>(windowWidth));
+    const int row = static_cast<int>(mouseY * static_cast<float>(textHeight) / static_cast<float>(windowHeight));
+    const int tw = static_cast<int>(textWidth);
+    const int th = static_cast<int>(textHeight);
+    const int clampedCol = std::clamp(col, 0, tw - 1);
+    const int clampedRow = std::clamp(row, 0, th - 1);
+
+    constexpr int kWide = 96;
+    const int centerCol = std::max(0, (tw - kWide) / 2);
+    constexpr int kSpan = 7;
+
+    // Back button at row 25, Sound settings at row 9, Display name at row 16
+    constexpr int kBackRow = 25;
+    constexpr int kSoundRow = 9;
+    constexpr int kDisplayNameRow = 16;
+
+    if (clampedRow >= kBackRow && clampedRow <= kBackRow + kSpan - 1
+        && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        return 0;
+    }
+    if (clampedRow >= kSoundRow && clampedRow <= kSoundRow + kSpan - 1
+        && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        return 1;
+    }
+    if (clampedRow >= kDisplayNameRow && clampedRow <= kDisplayNameRow + kSpan - 1
+        && clampedCol >= centerCol && clampedCol <= centerCol + kWide - 1)
+    {
+        return 2;
     }
 
     return -1;
@@ -685,7 +737,7 @@ int Renderer::hitTestCraftingMenu(
     for (int slotIndex = 0; slotIndex < 9; ++slotIndex)
     {
         const float slotX = layout.inventoryOriginX + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-        const float slotY = layout.inventoryOriginY + static_cast<float>(kVisibleBagRows) * (layout.slotSize + layout.slotGap);
+        const float slotY = layout.hotbarOriginY;
         if (insideRect(slotX, slotY))
         {
             return kCraftingHotbarHitBase + slotIndex;

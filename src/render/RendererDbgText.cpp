@@ -177,9 +177,20 @@ void dbgTextPrintfCenteredRow(
     const float slotGap = kSlotGapPx * scale;
 
     // Shared player inventory region used by inventory/workbench/furnace/chest screens.
-    const auto [invX, invY] = px(8.0f, chestMode ? 140.0f : 84.0f);
+    constexpr float kInventoryOriginXPx = 8.0f;
+    constexpr float kInventoryRowsTopPx = 84.0f;
+    constexpr float kChestInventoryRowsTopPx = 140.0f;
+    constexpr float kHotbarTopPx = 142.0f;
+    constexpr float kChestHotbarTopPx = 198.0f;
+    const auto [invX, invY] = px(
+        kInventoryOriginXPx,
+        chestMode ? kChestInventoryRowsTopPx : kInventoryRowsTopPx);
+    const auto hotbarOrigin = px(
+        kInventoryOriginXPx,
+        chestMode ? kChestHotbarTopPx : kHotbarTopPx);
     layout.inventoryOriginX = invX;
     layout.inventoryOriginY = invY;
+    layout.hotbarOriginY = hotbarOrigin.second;
 
     if (inventoryMode)
     {
@@ -873,6 +884,45 @@ void drawMainMenuOverlay(
     const std::uint16_t footerRow =
         textHeight > 0 ? static_cast<std::uint16_t>(textHeight - 1) : 0;
 
+    if (frameDebugData.mainMenuOptionsActive)
+    {
+        constexpr int kWide = 96;
+        const int optCenterCol = std::max(0, (tw - kWide) / 2);
+        dbgTextPrintfCenteredRow(5, 0x07, "OPTIONS");
+        const int hovered = frameDebugData.mainMenuOptionsHoveredControl;
+        constexpr std::uint16_t kGrayBorder = 0x17;
+        constexpr std::uint16_t kGrayLabel = 0x17;
+        constexpr std::uint16_t kHiBorder = 0x3f;
+        constexpr std::uint16_t kHiLabel = 0x3f;
+        drawFramedButton3(9, optCenterCol, kWide, "Sound settings...", hovered == 1, kGrayBorder, kGrayLabel, kHiBorder, kHiLabel);
+        const std::string displayNameLabel = frameDebugData.mainMenuDisplayNameEditing
+            ? fmt::format("Display name: [{}|]", frameDebugData.mainMenuPlayerDisplayNameField)
+            : fmt::format("Display name: [{}]  (click to edit)", frameDebugData.mainMenuPlayerDisplayNameField);
+        drawFramedButton3(
+            16,
+            optCenterCol,
+            kWide,
+            displayNameLabel,
+            hovered == 2,
+            kGrayBorder,
+            kGrayLabel,
+            kHiBorder,
+            kHiLabel);
+        drawFramedButton3(25, optCenterCol, kWide, "Back", hovered == 0, kGrayBorder, kGrayLabel, kHiBorder, kHiLabel);
+        if (!frameDebugData.mainMenuNotice.empty() && footerRow >= 3)
+        {
+            const std::uint16_t noticeRow =
+                footerRow >= 26 ? static_cast<std::uint16_t>(footerRow - 2) : static_cast<std::uint16_t>(0);
+            dbgTextPrintfCenteredRow(noticeRow, 0x07, frameDebugData.mainMenuNotice);
+        }
+        dbgTextPrintfCenteredRow(
+            footerRow,
+            0x07,
+            frameDebugData.mainMenuDisplayNameEditing ? "Type: name   Backspace: delete   Enter/click Back: done"
+                                                      : "Esc: back to title menu   Click: choose");
+        return;
+    }
+
     if (frameDebugData.mainMenuSoundSettingsActive)
     {
         constexpr int kWide = 96;
@@ -924,71 +974,143 @@ void drawMainMenuOverlay(
 
     if (frameDebugData.mainMenuLoadingActive)
     {
-        const int percent =
-            static_cast<int>(std::round(std::clamp(frameDebugData.mainMenuLoadingProgress, 0.0f, 1.0f) * 100.0f));
-        const int panelWidth = std::clamp(tw - 12, 40, std::max(40, tw - 4));
-        const int panelHeight = std::min(13, std::max(11, th - 2));
+        const float progress = std::clamp(frameDebugData.mainMenuLoadingProgress, 0.0f, 1.0f);
+        const int percent = static_cast<int>(std::round(progress * 100.0f));
+
+        // Panel sizing — taller than before to give content room to breathe.
+        const int panelWidth = std::clamp(tw - 10, 52, std::min(100, std::max(52, tw - 4)));
+        const int panelHeight = std::min(15, std::max(13, th - 2));
         const int panelCol = std::max(0, (tw - panelWidth) / 2);
         const int panelRow = std::max(1, (th - panelHeight) / 2);
         const int panelInnerWidth = panelWidth - 2;
-        const int titleRow = panelRow + 2;
-        const int labelRow = panelRow + 5;
-        const int percentRow = panelRow + 7;
-        const int barRow = panelRow + 9;
 
-        drawTextFrame(panelRow, panelCol, panelWidth, panelHeight, 0x1f, 0x17);
+        // Row layout (offsets from panelRow).
+        const int brandRow    = panelRow + 1;
+        const int ruleRow     = panelRow + 3;
+        const int titleRow    = panelRow + 5;
+        const int labelRow    = panelRow + 7;
+        const int barRow      = panelRow + 10;
+        const int ruleRow2    = panelRow + 12;
+
+        // Draw outer frame.
+        drawTextFrame(panelRow, panelCol, panelWidth, panelHeight, 0x18, 0x18);
+
+        // Brand line: "  VIBECRAFT  " in bright accent.
+        bgfx::dbgTextPrintf(
+            static_cast<std::uint16_t>(panelCol),
+            static_cast<std::uint16_t>(brandRow),
+            0x3e,
+            "%s",
+            ("|" + padLabelToInnerWidth("V I B E C R A F T", panelInnerWidth) + "|").c_str());
+
+        // Top rule: spaced dots.
+        {
+            const int ruleLen = panelInnerWidth - 4;
+            std::string rule;
+            rule.reserve(static_cast<std::size_t>(std::max(0, ruleLen)));
+            for (int i = 0; i < ruleLen; ++i)
+            {
+                rule += (i % 4 == 1) ? '~' : ' ';
+            }
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(panelCol),
+                static_cast<std::uint16_t>(ruleRow),
+                0x18,
+                "%s",
+                ("|" + padLabelToInnerWidth(rule, panelInnerWidth) + "|").c_str());
+        }
+
+        // Title (e.g. "LOADING WORLD" / "LOADING MENU") in white.
         const std::string loadingTitle = frameDebugData.mainMenuLoadingTitle.empty()
-            ? std::string(" LOADING WORLD ")
-            : " " + frameDebugData.mainMenuLoadingTitle + " ";
+            ? std::string("LOADING WORLD")
+            : frameDebugData.mainMenuLoadingTitle;
         bgfx::dbgTextPrintf(
             static_cast<std::uint16_t>(panelCol),
             static_cast<std::uint16_t>(titleRow),
-            0x3f,
+            0x0f,
             "%s",
             ("|" + padLabelToInnerWidth(clampDbgTextLine(loadingTitle, panelInnerWidth), panelInnerWidth) + "|").c_str());
-        bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(panelCol),
-            static_cast<std::uint16_t>(labelRow),
-            0x17,
-            "%s",
-            ("|" + padLabelToInnerWidth(clampDbgTextLine(frameDebugData.mainMenuLoadingLabel, panelInnerWidth), panelInnerWidth) + "|").c_str());
-        bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(panelCol),
-            static_cast<std::uint16_t>(percentRow),
-            0x3f,
-            "%s",
-            ("|" + padLabelToInnerWidth(fmt::format("{}%", percent), panelInnerWidth) + "|").c_str());
 
-        const int barWidth = std::clamp(panelInnerWidth - 10, 24, 56);
-        const int fillChars = std::clamp(
-            static_cast<int>(std::round(frameDebugData.mainMenuLoadingProgress * static_cast<float>(barWidth))),
-            0,
-            barWidth);
-        const std::string bar = "["
-            + std::string(static_cast<std::size_t>(fillChars), '=')
-            + std::string(static_cast<std::size_t>(barWidth - fillChars), ' ')
-            + "]";
-        bgfx::dbgTextPrintf(
-            static_cast<std::uint16_t>(panelCol),
-            static_cast<std::uint16_t>(barRow),
-            0x2f,
-            "%s",
-            ("|" + padLabelToInnerWidth(bar, panelInnerWidth) + "|").c_str());
+        // Status label with 4-frame spinner driven by time.
+        {
+            constexpr std::array<char, 4> kSpinner{'|', '/', '-', '\\'};
+            const int spinFrame = static_cast<int>(frameDebugData.mainMenuTimeSeconds * 6.0f) % 4;
+            const char spinner = kSpinner[static_cast<std::size_t>(spinFrame)];
+            const std::string labelText = frameDebugData.mainMenuLoadingLabel.empty()
+                ? std::string("Please wait...")
+                : frameDebugData.mainMenuLoadingLabel;
+            const std::string labelLine =
+                fmt::format("{} {}", spinner, clampDbgTextLine(labelText, panelInnerWidth - 3));
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(panelCol),
+                static_cast<std::uint16_t>(labelRow),
+                0x17,
+                "%s",
+                ("|" + padLabelToInnerWidth(labelLine, panelInnerWidth) + "|").c_str());
+        }
+
+        // Progress bar with percent baked in: [=======>        ] 58%
+        {
+            const std::string percentSuffix = fmt::format("] {:3d}%", percent);
+            // Available fill width: inner - 1 (leading '[') - percentSuffix chars.
+            const int barFill = std::max(8, panelInnerWidth - 2 - 1 - static_cast<int>(percentSuffix.size()));
+            const int filled = std::clamp(
+                static_cast<int>(std::round(progress * static_cast<float>(barFill))),
+                0,
+                barFill);
+            std::string barStr = "[";
+            if (filled > 0)
+            {
+                barStr += std::string(static_cast<std::size_t>(filled - 1), '=');
+                barStr += (filled < barFill) ? '>' : '=';
+            }
+            barStr += std::string(static_cast<std::size_t>(barFill - filled), ' ');
+            barStr += percentSuffix;
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(panelCol),
+                static_cast<std::uint16_t>(barRow),
+                0x2e,
+                "%s",
+                ("|" + padLabelToInnerWidth(barStr, panelInnerWidth) + "|").c_str());
+        }
+
+        // Bottom rule.
+        {
+            const int ruleLen = panelInnerWidth - 4;
+            std::string rule;
+            rule.reserve(static_cast<std::size_t>(std::max(0, ruleLen)));
+            for (int i = 0; i < ruleLen; ++i)
+            {
+                rule += (i % 4 == 1) ? '~' : ' ';
+            }
+            bgfx::dbgTextPrintf(
+                static_cast<std::uint16_t>(panelCol),
+                static_cast<std::uint16_t>(ruleRow2),
+                0x18,
+                "%s",
+                ("|" + padLabelToInnerWidth(rule, panelInnerWidth) + "|").c_str());
+        }
+
         return;
     }
 
     if (frameDebugData.mainMenuSingleplayerPanelActive)
     {
-        constexpr int kWide = 72;
-        constexpr int kPanelHeight = 39;
-        const int panelCol = std::max(0, (tw - kWide) / 2);
-        const int panelRow = std::max(1, (th - kPanelHeight) / 2);
+        const MainMenuComputedLayout menu =
+            computeMainMenuLayout(tw, th, mainMenuTitleContentRowOffset);
+        const int rowShift = SingleplayerMenuLayout::singleplayerMenuRowShift(
+            th, menu.buttonLineCount, mainMenuTitleContentRowOffset);
         const int hovered = frameDebugData.mainMenuSingleplayerHoveredControl;
-        drawTextFrame(panelRow, panelCol, kWide, kPanelHeight, 0x1f, 0x17);
-        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(panelRow + 2), 0x3f, " SINGLEPLAYER ");
-        dbgTextPrintfCenteredRow(static_cast<std::uint16_t>(panelRow + 4), 0x07, "Choose how to start");
         dbgTextPrintfCenteredRow(
-            static_cast<std::uint16_t>(panelRow + 6),
+            static_cast<std::uint16_t>(SingleplayerMenuLayout::kTitleAnchorRow + rowShift),
+            0x07,
+            "SINGLEPLAYER");
+        dbgTextPrintfCenteredRow(
+            static_cast<std::uint16_t>(SingleplayerMenuLayout::kSubtitleRow + rowShift),
+            0x07,
+            "Choose how to start");
+        dbgTextPrintfCenteredRow(
+            static_cast<std::uint16_t>(SingleplayerMenuLayout::kSelectedWorldRow + rowShift),
             0x0f,
             clampDbgTextLine(
                 fmt::format(
@@ -997,7 +1119,7 @@ void drawMainMenuOverlay(
                                                                       : frameDebugData.mainMenuSelectedWorldLabel),
                 tw - 2));
         dbgTextPrintfCenteredRow(
-            static_cast<std::uint16_t>(panelRow + 8),
+            static_cast<std::uint16_t>(SingleplayerMenuLayout::kBiomeRow + rowShift),
             0x0f,
             clampDbgTextLine(
                 fmt::format(
@@ -1005,10 +1127,24 @@ void drawMainMenuOverlay(
                     frameDebugData.mainMenuSpawnBiomeLabel.empty() ? std::string("Any")
                                                                    : frameDebugData.mainMenuSpawnBiomeLabel),
                 tw - 2));
-        drawFramedButton3(panelRow + 13, panelCol, kWide, "Start from saved world", hovered == 0, 0x17, 0x17, 0x3f, 0x3f);
-        drawFramedButton3(panelRow + 20, panelCol, kWide, "Start new world", hovered == 1, 0x17, 0x17, 0x3f, 0x3f);
-        drawFramedButton3(panelRow + 27, panelCol, kWide, "Cycle biome target", hovered == 2, 0x17, 0x17, 0x3f, 0x3f);
-        drawFramedButton3(panelRow + 34, panelCol, kWide, "Back", hovered == 3, 0x17, 0x17, 0x3f, 0x3f);
+        const std::array<std::string, 4> singleplayerLabels{
+            "Start from saved world",
+            "Start new world",
+            "Cycle biome target",
+            "Back",
+        };
+        for (int buttonIndex = 0; buttonIndex < SingleplayerMenuLayout::kButtonCount; ++buttonIndex)
+        {
+            drawMainMenuFramedButton5(
+                SingleplayerMenuLayout::kFirstButtonRow
+                    + rowShift
+                    + buttonIndex * menu.buttonLineCount,
+                menu.centerCol,
+                menu.outerWidth,
+                menu.buttonLineCount,
+                singleplayerLabels[static_cast<std::size_t>(buttonIndex)],
+                hovered == buttonIndex);
+        }
         dbgTextPrintfCenteredRow(
             footerRow,
             0x07,

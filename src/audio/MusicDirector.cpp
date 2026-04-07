@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +24,8 @@ namespace
 {
 constexpr int kOutputSampleRate = 44100;
 constexpr int kOutputChannelCount = 2;
-constexpr int kTargetQueuedSeconds = 8;
+constexpr int kTargetQueuedSeconds = 3;
+constexpr int kMinimumQueuedSeconds = 1;
 
 [[nodiscard]] int contextIndex(const MusicContext context)
 {
@@ -61,6 +63,8 @@ bool MusicDirector::initialize(SDL_AudioStream* const stream, const std::filesys
     activeTrackFrameCursor_ = 0;
     queuedSilenceFrames_ = 0;
     std::fill(std::begin(lastTrackIndexByContext_), std::end(lastTrackIndexByContext_), -1);
+    decodedTrackCache_.clear();
+    decodeAttemptCooldownSeconds_ = 0.0f;
     return true;
 }
 
@@ -92,9 +96,11 @@ void MusicDirector::shutdown()
     proceduralPhase_ = 0;
     loggedMissingMusicAssets_ = false;
     decodeExhaustedForContext_ = false;
+    decodedTrackCache_.clear();
+    decodeAttemptCooldownSeconds_ = 0.0f;
 }
 
-void MusicDirector::update(const float /*deltaTimeSeconds*/, const MusicContext desiredContext)
+void MusicDirector::update(const float deltaTimeSeconds, const MusicContext desiredContext)
 {
     if (stream_ == nullptr)
     {
@@ -125,6 +131,7 @@ void MusicDirector::update(const float /*deltaTimeSeconds*/, const MusicContext 
         }
     }
 
+    decodeAttemptCooldownSeconds_ = std::max(0.0f, decodeAttemptCooldownSeconds_ - deltaTimeSeconds);
     refillQueue();
 }
 
@@ -219,12 +226,24 @@ bool MusicDirector::pickAndDecodeNextTrack(const MusicContext context)
             continue;
         }
 
+        const std::string trackPath(tracks[static_cast<std::size_t>(candidateIndex)].relativePath);
+        const auto cachedIt = decodedTrackCache_.find(trackPath);
+        if (cachedIt != decodedTrackCache_.end())
+        {
+            activeTrack_ = cachedIt->second;
+            hasActiveTrack_ = true;
+            activeTrackFrameCursor_ = 0;
+            lastTrackIndexByContext_[contextIdx] = candidateIndex;
+            return true;
+        }
+
         DecodedTrack decodedTrack;
         if (!decodeTrack(tracks[static_cast<std::size_t>(candidateIndex)], decodedTrack))
         {
             continue;
         }
 
+        decodedTrackCache_[trackPath] = decodedTrack;
         activeTrack_ = std::move(decodedTrack);
         hasActiveTrack_ = true;
         activeTrackFrameCursor_ = 0;
@@ -338,6 +357,9 @@ void MusicDirector::refillQueue()
     }
 
     const int targetQueuedFrames = kOutputSampleRate * kTargetQueuedSeconds;
+    const int minQueuedFrames = kOutputSampleRate * kMinimumQueuedSeconds;
+    const auto refillStart = std::chrono::steady_clock::now();
+    constexpr double kRefillBudgetMs = 1.5;
     int queuedBytes = SDL_GetAudioStreamQueued(stream_);
     if (queuedBytes < 0)
     {
@@ -348,6 +370,13 @@ void MusicDirector::refillQueue()
     int queuedFrames = queuedBytes / static_cast<int>(sizeof(float) * kOutputChannelCount);
     while (queuedFrames < targetQueuedFrames)
     {
+        const double elapsedMs =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - refillStart).count();
+        if (elapsedMs >= kRefillBudgetMs && queuedFrames >= minQueuedFrames)
+        {
+            break;
+        }
+
         const int refillFrames = std::min(targetQueuedFrames - queuedFrames, kOutputSampleRate);
         if (queuedSilenceFrames_ > 0)
         {
@@ -360,23 +389,37 @@ void MusicDirector::refillQueue()
 
         if (!hasActiveTrack_)
         {
-            if (!decodeExhaustedForContext_ && !pickAndDecodeNextTrack(context_))
+            bool attemptedDecode = false;
+            if (!decodeExhaustedForContext_ && decodeAttemptCooldownSeconds_ <= 0.0f)
             {
-                decodeExhaustedForContext_ = true;
-                if (!loggedMissingMusicAssets_)
+                attemptedDecode = true;
+                decodeAttemptCooldownSeconds_ = 0.25f;
+                if (!pickAndDecodeNextTrack(context_))
                 {
-                    core::logWarning(fmt::format(
-                        "No music could be decoded from '{}'. "
-                        "Place Minecraft OGGs under assets/audio/minecraft or audio/minecraft next to the executable. "
-                        "Playing a placeholder tone so speaker output can be verified.",
-                        audioRoot_.generic_string()));
-                    loggedMissingMusicAssets_ = true;
+                    decodeExhaustedForContext_ = true;
+                    decodeAttemptCooldownSeconds_ = 2.0f;
+                    if (!loggedMissingMusicAssets_)
+                    {
+                        core::logWarning(fmt::format(
+                            "No music could be decoded from '{}'. "
+                            "Place Minecraft OGGs under assets/audio/minecraft or audio/minecraft next to the executable. "
+                            "Playing a placeholder tone so speaker output can be verified.",
+                            audioRoot_.generic_string()));
+                        loggedMissingMusicAssets_ = true;
+                    }
                 }
             }
             if (decodeExhaustedForContext_)
             {
                 queueProceduralFallbackFrames(refillFrames);
                 queuedFrames += refillFrames;
+                continue;
+            }
+            if (!hasActiveTrack_ && !attemptedDecode)
+            {
+                const int silenceFrames = std::min(refillFrames, kOutputSampleRate / 2);
+                queueSilenceFrames(silenceFrames);
+                queuedFrames += silenceFrames;
                 continue;
             }
         }

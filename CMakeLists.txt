@@ -291,8 +291,11 @@ set(VIBECRAFT_SOURCES
     src/render/RendererScreenOverlays.cpp
     src/render/RendererSkyEffects.cpp
     src/render/RendererShaderTexture.cpp
+    src/render/RendererMenuChrome.cpp
     src/render/RendererUiGpu.cpp
     src/render/RendererWeather.cpp
+    src/render/RendererMobSprites.cpp
+    src/render/RendererWorldSprites.cpp
     src/world/Chunk.cpp
     src/world/TerrainGenerator.cpp
     src/world/WoodlandRavine.cpp
@@ -314,6 +317,7 @@ set(VIBECRAFT_SOURCES
     src/world/underground/CaveRules.cpp
     src/world/underground/OreVeinRules.cpp
     src/world/World.cpp
+    src/world/WorldGravity.cpp
     src/world/WorldSerializer.cpp
     third_party/stb_vorbis.c
     ${BGFX_EXAMPLES_COMMON_DIR}/debugdraw/debugdraw.cpp
@@ -446,6 +450,7 @@ add_executable(vibecraft_tests
     src/world/underground/CaveRules.cpp
     src/world/underground/OreVeinRules.cpp
     src/world/World.cpp
+    src/world/WorldGravity.cpp
     src/world/WorldSerializer.cpp
     src/core/Logger.cpp
 )

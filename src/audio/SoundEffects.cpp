@@ -667,6 +667,12 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
         return numberedClipRange("mob/sheep/say", 1, 3);
     case MobKind::Chicken:
         return concatClipLists({numberedClipRange("mob/chicken/hurt", 1, 2), numberedClipRange("mob/chicken/say", 1, 3)});
+    case MobKind::Wolf:
+        return concatClipLists({numberedClipRange("mob/wolf/hurt", 1, 3), numberedClipRange("mob/wolf/growl", 1, 3)});
+    case MobKind::Bear:
+        return concatClipLists({numberedClipRange("mob/cow/hurt", 1, 3), numberedClipRange("mob/zombie/say", 1, 2)});
+    case MobKind::SandScorpion:
+        return numberedClipRange("mob/spider/say", 1, 4);
     }
     return {};
 }
@@ -694,6 +700,12 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
         return numberedClipRange("mob/sheep/say", 1, 3);
     case MobKind::Chicken:
         return numberedClipRange("mob/chicken/say", 1, 3);
+    case MobKind::Wolf:
+        return numberedClipRange("mob/wolf/growl", 1, 3);
+    case MobKind::Bear:
+        return numberedClipRange("mob/zombie/say", 1, 3);
+    case MobKind::SandScorpion:
+        return numberedClipRange("mob/spider/say", 1, 4);
     }
     return {};
 }
@@ -721,6 +733,12 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
         return numberedClipRange("mob/sheep/step", 1, 5);
     case MobKind::Chicken:
         return numberedClipRange("mob/chicken/step", 1, 2);
+    case MobKind::Wolf:
+        return numberedClipRange("mob/wolf/step", 1, 5);
+    case MobKind::Bear:
+        return numberedClipRange("mob/cow/step", 1, 4);
+    case MobKind::SandScorpion:
+        return numberedClipRange("mob/spider/step", 1, 4);
     }
     return {};
 }
@@ -748,6 +766,12 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
         return numberedClipRange("mob/sheep/say", 1, 3);
     case MobKind::Chicken:
         return numberedClipRange("mob/chicken/hurt", 1, 2);
+    case MobKind::Wolf:
+        return {"mob/wolf/death.ogg"};
+    case MobKind::Bear:
+        return numberedClipRange("mob/cow/hurt", 1, 3);
+    case MobKind::SandScorpion:
+        return {"mob/spider/death.ogg"};
     }
     return {};
 }

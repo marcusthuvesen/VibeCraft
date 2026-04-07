@@ -61,6 +61,7 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
         || blockType == BlockType::Ladder
         || blockType == BlockType::Bamboo
         || blockType == BlockType::Fern
+        || blockType == BlockType::LargeFernBottom || blockType == BlockType::LargeFernTop
         || blockType == BlockType::GrassTuft || blockType == BlockType::FlowerTuft
         || blockType == BlockType::DryTuft || blockType == BlockType::LushTuft
         || blockType == BlockType::FrostTuft || blockType == BlockType::SparseTuft
@@ -86,6 +87,7 @@ constexpr std::array<FaceDefinition, 6> kFaces{{
         || blockType == BlockType::DryTuft || blockType == BlockType::LushTuft
         || blockType == BlockType::FrostTuft || blockType == BlockType::Dandelion
         || blockType == BlockType::Fern
+        || blockType == BlockType::LargeFernBottom || blockType == BlockType::LargeFernTop
         || blockType == BlockType::SparseTuft || blockType == BlockType::CloverTuft
         || blockType == BlockType::SproutTuft
         || blockType == BlockType::Poppy || blockType == BlockType::BlueOrchid
@@ -821,16 +823,20 @@ void appendBookshelfInsetFace(
 }
 }  // namespace
 
-ChunkMeshData ChunkMesher::buildMesh(
+std::vector<ChunkSectionMeshData> ChunkMesher::buildSectionMeshes(
     const vibecraft::world::World& world,
     const vibecraft::world::ChunkCoord& coord,
     const ChunkMeshBuildSettings& settings) const
 {
-    ChunkMeshData meshData;
+    std::vector<ChunkSectionMeshData> sectionMeshes(static_cast<std::size_t>(kChunkRenderSectionCount));
+    for (int sectionIndex = 0; sectionIndex < kChunkRenderSectionCount; ++sectionIndex)
+    {
+        sectionMeshes[static_cast<std::size_t>(sectionIndex)].sectionIndex = sectionIndex;
+    }
     const auto currentChunkIt = world.chunks().find(coord);
     if (currentChunkIt == world.chunks().end())
     {
-        return meshData;
+        return {};
     }
 
     const auto chunkAt = [&world](const vibecraft::world::ChunkCoord& neighborCoord)
@@ -908,6 +914,9 @@ ChunkMeshData ChunkMesher::buildMesh(
                     continue;
                 }
 
+                ChunkMeshData& meshData =
+                    sectionMeshes[static_cast<std::size_t>(chunkRenderSectionIndexForY(y))].mesh;
+
                 if (vibecraft::world::isTorchBlock(blockType))
                 {
                     const auto metadata = vibecraft::world::blockMetadata(blockType);
@@ -926,8 +935,7 @@ ChunkMeshData ChunkMesher::buildMesh(
                         worldZ,
                         metadata.textureTiles.side,
                         litTorchAbgr,
-                        modulateAbgrRgb(litTorchAbgr, 1.35f),
-                        &appendBoxQuads);
+                        modulateAbgrRgb(litTorchAbgr, 1.35f));
                     continue;
                 }
 
@@ -1169,6 +1177,48 @@ ChunkMeshData ChunkMesher::buildMesh(
         }
     }
 
-    return meshData;
+    std::vector<ChunkSectionMeshData> builtSectionMeshes;
+    builtSectionMeshes.reserve(sectionMeshes.size());
+    for (ChunkSectionMeshData& sectionMesh : sectionMeshes)
+    {
+        if (sectionMesh.mesh.vertices.empty() || sectionMesh.mesh.indices.empty())
+        {
+            continue;
+        }
+        builtSectionMeshes.push_back(std::move(sectionMesh));
+    }
+    return builtSectionMeshes;
+}
+
+ChunkMeshData ChunkMesher::buildMesh(
+    const vibecraft::world::World& world,
+    const vibecraft::world::ChunkCoord& coord,
+    const ChunkMeshBuildSettings& settings) const
+{
+    const std::vector<ChunkSectionMeshData> sectionMeshes = buildSectionMeshes(world, coord, settings);
+    ChunkMeshData combinedMesh;
+    std::size_t totalVertexCount = 0;
+    std::size_t totalIndexCount = 0;
+    for (const ChunkSectionMeshData& sectionMesh : sectionMeshes)
+    {
+        totalVertexCount += sectionMesh.mesh.vertices.size();
+        totalIndexCount += sectionMesh.mesh.indices.size();
+        combinedMesh.faceCount += sectionMesh.mesh.faceCount;
+    }
+    combinedMesh.vertices.reserve(totalVertexCount);
+    combinedMesh.indices.reserve(totalIndexCount);
+    for (const ChunkSectionMeshData& sectionMesh : sectionMeshes)
+    {
+        const std::uint32_t baseIndex = static_cast<std::uint32_t>(combinedMesh.vertices.size());
+        combinedMesh.vertices.insert(
+            combinedMesh.vertices.end(),
+            sectionMesh.mesh.vertices.begin(),
+            sectionMesh.mesh.vertices.end());
+        for (const std::uint32_t index : sectionMesh.mesh.indices)
+        {
+            combinedMesh.indices.push_back(baseIndex + index);
+        }
+    }
+    return combinedMesh;
 }
 }  // namespace vibecraft::meshing

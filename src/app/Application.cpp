@@ -307,6 +307,7 @@ bool Application::initialize()
     multiplayerAddress_ = "127.0.0.1";
     loadMultiplayerPrefs();
     loadAudioPrefs();
+    loadPlayerPrefs();
     refreshSingleplayerWorldList();
 
     const RenderSurfaceSize initialRenderSurface = desiredRenderSurfaceSize(window_, gameScreen_);
@@ -390,12 +391,48 @@ int Application::run()
 
 void Application::update(const float deltaTimeSeconds)
 {
+    using PerfClock = std::chrono::steady_clock;
+    using PerfMs = std::chrono::duration<double, std::milli>;
+    struct PerfAccumulator
+    {
+        double windowSeconds = 0.0;
+        int frameCount = 0;
+        double sumFrameMs = 0.0;
+        double maxFrameMs = 0.0;
+        double sumWorldTickMs = 0.0;
+        double sumMultiplayerMs = 0.0;
+        double sumSyncWorldMs = 0.0;
+        double sumLocalSystemsMs = 0.0;
+        double sumDroppedItemsMs = 0.0;
+        double sumMobTickMs = 0.0;
+        double sumRaycastMs = 0.0;
+        double sumDebugBuildMs = 0.0;
+        double sumMusicMs = 0.0;
+        double sumRenderCallMs = 0.0;
+    };
+    static PerfAccumulator perf{};
+
+    const auto frameStartTime = PerfClock::now();
+    double worldTickMs = 0.0;
+    double multiplayerMs = 0.0;
+    double syncWorldMs = 0.0;
+    double localSystemsMs = 0.0;
+    double droppedItemsMs = 0.0;
+    double mobTickMs = 0.0;
+    double raycastMs = 0.0;
+    double debugBuildMs = 0.0;
+    double musicMs = 0.0;
+    double renderCallMs = 0.0;
+
     if ((gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
         && multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
+        const auto worldTickStart = PerfClock::now();
         world_.tickFluids(multiplayerMode_ == MultiplayerRuntimeMode::Host ? 128 : 224);
         world_.tickLeafDecay(multiplayerMode_ == MultiplayerRuntimeMode::Host ? 4 : 6);
+        world_.tickGravityBlocks(multiplayerMode_ == MultiplayerRuntimeMode::Host ? 32 : 64);
         tickPrimedTnt(deltaTimeSeconds);
+        worldTickMs = PerfMs(PerfClock::now() - worldTickStart).count();
     }
 
     dayNightCycle_.advanceSeconds(deltaTimeSeconds);
@@ -496,7 +533,11 @@ void Application::update(const float deltaTimeSeconds)
         mainMenuTimeSeconds_ += deltaTimeSeconds;
     }
 
-    updateMultiplayer(deltaTimeSeconds);
+    {
+        const auto multiplayerStart = PerfClock::now();
+        updateMultiplayer(deltaTimeSeconds);
+        multiplayerMs = PerfMs(PerfClock::now() - multiplayerStart).count();
+    }
 
     // Keep menu-scale changes modest across Retina and standard-DPI displays by rendering menu
     // screens at logical window resolution, while gameplay still uses the full drawable size.
@@ -508,9 +549,12 @@ void Application::update(const float deltaTimeSeconds)
 
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
+        const auto syncWorldStart = PerfClock::now();
         syncWorldData();
+        syncWorldMs = PerfMs(PerfClock::now() - syncWorldStart).count();
         if (gameScreen_ == GameScreen::Playing && multiplayerMode_ != MultiplayerRuntimeMode::Client)
         {
+            const auto localSystemsStart = PerfClock::now();
             static_cast<void>(tickLocalTerraforming(
                 deltaTimeSeconds,
                 world_,
@@ -524,9 +568,14 @@ void Application::update(const float deltaTimeSeconds)
                 playerFeetPosition_,
                 botanyRuntimeState_));
             tickFurnaces(deltaTimeSeconds);
+            localSystemsMs = PerfMs(PerfClock::now() - localSystemsStart).count();
         }
         const float currentEyeHeight = std::max(0.0f, camera_.position().y - playerFeetPosition_.y);
-        updateDroppedItems(deltaTimeSeconds, currentEyeHeight);
+        {
+            const auto droppedItemsStart = PerfClock::now();
+            updateDroppedItems(deltaTimeSeconds, currentEyeHeight);
+            droppedItemsMs = PerfMs(PerfClock::now() - droppedItemsStart).count();
+        }
         if (!activeSingleplayerWorldFolderName_.empty() && multiplayerMode_ != MultiplayerRuntimeMode::Client)
         {
             autosaveAccumulatorSeconds_ += deltaTimeSeconds;
@@ -540,6 +589,7 @@ void Application::update(const float deltaTimeSeconds)
     // Multiplayer clients use host-replicated mob poses for rendering; skip local mob simulation.
     if (gameScreen_ == GameScreen::Playing && multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
+        const auto mobTickStart = PerfClock::now();
         const float healthBeforeMobTick = playerVitals_.health();
         const float armorProtection = equippedArmorProtectionFraction(equipmentSlots_);
         std::vector<glm::vec3> mobTickRemoteFeet;
@@ -633,22 +683,29 @@ void Application::update(const float deltaTimeSeconds)
         {
             soundEffects_.playPlayerHurt();
         }
+        mobTickMs = PerfMs(PerfClock::now() - mobTickStart).count();
     }
 
     std::optional<world::RaycastHit> raycastHit;
     if (gameScreen_ == GameScreen::Playing || gameScreen_ == GameScreen::Paused)
     {
+        const auto raycastStart = PerfClock::now();
         raycastHit = world_.raycast(camera_.position(), camera_.forward(), kInputTuning.reachDistance);
+        raycastMs = PerfMs(PerfClock::now() - raycastStart).count();
     }
 
     render::FrameDebugData frameDebugData;
-    buildFrameDebugData(
-        deltaTimeSeconds,
-        dayNightSample,
-        weatherSample,
-        playerSurfaceBiome,
-        raycastHit,
-        frameDebugData);
+    {
+        const auto debugBuildStart = PerfClock::now();
+        buildFrameDebugData(
+            deltaTimeSeconds,
+            dayNightSample,
+            weatherSample,
+            playerSurfaceBiome,
+            raycastHit,
+            frameDebugData);
+        debugBuildMs = PerfMs(PerfClock::now() - debugBuildStart).count();
+    }
 
     audio::MusicContext musicContext = audio::MusicContext::OverworldDay;
     if (gameScreen_ == GameScreen::MainMenu)
@@ -664,33 +721,87 @@ void Application::update(const float deltaTimeSeconds)
     {
         musicContext = audio::MusicContext::OverworldNight;
     }
-    musicDirector_.update(deltaTimeSeconds, musicContext);
+    {
+        const auto musicStart = PerfClock::now();
+        musicDirector_.update(deltaTimeSeconds, musicContext);
+        musicMs = PerfMs(PerfClock::now() - musicStart).count();
+    }
 
-    renderer_.renderFrame(
-        frameDebugData,
-        render::CameraFrameData{
-            .position = camera_.position(),
-            .forward = camera_.forward(),
-            .up = camera_.up(),
-            .skyTint = skyTint,
-            .horizonTint = horizonTint,
-            .sunDirection = dayNightSample.sunDirection,
-            .moonDirection = dayNightSample.moonDirection,
-            .sunLightTint = sunLightTint * sunLightScale,
-            .moonLightTint = moonLightTint * moonLightScale,
-            .cloudTint = cloudTint,
-            .terrainHazeColor = terrainHazeColor,
-            .terrainBounceTint = terrainBounceTint,
-            .weatherWindDirectionXZ = weatherSample.windDirectionXZ,
-            .sunVisibility = finalSunVisibility,
-            .moonVisibility = finalMoonVisibility,
-            .cloudCoverage = weatherSample.cloudCoverage,
-            .rainIntensity = weatherSample.rainIntensity,
-            .weatherTimeSeconds = weatherSample.elapsedSeconds,
-            .weatherWindSpeed = weatherSample.windSpeed,
-            .terrainHazeStrength = biomeProfile.terrainHazeStrength,
-            .terrainSaturation = biomeProfile.terrainSaturation,
-        });
+    {
+        const auto renderStart = PerfClock::now();
+        renderer_.renderFrame(
+            frameDebugData,
+            render::CameraFrameData{
+                .position = camera_.position(),
+                .forward = camera_.forward(),
+                .up = camera_.up(),
+                .skyTint = skyTint,
+                .horizonTint = horizonTint,
+                .sunDirection = dayNightSample.sunDirection,
+                .moonDirection = dayNightSample.moonDirection,
+                .sunLightTint = sunLightTint * sunLightScale,
+                .moonLightTint = moonLightTint * moonLightScale,
+                .cloudTint = cloudTint,
+                .terrainHazeColor = terrainHazeColor,
+                .terrainBounceTint = terrainBounceTint,
+                .weatherWindDirectionXZ = weatherSample.windDirectionXZ,
+                .sunVisibility = finalSunVisibility,
+                .moonVisibility = finalMoonVisibility,
+                .cloudCoverage = weatherSample.cloudCoverage,
+                .rainIntensity = weatherSample.rainIntensity,
+                .weatherTimeSeconds = weatherSample.elapsedSeconds,
+                .weatherWindSpeed = weatherSample.windSpeed,
+                .terrainHazeStrength = biomeProfile.terrainHazeStrength,
+                .terrainSaturation = biomeProfile.terrainSaturation,
+            });
+        renderCallMs = PerfMs(PerfClock::now() - renderStart).count();
+    }
+
+    const double frameMs = PerfMs(PerfClock::now() - frameStartTime).count();
+    perf.windowSeconds += static_cast<double>(deltaTimeSeconds);
+    ++perf.frameCount;
+    perf.sumFrameMs += frameMs;
+    perf.maxFrameMs = std::max(perf.maxFrameMs, frameMs);
+    perf.sumWorldTickMs += worldTickMs;
+    perf.sumMultiplayerMs += multiplayerMs;
+    perf.sumSyncWorldMs += syncWorldMs;
+    perf.sumLocalSystemsMs += localSystemsMs;
+    perf.sumDroppedItemsMs += droppedItemsMs;
+    perf.sumMobTickMs += mobTickMs;
+    perf.sumRaycastMs += raycastMs;
+    perf.sumDebugBuildMs += debugBuildMs;
+    perf.sumMusicMs += musicMs;
+    perf.sumRenderCallMs += renderCallMs;
+    if (perf.windowSeconds >= 1.0 && perf.frameCount > 0)
+    {
+        const double frameCount = static_cast<double>(perf.frameCount);
+        const double avgFrameMs = perf.sumFrameMs / frameCount;
+        const double approxFps = avgFrameMs > 0.001 ? 1000.0 / avgFrameMs : 0.0;
+        core::logInfo(fmt::format(
+            "[perf-app] avg_frame_ms={:.2f} max_frame_ms={:.2f} fps={:.1f} worldTick={:.2f} multiplayer={:.2f} "
+            "syncWorld={:.2f} localSystems={:.2f} droppedItems={:.2f} mobTick={:.2f} raycast={:.2f} debugBuild={:.2f} "
+            "music={:.2f} renderCall={:.2f}",
+            avgFrameMs,
+            perf.maxFrameMs,
+            approxFps,
+            perf.sumWorldTickMs / frameCount,
+            perf.sumMultiplayerMs / frameCount,
+            perf.sumSyncWorldMs / frameCount,
+            perf.sumLocalSystemsMs / frameCount,
+            perf.sumDroppedItemsMs / frameCount,
+            perf.sumMobTickMs / frameCount,
+            perf.sumRaycastMs / frameCount,
+            perf.sumDebugBuildMs / frameCount,
+            perf.sumMusicMs / frameCount,
+            perf.sumRenderCallMs / frameCount));
+        core::logInfo(fmt::format(
+            "[perf-world] chunks={} resident={} dirty={} faces={}",
+            frameDebugData.chunkCount,
+            frameDebugData.residentChunkCount,
+            frameDebugData.dirtyChunkCount,
+            frameDebugData.totalFaces));
+        perf = {};
+    }
 }
 
 }  // namespace vibecraft::app

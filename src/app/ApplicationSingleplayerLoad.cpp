@@ -63,7 +63,8 @@ void Application::beginSingleplayerLoad()
         renderer_.updateSceneMeshes({}, removedMeshIds);
     }
     residentChunkMeshIds_.clear();
-    residentChunkMeshVerticalBandById_.clear();
+    residentChunkCoords_.clear();
+    residentChunkVerticalBandByCoord_.clear();
     resetChunkGenerationPipeline();
     resetChunkMeshingPipeline();
 
@@ -288,12 +289,13 @@ void Application::updateSingleplayerLoad()
             world_,
             chunkMesher_,
             residentChunkMeshIds_,
+            residentChunkCoords_,
             dirtyCoordSet,
             cameraChunk,
             static_cast<int>(std::floor(camera_.position().y)),
             kStreamingSettings.residentChunkRadius,
             std::max<std::size_t>(12, kStreamingSettings.meshBuildBudgetPerFrame * 3));
-        applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
+        applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_, residentChunkCoords_);
         if (!cpuData.dirtyResidentMeshUpdates.empty())
         {
             world_.applyMeshStatsAndClearDirty(cpuData.dirtyResidentMeshUpdates);
@@ -315,7 +317,7 @@ void Application::updateSingleplayerLoad()
                 {
                     ++residentGeneratedCount;
                 }
-                if (residentChunkMeshIds_.contains(chunkMeshId(coord)))
+                if (residentChunkCoords_.contains(coord))
                 {
                     ++residentMeshCount;
                 }
@@ -460,12 +462,13 @@ void Application::updateSingleplayerLoad()
         world_,
         chunkMesher_,
         residentChunkMeshIds_,
+        residentChunkCoords_,
         dirtyCoordSet,
         cameraChunk,
         static_cast<int>(std::floor(camera_.position().y)),
         kStreamingSettings.residentChunkRadius,
         std::max<std::size_t>(12, kStreamingSettings.meshBuildBudgetPerFrame * 3));
-    applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
+    applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_, residentChunkCoords_);
     if (!cpuData.dirtyResidentMeshUpdates.empty())
     {
         world_.applyMeshStatsAndClearDirty(cpuData.dirtyResidentMeshUpdates);
@@ -487,7 +490,7 @@ void Application::updateSingleplayerLoad()
             {
                 ++residentGeneratedCount;
             }
-            if (residentChunkMeshIds_.contains(chunkMeshId(coord)))
+            if (residentChunkCoords_.contains(coord))
             {
                 ++residentMeshCount;
             }

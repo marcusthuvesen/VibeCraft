@@ -15,6 +15,9 @@ enum class MobKind : std::uint8_t
     Pig,
     Sheep,
     Chicken,
+    Wolf,
+    Bear,
+    SandScorpion,
 };
 
 [[nodiscard]] constexpr bool isHostileMob(const MobKind kind)
@@ -22,7 +25,10 @@ enum class MobKind : std::uint8_t
     return kind == MobKind::Zombie
         || kind == MobKind::Skeleton
         || kind == MobKind::Creeper
-        || kind == MobKind::Spider;
+        || kind == MobKind::Spider
+        || kind == MobKind::Wolf
+        || kind == MobKind::Bear
+        || kind == MobKind::SandScorpion;
 }
 
 [[nodiscard]] constexpr bool isPassiveMob(const MobKind kind)
@@ -59,6 +65,12 @@ enum class MobKind : std::uint8_t
         return 8.0f;
     case MobKind::Chicken:
         return 4.0f;
+    case MobKind::Wolf:
+        return 16.0f;
+    case MobKind::Bear:
+        return 30.0f;
+    case MobKind::SandScorpion:
+        return 18.0f;
     }
     return 10.0f;
 }

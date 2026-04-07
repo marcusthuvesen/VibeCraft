@@ -62,19 +62,31 @@ namespace
     // Weighted mix so zombies remain the most common baseline hostile.
     std::uniform_int_distribution<int> dist(0, 99);
     const int roll = dist(rng);
-    if (roll < 50)
+    if (roll < 40)
     {
         return MobKind::Zombie;
     }
-    if (roll < 74)
+    if (roll < 60)
     {
         return MobKind::Skeleton;
     }
-    if (roll < 90)
+    if (roll < 75)
     {
         return MobKind::Creeper;
     }
-    return MobKind::Spider;
+    if (roll < 85)
+    {
+        return MobKind::Spider;
+    }
+    if (roll < 93)
+    {
+        return MobKind::Wolf;
+    }
+    if (roll < 97)
+    {
+        return MobKind::Bear;
+    }
+    return MobKind::SandScorpion;
 }
 
 [[nodiscard]] bool tooCloseToAnyPlayerFeet(
@@ -240,6 +252,10 @@ bool MobSpawnSystem::trySpawnOneHostile(
         }
 
         const world::SurfaceBiome surfaceBiome = terrain.surfaceBiomeAt(ix, iz);
+        if (kind == MobKind::SandScorpion && !world::biomes::isSandySurfaceBiome(surfaceBiome))
+        {
+            continue;
+        }
         if (world::biomes::isJungleSurfaceBiome(surfaceBiome))
         {
             std::uniform_real_distribution<float> grovePeaceDist(0.0f, 1.0f);

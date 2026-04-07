@@ -75,6 +75,7 @@ class World
     [[nodiscard]] std::uint32_t totalVisibleFaces() const;
     void tickFluids(std::size_t maxUpdates = 96);
     void tickLeafDecay(std::size_t maxUpdates = 8);
+    void tickGravityBlocks(std::size_t maxUpdates = 64);
 
     void rebuildDirtyMeshes(const vibecraft::meshing::ChunkMesher& chunkMesher);
     void rebuildDirtyMeshes(
@@ -119,6 +120,20 @@ class World
         std::size_t operator()(const OrganicDecayCell& cell) const noexcept;
     };
 
+    struct GravityCell
+    {
+        int x = 0;
+        int y = 0;
+        int z = 0;
+
+        auto operator<=>(const GravityCell&) const = default;
+    };
+
+    struct GravityCellHash
+    {
+        std::size_t operator()(const GravityCell& cell) const noexcept;
+    };
+
     Chunk& ensureChunk(const ChunkCoord& coord);
     void markChunkDirty(const ChunkCoord& coord);
     bool setBlockUnchecked(int worldX, int y, int worldZ, BlockType blockType);
@@ -130,6 +145,8 @@ class World
     void clearFluidStateForChunk(const ChunkCoord& coord);
     void registerFluidStateForChunk(const Chunk& chunk);
     void processFluidCell(const FluidCell& cell);
+    void scheduleGravityBlock(int worldX, int y, int worldZ);
+    void processGravityCell(const GravityCell& cell);
 
     std::uint32_t generationSeed_ = 0;
     ChunkMap chunks_;
@@ -142,5 +159,6 @@ class World
     std::uint32_t fluidTickCounter_ = 0;
     std::deque<OrganicDecayCell> activeLeafDecayCells_;
     std::unordered_set<OrganicDecayCell, OrganicDecayCellHash> queuedLeafDecayCells_;
+    std::unordered_set<GravityCell, GravityCellHash> activeGravityBlocks_;
 };
 }  // namespace vibecraft::world

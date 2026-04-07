@@ -65,4 +65,17 @@ namespace vibecraft::render::detail
     const float weightedDy = offset.y * verticalWeight;
     return offset.x * offset.x + weightedDy * weightedDy + offset.z * offset.z;
 }
+
+/// Returns true when the section AABB is entirely outside the vertical render budget around the camera.
+/// Sections whose top is more than `belowBudget` blocks below the camera, or whose bottom is more
+/// than `aboveBudget` blocks above the camera, are invisible regardless of distance or frustum.
+[[nodiscard]] bool isAabbOutsideVerticalRange(
+    const glm::vec3& aabbMin,
+    const glm::vec3& aabbMax,
+    const float cameraY,
+    const float belowBudget,
+    const float aboveBudget)
+{
+    return aabbMax.y < cameraY - belowBudget || aabbMin.y > cameraY + aboveBudget;
+}
 }  // namespace vibecraft::render::detail

@@ -320,6 +320,36 @@ void placeJungleCanopy(
         placeBlockIfInsideChunk(chunk, coord, crownCenterX, crownCenterY - 1, crownCenterZ + crownRadius, crownBlock);
         placeBlockIfInsideChunk(chunk, coord, crownCenterX, crownCenterY - 1, crownCenterZ - crownRadius, crownBlock);
     }
+
+    // Lower fringe ring — drooping outer leaves one block below the main canopy body,
+    // producing the characteristic wide overhanging silhouette of large Minecraft jungle trees.
+    if (crownRadius >= 4)
+    {
+        const int fringeY = crownCenterY - crownRadius - 1;
+        const int fringeRadius = crownRadius - 1;
+        for (int dz = -fringeRadius; dz <= fringeRadius; ++dz)
+        {
+            for (int dx = -fringeRadius; dx <= fringeRadius; ++dx)
+            {
+                // Only the outer ring of the fringe layer (skip interior — already covered above)
+                if (std::abs(dx) < fringeRadius - 1 && std::abs(dz) < fringeRadius - 1)
+                {
+                    continue;
+                }
+                const bool fringeCorner = std::abs(dx) == fringeRadius && std::abs(dz) == fringeRadius;
+                if (fringeCorner
+                    && noise::random01(
+                           crownCenterX + dx,
+                           crownCenterZ + dz,
+                           kTreeShapeSeed + static_cast<std::uint32_t>(fringeY - kWorldMinY))
+                        > 0.35)
+                {
+                    continue;
+                }
+                placeBlockIfInsideChunk(chunk, coord, crownCenterX + dx, fringeY, crownCenterZ + dz, crownBlock);
+            }
+        }
+    }
 }
 
 void decorateJungleTree(
@@ -426,12 +456,12 @@ void placeTreeForColumn(
     const bool isTemperateTree = settings.canopyStyle == TreeBiomeSettings::CanopyStyle::Temperate || isBroadTemperateTree;
     const bool isSnowTree = settings.canopyStyle == TreeBiomeSettings::CanopyStyle::Snowy;
 
-    if (isJungleTree && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x193U) < 0.01)
+    if (isJungleTree && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x193U) < 0.18)
     {
         const std::uint32_t giantHash = noise::hashCoordinates(treeX, treeZ, kTreeShapeSeed + 0x319U);
-        trunkHeight += 3 + static_cast<int>(giantHash % 4U);
-        crownRadius += 1;
-        if ((giantHash & 1U) == 0U)
+        trunkHeight += 5 + static_cast<int>(giantHash % 10U);
+        crownRadius += 2;
+        if (giantHash % 3U != 0U)
         {
             trunkWidth = 2;
         }
@@ -445,9 +475,16 @@ void placeTreeForColumn(
     if (settings.largeTreeChance > 0.0f
         && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x8C3U) < settings.largeTreeChance)
     {
-        trunkWidth = std::max(trunkWidth, 2);
         trunkHeight += settings.largeTreeHeightBonus;
         crownRadius += settings.largeTreeCrownRadiusBonus;
+        if (isJungleTree)
+        {
+            trunkWidth = 2;
+        }
+        else
+        {
+            trunkWidth = std::max(trunkWidth, 2);
+        }
     }
     if (settings.trunkBlock == BlockType::DarkOakLog
         && noise::random01(treeX, treeZ, kTreeShapeSeed + 0x72DU) < 0.18f)
@@ -491,6 +528,21 @@ void placeTreeForColumn(
     else
     {
         placeJungleCanopy(chunk, coord, crownCenterX, crownCenterY, crownCenterZ, crownRadius, settings.crownBlock);
+    }
+
+    // Sub-canopies at intermediate heights for tall jungle trees — gives the
+    // layered "emergent tree" silhouette seen in Minecraft jungle biomes.
+    if (isJungleTree && trunkHeight >= 14)
+    {
+        const int midCanopyY = surfaceY + trunkHeight * 2 / 3;
+        const int midRadius = std::max(2, crownRadius - 1);
+        placeJungleCanopy(chunk, coord, crownCenterX, midCanopyY, crownCenterZ, midRadius, settings.crownBlock);
+    }
+    if (isJungleTree && trunkHeight >= 22)
+    {
+        const int lowCanopyY = surfaceY + trunkHeight / 3;
+        const int lowRadius = std::max(2, crownRadius - 2);
+        placeJungleCanopy(chunk, coord, crownCenterX, lowCanopyY, crownCenterZ, lowRadius, settings.crownBlock);
     }
 
     if (isJungleTree)
@@ -560,7 +612,7 @@ void populateTreesForChunk(Chunk& chunk, const ChunkCoord& coord, const TerrainG
                 const int offsetX = static_cast<int>(denseHash % 5U) - 2;
                 const int offsetZ = static_cast<int>((denseHash / 5U) % 5U) - 2;
                 if ((offsetX == 0 && offsetZ == 0)
-                    || noise::random01(cellX, cellZ, kJungleDenseTreeRollSeed) >= 0.12)
+                    || noise::random01(cellX, cellZ, kJungleDenseTreeRollSeed) >= 0.30)
                 {
                     continue;
                 }

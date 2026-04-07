@@ -166,6 +166,17 @@ void Application::processInput(const float deltaTimeSeconds)
                 inputState_.clearMouseMotion();
             }
         }
+        else if (gameScreen_ == GameScreen::MainMenu && mainMenuDisplayNameEditing_)
+        {
+            mainMenuDisplayNameEditing_ = false;
+            window_.setTextInputActive(false);
+        }
+        else if (gameScreen_ == GameScreen::MainMenu && mainMenuOptionsOpen_)
+        {
+            mainMenuOptionsOpen_ = false;
+            mainMenuNotice_.clear();
+            savePlayerPrefs();
+        }
         else if (gameScreen_ == GameScreen::MainMenu && mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None
                  && !mainMenuSoundSettingsOpen_)
         {

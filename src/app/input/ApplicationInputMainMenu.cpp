@@ -21,6 +21,7 @@ void Application::processMainMenuInput()
         window_.setRelativeMouseMode(false);
     }
     processJoinMenuTextInput();
+    processDisplayNameTextInput();
     if (singleplayerLoadState_.active)
     {
         return;
@@ -160,6 +161,43 @@ void Application::processMainMenuInput()
             }
             saveAudioPrefs();
         }
+        else if (mainMenuOptionsOpen_)
+        {
+            const int hit = render::Renderer::hitTestMainMenuOptions(
+                menuUiMetrics.mouseX,
+                menuUiMetrics.mouseY,
+                menuUiMetrics.windowWidth,
+                menuUiMetrics.windowHeight,
+                menuUiMetrics.textWidth,
+                menuUiMetrics.textHeight);
+            if (hit >= 0)
+            {
+                soundEffects_.playUiClick();
+            }
+            switch (hit)
+            {
+            case 0:
+                mainMenuDisplayNameEditing_ = false;
+                mainMenuOptionsOpen_ = false;
+                window_.setTextInputActive(false);
+                mainMenuNotice_.clear();
+                savePlayerPrefs();
+                break;
+            case 1:
+                mainMenuDisplayNameEditing_ = false;
+                window_.setTextInputActive(false);
+                mainMenuOptionsOpen_ = false;
+                mainMenuSoundSettingsOpen_ = true;
+                mainMenuNotice_.clear();
+                break;
+            case 2:
+                mainMenuDisplayNameEditing_ = true;
+                window_.setTextInputActive(true);
+                break;
+            default:
+                break;
+            }
+        }
         else if (mainMenuMultiplayerPanel_ != MainMenuMultiplayerPanel::None)
         {
             const int joinSlotsForMpLayout = static_cast<int>(std::min(joinPresets_.size(), std::size_t(3)));
@@ -296,7 +334,9 @@ void Application::processMainMenuInput()
                 menuUiMetrics.windowWidth,
                 menuUiMetrics.windowHeight,
                 menuUiMetrics.textWidth,
-                menuUiMetrics.textHeight);
+                menuUiMetrics.textHeight,
+                renderer_.menuLogoWidthPx(),
+                renderer_.menuLogoHeightPx());
             if (hit >= 0)
             {
                 soundEffects_.playUiClick();
@@ -353,7 +393,7 @@ void Application::processMainMenuInput()
                 mainMenuNotice_ = creativeModeEnabled_ ? "Creative mode enabled." : "Creative mode disabled.";
                 break;
             case 3:
-                mainMenuSoundSettingsOpen_ = true;
+                mainMenuOptionsOpen_ = true;
                 mainMenuNotice_.clear();
                 break;
             case 4:

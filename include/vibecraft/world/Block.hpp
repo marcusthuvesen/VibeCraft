@@ -175,7 +175,9 @@ enum class BlockType : std::uint8_t
     IronDoorUpperNorthOpen,
     IronDoorUpperEastOpen,
     IronDoorUpperSouthOpen,
-    IronDoorUpperWestOpen
+    IronDoorUpperWestOpen,
+    LargeFernBottom,
+    LargeFernTop
 };
 
 enum class DoorFamily : std::uint8_t
@@ -598,6 +600,11 @@ struct BlockCollisionBox
     return blockType == BlockType::Water || blockType == BlockType::Lava;
 }
 
+[[nodiscard]] constexpr bool isGravityBlock(const BlockType blockType)
+{
+    return blockType == BlockType::Sand || blockType == BlockType::Gravel;
+}
+
 [[nodiscard]] constexpr bool isSolid(const BlockType blockType)
 {
     return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::OakLeaves
@@ -621,6 +628,7 @@ struct BlockCollisionBox
         && blockType != BlockType::CloverTuft
         && blockType != BlockType::SproutTuft
         && blockType != BlockType::Fern
+        && blockType != BlockType::LargeFernBottom && blockType != BlockType::LargeFernTop
         && blockType != BlockType::CocoaPod && blockType != BlockType::Bamboo
         && blockType != BlockType::Ladder
         && !isDoorBlock(blockType);
@@ -658,6 +666,7 @@ struct BlockCollisionBox
         && blockType != BlockType::CloverTuft
         && blockType != BlockType::SproutTuft
         && blockType != BlockType::Fern
+        && blockType != BlockType::LargeFernBottom && blockType != BlockType::LargeFernTop
         && blockType != BlockType::Dandelion && blockType != BlockType::Poppy
         && blockType != BlockType::BlueOrchid && blockType != BlockType::Allium
         && blockType != BlockType::OxeyeDaisy && blockType != BlockType::BrownMushroom
@@ -725,6 +734,7 @@ struct BlockCollisionBox
         || blockType == BlockType::FlowerTuft || blockType == BlockType::DryTuft
         || blockType == BlockType::LushTuft || blockType == BlockType::FrostTuft
         || blockType == BlockType::SparseTuft || blockType == BlockType::CloverTuft
-        || blockType == BlockType::SproutTuft || blockType == BlockType::Fern;
+        || blockType == BlockType::SproutTuft || blockType == BlockType::Fern
+        || blockType == BlockType::LargeFernBottom || blockType == BlockType::LargeFernTop;
 }
 }  // namespace vibecraft::world

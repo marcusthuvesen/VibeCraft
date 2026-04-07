@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "vibecraft/audio/MusicCatalog.hpp"
@@ -59,5 +60,7 @@ class MusicDirector
     bool loggedMissingMusicAssets_ = false;
     /// Set when `pickAndDecodeNextTrack` exhausts all files for the current context (avoids re-decoding every refill).
     bool decodeExhaustedForContext_ = false;
+    std::unordered_map<std::string, DecodedTrack> decodedTrackCache_;
+    float decodeAttemptCooldownSeconds_ = 0.0f;
 };
 }  // namespace vibecraft::audio

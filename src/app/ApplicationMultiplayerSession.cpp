@@ -283,7 +283,8 @@ void Application::clearClientWorldAwaitingHostChunks()
         renderer_.updateSceneMeshes({}, removedMeshIds);
     }
     residentChunkMeshIds_.clear();
-    residentChunkMeshVerticalBandById_.clear();
+    residentChunkCoords_.clear();
+    residentChunkVerticalBandByCoord_.clear();
     resetChunkGenerationPipeline();
     resetChunkMeshingPipeline();
 

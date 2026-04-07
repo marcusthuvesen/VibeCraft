@@ -117,6 +117,8 @@ enum class CraftingUiMode : std::uint8_t
 
 struct FrameDebugData
 {
+    static constexpr std::size_t kMaxTorchLightEmitters = 8;
+
     struct HotbarSlotHud
     {
         vibecraft::world::BlockType blockType = vibecraft::world::BlockType::Air;
@@ -172,7 +174,7 @@ struct FrameDebugData
     HotbarSlotHud craftingCursorSlot{};
     std::uint8_t craftingBagStartRow = 0;
     std::size_t hotbarSelectedIndex = 0;
-    /// 0..1 short equip swing impulse, set by gameplay on primary attack.
+    /// 0 = idle; 0..1 = first-person held-item swing phase (advances each frame after LMB/RMB press).
     float heldItemSwing = 0.0f;
     struct WorldPickupHud
     {
@@ -182,6 +184,7 @@ struct FrameDebugData
         float spinRadians = 0.0f;
     };
     std::vector<WorldPickupHud> worldPickups;
+    std::vector<glm::vec3> torchLightEmitters;
 
     struct WorldMobHud
     {
@@ -241,6 +244,10 @@ struct FrameDebugData
     int mainMenuSoundSettingsHoveredControl = -1;
     float mainMenuSoundMusicVolume = 0.85f;
     float mainMenuSoundSfxVolume = 1.0f;
+    bool mainMenuOptionsActive = false;
+    int mainMenuOptionsHoveredControl = -1;
+    std::string mainMenuPlayerDisplayNameField;
+    bool mainMenuDisplayNameEditing = false;
 
     enum class MainMenuMultiplayerPanel : std::uint8_t
     {
@@ -322,7 +329,9 @@ class Renderer
         std::uint32_t windowWidth,
         std::uint32_t windowHeight,
         std::uint16_t textWidth,
-        std::uint16_t textHeight);
+        std::uint16_t textHeight,
+        std::uint16_t menuLogoWidthPx = 0,
+        std::uint16_t menuLogoHeightPx = 0);
 
     /// Pause menu: 0 Resume, 1 Sound settings, 2 Game options, 3 Quit to title, 4 Quit game.
     [[nodiscard]] static int hitTestPauseMenu(
@@ -335,6 +344,15 @@ class Renderer
 
     /// Pause game options: 0 Back, 1 Mob spawning, 2 Creative mode, 3 Difficulty, 4 Spawn biome, 5 Travel now, 6 Weather.
     [[nodiscard]] static int hitTestPauseGameSettingsMenu(
+        float mouseX,
+        float mouseY,
+        std::uint32_t windowWidth,
+        std::uint32_t windowHeight,
+        std::uint16_t textWidth,
+        std::uint16_t textHeight);
+
+    /// Main menu options panel: 0 Back, 1 Sound settings, 2 Display name field.
+    [[nodiscard]] static int hitTestMainMenuOptions(
         float mouseX,
         float mouseY,
         std::uint32_t windowWidth,
@@ -484,6 +502,8 @@ class Renderer
     std::uint16_t chunkAnimUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkBiomeHazeUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkBiomeGradeUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkTorchLightsUniformHandle_ = UINT16_MAX;
+    std::uint16_t chunkTorchParamsUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkCameraPosUniformHandle_ = UINT16_MAX;
     std::uint16_t chunkFogUniformHandle_ = UINT16_MAX;
     std::uint16_t logoProgramHandle_ = UINT16_MAX;
@@ -541,6 +561,9 @@ class Renderer
     std::uint16_t burrowerTextureHandle_ = UINT16_MAX;
     std::uint16_t shardbackTextureHandle_ = UINT16_MAX;
     std::uint16_t skitterwingTextureHandle_ = UINT16_MAX;
+    std::uint16_t wolfTextureHandle_ = UINT16_MAX;
+    std::uint16_t bearTextureHandle_ = UINT16_MAX;
+    std::uint16_t scorpionTextureHandle_ = UINT16_MAX;
     TextureUvRect zombieTextureUv_{};
     TextureUvRect playerMobTextureUv_{};
     TextureUvRect skeletonTextureUv_{};
@@ -550,6 +573,9 @@ class Renderer
     TextureUvRect burrowerTextureUv_{};
     TextureUvRect shardbackTextureUv_{};
     TextureUvRect skitterwingTextureUv_{};
+    TextureUvRect wolfTextureUv_{};
+    TextureUvRect bearTextureUv_{};
+    TextureUvRect scorpionTextureUv_{};
     std::unordered_map<std::uint64_t, SceneGpuMesh> sceneMeshes_;
 };
 }  // namespace vibecraft::render

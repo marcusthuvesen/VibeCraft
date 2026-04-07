@@ -6,6 +6,8 @@
 #include <bx/math.h>
 #include <fmt/format.h>
 
+#include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <glm/common.hpp>
@@ -14,6 +16,7 @@
 #include <string>
 
 #include "debugdraw.h"
+#include "vibecraft/core/Logger.hpp"
 
 namespace vibecraft::render
 {
@@ -446,10 +449,26 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         constexpr float kChunkHorizontalRenderDistance = 160.0f;
         constexpr float kBelowCameraDistanceWeight = 2.3f;
         constexpr float kAboveCameraDistanceWeight = 1.0f;
+        // Hard vertical budget: sections entirely outside this window around the camera are skipped.
+        // These values cover full cave depth below and tall mountains above while culling invisible sections.
+        constexpr float kVerticalRenderBelowBlocks = 96.0f;
+        constexpr float kVerticalRenderAboveBlocks = 160.0f;
         const float chunkMaxDrawDistance = std::min(cameraFrameData.farClip * 1.08f, kChunkHorizontalRenderDistance);
         const float chunkMaxDrawDistanceSq = chunkMaxDrawDistance * chunkMaxDrawDistance;
         const float fogStart = chunkMaxDrawDistance * 0.55f;
         const float fogEnd = chunkMaxDrawDistance * 0.92f;
+        std::array<glm::vec4, FrameDebugData::kMaxTorchLightEmitters> torchLights{};
+        for (glm::vec4& torchLight : torchLights)
+        {
+            torchLight = glm::vec4(0.0f, -10000.0f, 0.0f, 0.0f);
+        }
+        const std::size_t torchEmitterCount = std::min(
+            frameDebugData.torchLightEmitters.size(),
+            static_cast<std::size_t>(FrameDebugData::kMaxTorchLightEmitters));
+        for (std::size_t torchIndex = 0; torchIndex < torchEmitterCount; ++torchIndex)
+        {
+            torchLights[torchIndex] = glm::vec4(frameDebugData.torchLightEmitters[torchIndex], 1.0f);
+        }
         detail::setVec4Uniform(chunkCameraPosUniformHandle_, cameraFrameData.position, 1.0f);
         detail::setVec4Uniform(
             chunkFogUniformHandle_, glm::vec4(fogStart, fogEnd, chunkMaxDrawDistance, 0.0f));
@@ -463,6 +482,16 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
             };
 
             if (!detail::isAabbInsideFrustum(frustumPlanes, aabb))
+            {
+                continue;
+            }
+
+            if (detail::isAabbOutsideVerticalRange(
+                    sceneMesh.boundsMin,
+                    sceneMesh.boundsMax,
+                    cameraFrameData.position.y,
+                    kVerticalRenderBelowBlocks,
+                    kVerticalRenderAboveBlocks))
             {
                 continue;
             }
@@ -520,6 +549,16 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
                 chunkBiomeGradeUniformHandle_,
                 cameraFrameData.terrainBounceTint,
                 cameraFrameData.terrainSaturation);
+            if (chunkTorchLightsUniformHandle_ != UINT16_MAX)
+            {
+                bgfx::setUniform(
+                    detail::toUniformHandle(chunkTorchLightsUniformHandle_),
+                    torchLights.data(),
+                    static_cast<std::uint16_t>(torchLights.size()));
+            }
+            detail::setVec4Uniform(
+                chunkTorchParamsUniformHandle_,
+                glm::vec4(static_cast<float>(torchEmitterCount), 8.0f, 0.72f, 0.0f));
             bgfx::setState(detail::kChunkRenderState);
             bgfx::submit(detail::kMainView, detail::toProgramHandle(chunkProgramHandle_));
         }
@@ -675,6 +714,65 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
     else
     {
         bgfx::dbgTextPrintf(0, 7, 0x0f, "bgfx: stats unavailable");
+    }
+
+    {
+        using PerfClock = std::chrono::steady_clock;
+        const auto now = PerfClock::now();
+        struct RenderPerfAccumulator
+        {
+            PerfClock::time_point windowStart = PerfClock::now();
+            int frameCount = 0;
+            double sumCpuMs = 0.0;
+            double sumGpuMs = 0.0;
+            double sumDrawCalls = 0.0;
+            double sumTriangles = 0.0;
+            double sumVisibleChunks = 0.0;
+            double sumSceneMeshes = 0.0;
+        };
+        static RenderPerfAccumulator perf{};
+
+        const double cpuFrameMs = bgfxStats != nullptr && bgfxStats->cpuTimerFreq > 0
+            ? static_cast<double>(bgfxStats->cpuTimeFrame) * 1000.0
+                / static_cast<double>(bgfxStats->cpuTimerFreq)
+            : 0.0;
+        const double gpuFrameMs =
+            (bgfxStats != nullptr && bgfxStats->gpuTimerFreq > 0 && bgfxStats->gpuTimeEnd >= bgfxStats->gpuTimeBegin)
+            ? static_cast<double>(bgfxStats->gpuTimeEnd - bgfxStats->gpuTimeBegin) * 1000.0
+                / static_cast<double>(bgfxStats->gpuTimerFreq)
+            : 0.0;
+        const std::uint32_t drawCalls = bgfxStats != nullptr ? bgfxStats->numDraw : 0;
+        const std::uint32_t triangles =
+            bgfxStats != nullptr ? bgfxStats->numPrims[bgfx::Topology::TriList] : 0;
+
+        ++perf.frameCount;
+        perf.sumCpuMs += cpuFrameMs;
+        perf.sumGpuMs += gpuFrameMs;
+        perf.sumDrawCalls += static_cast<double>(drawCalls);
+        perf.sumTriangles += static_cast<double>(triangles);
+        perf.sumVisibleChunks += static_cast<double>(visibleChunkCount);
+        perf.sumSceneMeshes += static_cast<double>(sceneMeshes_.size());
+        if (std::chrono::duration<double>(now - perf.windowStart).count() >= 1.0 && perf.frameCount > 0)
+        {
+            const double frameCount = static_cast<double>(perf.frameCount);
+            core::logInfo(fmt::format(
+                "[perf-render] cpu_ms={:.2f} gpu_ms={:.2f} draw_calls={:.0f} tris={:.0f} "
+                "visible_chunk_sections={:.1f} scene_chunk_sections={:.1f}",
+                perf.sumCpuMs / frameCount,
+                perf.sumGpuMs / frameCount,
+                perf.sumDrawCalls / frameCount,
+                perf.sumTriangles / frameCount,
+                perf.sumVisibleChunks / frameCount,
+                perf.sumSceneMeshes / frameCount));
+            perf.windowStart = now;
+            perf.frameCount = 0;
+            perf.sumCpuMs = 0.0;
+            perf.sumGpuMs = 0.0;
+            perf.sumDrawCalls = 0.0;
+            perf.sumTriangles = 0.0;
+            perf.sumVisibleChunks = 0.0;
+            perf.sumSceneMeshes = 0.0;
+        }
     }
 
     if (frameDebugData.showWorldOriginGuides)

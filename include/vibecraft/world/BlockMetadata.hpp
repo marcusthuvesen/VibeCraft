@@ -130,8 +130,8 @@ struct BlockMetadata
     case BlockType::Water:
         // Tile 6 = first frame of the still-water strip (see build_chunk_atlas.sh).
         return {
-            // Slightly more transparent than before to match Minecraft-like readability.
-            .debugColor = 0xa8ffcf7a,
+            // Opaque enough that a single face blocks most of the bottom view.
+            .debugColor = 0xd0ffcf7a,
             .textureTiles = {.top = 6, .bottom = 6, .side = 6},
             .hardness = 1000.0f,
             .breakable = false,
@@ -728,6 +728,20 @@ struct BlockMetadata
             .debugColor = 0xffffffff,
             .textureTiles = {.top = 105, .bottom = 105, .side = 105},
             .hardness = 1.5f,
+            .breakable = true,
+        };
+    case BlockType::LargeFernBottom:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 120, .bottom = 120, .side = 120},
+            .hardness = 0.0f,
+            .breakable = true,
+        };
+    case BlockType::LargeFernTop:
+        return {
+            .debugColor = 0xffffffff,
+            .textureTiles = {.top = 121, .bottom = 121, .side = 121},
+            .hardness = 0.0f,
             .breakable = true,
         };
     case BlockType::Air:

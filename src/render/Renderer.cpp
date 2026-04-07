@@ -213,6 +213,12 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     const bgfx::UniformHandle chunkAnim = bgfx::createUniform("u_chunkAnim", bgfx::UniformType::Vec4);
     const bgfx::UniformHandle chunkBiomeHaze = bgfx::createUniform("u_biomeHaze", bgfx::UniformType::Vec4);
     const bgfx::UniformHandle chunkBiomeGrade = bgfx::createUniform("u_biomeGrade", bgfx::UniformType::Vec4);
+    const bgfx::UniformHandle chunkTorchLights = bgfx::createUniform(
+        "u_torchLights",
+        bgfx::UniformType::Vec4,
+        static_cast<std::uint16_t>(FrameDebugData::kMaxTorchLightEmitters));
+    const bgfx::UniformHandle chunkTorchParams =
+        bgfx::createUniform("u_torchLightParams", bgfx::UniformType::Vec4);
     const bgfx::UniformHandle chunkCameraPos = bgfx::createUniform("u_cameraPos", bgfx::UniformType::Vec4);
     const bgfx::UniformHandle chunkFog = bgfx::createUniform("u_chunkFog", bgfx::UniformType::Vec4);
 
@@ -224,6 +230,8 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         || !bgfx::isValid(chunkAnim)
         || !bgfx::isValid(chunkBiomeHaze)
         || !bgfx::isValid(chunkBiomeGrade)
+        || !bgfx::isValid(chunkTorchLights)
+        || !bgfx::isValid(chunkTorchParams)
         || !bgfx::isValid(chunkCameraPos)
         || !bgfx::isValid(chunkFog))
     {
@@ -259,6 +267,14 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         {
             bgfx::destroy(chunkBiomeGrade);
         }
+        if (bgfx::isValid(chunkTorchLights))
+        {
+            bgfx::destroy(chunkTorchLights);
+        }
+        if (bgfx::isValid(chunkTorchParams))
+        {
+            bgfx::destroy(chunkTorchParams);
+        }
         if (bgfx::isValid(chunkCameraPos))
         {
             bgfx::destroy(chunkCameraPos);
@@ -287,6 +303,8 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     chunkAnimUniformHandle_ = chunkAnim.idx;
     chunkBiomeHazeUniformHandle_ = chunkBiomeHaze.idx;
     chunkBiomeGradeUniformHandle_ = chunkBiomeGrade.idx;
+    chunkTorchLightsUniformHandle_ = chunkTorchLights.idx;
+    chunkTorchParamsUniformHandle_ = chunkTorchParams.idx;
     chunkCameraPosUniformHandle_ = chunkCameraPos.idx;
     chunkFogUniformHandle_ = chunkFog.idx;
 
@@ -674,6 +692,21 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
         vibecraft::game::MobKind::Chicken,
         skitterwingTextureHandle_,
         skitterwingTextureUv_);
+    loadMobTextureWithFallback(
+        "textures/entity/wolf.png",
+        vibecraft::game::MobKind::Wolf,
+        wolfTextureHandle_,
+        wolfTextureUv_);
+    loadMobTextureWithFallback(
+        "textures/entity/bear.png",
+        vibecraft::game::MobKind::Bear,
+        bearTextureHandle_,
+        bearTextureUv_);
+    loadMobTextureWithFallback(
+        "textures/entity/scorpion.png",
+        vibecraft::game::MobKind::SandScorpion,
+        scorpionTextureHandle_,
+        scorpionTextureUv_);
 
     const bgfx::UniformHandle inventoryUiSampler = bgfx::createUniform("s_uiAtlas", bgfx::UniformType::Sampler);
     if (bgfx::isValid(inventoryUiSampler))
@@ -1062,6 +1095,21 @@ void Renderer::shutdown()
         bgfx::destroy(detail::toTextureHandle(skitterwingTextureHandle_));
         skitterwingTextureHandle_ = UINT16_MAX;
     }
+    if (wolfTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(wolfTextureHandle_));
+        wolfTextureHandle_ = UINT16_MAX;
+    }
+    if (bearTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(bearTextureHandle_));
+        bearTextureHandle_ = UINT16_MAX;
+    }
+    if (scorpionTextureHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toTextureHandle(scorpionTextureHandle_));
+        scorpionTextureHandle_ = UINT16_MAX;
+    }
     if (mainMenuBackgroundTextureHandle_ != UINT16_MAX)
     {
         bgfx::destroy(detail::toTextureHandle(mainMenuBackgroundTextureHandle_));
@@ -1125,6 +1173,16 @@ void Renderer::shutdown()
     {
         bgfx::destroy(detail::toUniformHandle(chunkBiomeGradeUniformHandle_));
         chunkBiomeGradeUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkTorchLightsUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toUniformHandle(chunkTorchLightsUniformHandle_));
+        chunkTorchLightsUniformHandle_ = UINT16_MAX;
+    }
+    if (chunkTorchParamsUniformHandle_ != UINT16_MAX)
+    {
+        bgfx::destroy(detail::toUniformHandle(chunkTorchParamsUniformHandle_));
+        chunkTorchParamsUniformHandle_ = UINT16_MAX;
     }
     if (chunkCameraPosUniformHandle_ != UINT16_MAX)
     {
@@ -1267,6 +1325,12 @@ std::uint16_t Renderer::mobTextureHandleForKind(const vibecraft::game::MobKind k
         return shardbackTextureHandle_;
     case MK::Chicken:
         return skitterwingTextureHandle_;
+    case MK::Wolf:
+        return wolfTextureHandle_;
+    case MK::Bear:
+        return bearTextureHandle_;
+    case MK::SandScorpion:
+        return scorpionTextureHandle_;
     }
     return UINT16_MAX;
 }
@@ -1294,6 +1358,12 @@ TextureUvRect Renderer::mobTextureUvForKind(const vibecraft::game::MobKind kind)
         return shardbackTextureUv_;
     case MK::Chicken:
         return skitterwingTextureUv_;
+    case MK::Wolf:
+        return wolfTextureUv_;
+    case MK::Bear:
+        return bearTextureUv_;
+    case MK::SandScorpion:
+        return scorpionTextureUv_;
     }
     return {};
 }

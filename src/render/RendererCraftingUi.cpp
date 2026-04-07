@@ -492,7 +492,7 @@ void Renderer::drawCraftingOverlay(const FrameDebugData& frameDebugData)
     for (int slotIndex = 0; slotIndex < 9; ++slotIndex)
     {
         const float slotX = layout.inventoryOriginX + static_cast<float>(slotIndex) * (layout.slotSize + layout.slotGap);
-        const float slotY = layout.inventoryOriginY + static_cast<float>(kVisibleBagRows) * (layout.slotSize + layout.slotGap);
+        const float slotY = layout.hotbarOriginY;
         const bool selected = static_cast<std::size_t>(slotIndex) == frameDebugData.hotbarSelectedIndex;
         drawSlotFrame(slotX, slotY, selected);
         drawSlotContents(frameDebugData.hotbarSlots[static_cast<std::size_t>(slotIndex)], slotX, slotY);

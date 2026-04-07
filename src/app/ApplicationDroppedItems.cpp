@@ -157,6 +157,29 @@ void Application::spawnMobKillDrops(const game::MobKind mobKind, const glm::vec3
     case MK::Chicken:
         spawnDroppedItemAtPosition(EquippedItem::Feather, base);
         break;
+    case MK::Wolf:
+        spawnDroppedItemAtPosition(EquippedItem::Leather, base);
+        break;
+    case MK::Bear:
+    {
+        // Bears drop 1-2 leather
+        const unsigned int drops = 1 + hashRoll(59) % 2;
+        for (unsigned int i = 0; i < drops; ++i)
+        {
+            spawnDroppedItemAtPosition(EquippedItem::Leather, scatter(static_cast<int>(i)));
+        }
+        break;
+    }
+    case MK::SandScorpion:
+    {
+        // Scorpions drop 0-1 string (chitin strands)
+        const unsigned int stringDrops = hashRoll(71) % 2;
+        for (unsigned int i = 0; i < stringDrops; ++i)
+        {
+            spawnDroppedItemAtPosition(EquippedItem::String, scatter(static_cast<int>(i)));
+        }
+        break;
+    }
     case MK::Player:
     default:
         break;

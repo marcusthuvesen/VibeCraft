@@ -482,6 +482,24 @@ struct ColumnContext
         topsoilDepth += surfaceVariant.topsoilDepthDelta;
     }
     topsoilDepth = std::clamp(topsoilDepth, 1, 6);
+
+    // Underwater columns (ocean floor): override surface/subsurface to sand or gravel,
+    // matching Minecraft behaviour. Sandy-strata biomes already place sand themselves.
+    if (surfaceHeight < kSeaLevel && !usesSandStrata)
+    {
+        const biomes::BiomeProfile& underwaterProfile = biomes::biomeProfile(biome);
+        if (underwaterProfile.snowy)
+        {
+            surfaceBlockType = BlockType::Gravel;
+            subsurfaceBlockType = BlockType::Gravel;
+        }
+        else
+        {
+            surfaceBlockType = BlockType::Sand;
+            subsurfaceBlockType = BlockType::Sand;
+        }
+    }
+
     const int stratumTopExclusive = surfaceHeight - topsoilDepth;
     return ColumnContext{
         .surfaceHeight = surfaceHeight,

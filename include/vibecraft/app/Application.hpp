@@ -182,7 +182,6 @@ class Application
     struct AsyncChunkMeshJob
     {
         world::ChunkCoord coord{};
-        std::uint64_t meshId = 0;
         std::uint64_t dirtyRevision = 0;
         std::uint64_t generation = 0;
         int verticalFocusBand = 0;
@@ -194,14 +193,14 @@ class Application
     struct AsyncChunkMeshResult
     {
         world::ChunkCoord coord{};
-        std::uint64_t meshId = 0;
         std::uint64_t dirtyRevision = 0;
         std::uint64_t generation = 0;
         int verticalFocusBand = 0;
         bool wasDirtyWhenQueued = false;
         world::ChunkMeshStats stats{};
         bool hasRenderableMesh = false;
-        render::SceneMeshData sceneMesh;
+        std::vector<render::SceneMeshData> sceneMeshes;
+        std::vector<std::uint64_t> removedMeshIds;
     };
 
     struct AsyncChunkGenerationJob
@@ -286,6 +285,10 @@ class Application
     void loadAudioPrefs();
     void saveAudioPrefs() const;
     [[nodiscard]] std::filesystem::path audioPrefsPath() const;
+    void loadPlayerPrefs();
+    void savePlayerPrefs() const;
+    [[nodiscard]] std::filesystem::path playerPrefsPath() const;
+    void processDisplayNameTextInput();
     void refreshDetectedLanAddress();
     void processJoinMenuTextInput();
     void processPlayingChatInput(const ChatInputIntent& intent);
@@ -392,7 +395,8 @@ class Application
     vibecraft::meshing::ChunkMesher chunkMesher_;
     std::filesystem::path savePath_ = "assets/saves/dev_world.bin";
     std::unordered_set<std::uint64_t> residentChunkMeshIds_;
-    std::unordered_map<std::uint64_t, int> residentChunkMeshVerticalBandById_;
+    std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> residentChunkCoords_;
+    std::unordered_map<world::ChunkCoord, int, world::ChunkCoordHash> residentChunkVerticalBandByCoord_;
     bool mouseCaptured_ = true;
     glm::vec3 playerFeetPosition_{0.0f};
     glm::vec3 spawnFeetPosition_{0.0f};
@@ -419,6 +423,11 @@ class Application
     std::size_t selectedHotbarIndex_ = 0;
     float smoothedFrameTimeMs_ = 0.0f;
     bool frameTimeInitialized_ = false;
+    float torchEmitterRefreshCooldownSeconds_ = 0.0f;
+    bool cachedTorchEmitterQueryInitialized_ = false;
+    glm::vec3 cachedTorchEmitterQueryPosition_{0.0f};
+    world::ChunkCoord cachedTorchEmitterQueryChunk_{};
+    std::vector<glm::vec3> cachedTorchLightEmitters_;
     GameScreen gameScreen_ = GameScreen::MainMenu;
     MultiplayerRuntimeMode multiplayerMode_ = MultiplayerRuntimeMode::SinglePlayer;
     std::unique_ptr<vibecraft::multiplayer::HostSession> hostSession_;
@@ -451,6 +460,9 @@ class Application
     DifficultyGrade difficultyGrade_ = DifficultyGrade::Normal;
     SpawnBiomeTarget spawnBiomeTarget_ = SpawnBiomeTarget::Any;
     bool mainMenuSoundSettingsOpen_ = false;
+    bool mainMenuOptionsOpen_ = false;
+    bool mainMenuDisplayNameEditing_ = false;
+    std::string playerDisplayName_ = "Player";
     bool creativeModeEnabled_ = false;
     SpawnPreset spawnPreset_ = SpawnPreset::Origin;
     float musicVolume_ = 0.85f;

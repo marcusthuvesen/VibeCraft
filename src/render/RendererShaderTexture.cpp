@@ -877,6 +877,27 @@ void stripWhiteEdgeMatteAlpha(
         stripePeriod = 7;
         seed = 31;
         break;
+    case MK::Wolf:
+        top = {.r = 65, .g = 65, .b = 65, .a = 255};
+        bottom = {.r = 100, .g = 100, .b = 100, .a = 255};
+        accent = {.r = 175, .g = 175, .b = 155, .a = 255};
+        stripePeriod = 9;
+        seed = 41;
+        break;
+    case MK::Bear:
+        top = {.r = 72, .g = 44, .b = 18, .a = 255};
+        bottom = {.r = 168, .g = 118, .b = 62, .a = 255};
+        accent = {.r = 210, .g = 178, .b = 124, .a = 255};
+        stripePeriod = 11;
+        seed = 53;
+        break;
+    case MK::SandScorpion:
+        top = {.r = 185, .g = 155, .b = 95, .a = 255};
+        bottom = {.r = 210, .g = 180, .b = 120, .a = 255};
+        accent = {.r = 140, .g = 115, .b = 65, .a = 255};
+        stripePeriod = 6;
+        seed = 67;
+        break;
     }
 
     for (int y = 0; y < kHeight; ++y)

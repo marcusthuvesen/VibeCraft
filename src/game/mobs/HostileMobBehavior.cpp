@@ -60,6 +60,36 @@ HostileMobBehavior hostileMobBehaviorForKind(const MobKind kind)
             .preferredMaxDistance = 0.0f,
             .eyeHeightFraction = 0.68f,
         };
+    case MobKind::Wolf:
+        return HostileMobBehavior{
+            .moveSpeedMultiplier = 1.45f,
+            .meleeReach = 1.20f,
+            .meleeDamage = 2.5f,
+            .attackCooldownSeconds = 0.85f,
+            .preferredMinDistance = 0.0f,
+            .preferredMaxDistance = 0.0f,
+            .eyeHeightFraction = 0.72f,
+        };
+    case MobKind::Bear:
+        return HostileMobBehavior{
+            .moveSpeedMultiplier = 0.78f,
+            .meleeReach = 1.55f,
+            .meleeDamage = 5.0f,
+            .attackCooldownSeconds = 1.4f,
+            .preferredMinDistance = 0.0f,
+            .preferredMaxDistance = 0.0f,
+            .eyeHeightFraction = 0.78f,
+        };
+    case MobKind::SandScorpion:
+        return HostileMobBehavior{
+            .moveSpeedMultiplier = 1.20f,
+            .meleeReach = 1.30f,
+            .meleeDamage = 3.0f,
+            .attackCooldownSeconds = 0.90f,
+            .preferredMinDistance = 0.0f,
+            .preferredMaxDistance = 0.0f,
+            .eyeHeightFraction = 0.55f,
+        };
     case MobKind::Player:
     case MobKind::Cow:
     case MobKind::Pig:

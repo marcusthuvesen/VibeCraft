@@ -35,6 +35,12 @@ struct MobDimensions
         return {.halfWidth = 0.43f, .height = 1.24f};
     case MobKind::Chicken:
         return {.halfWidth = 0.20f, .height = 0.78f};
+    case MobKind::Wolf:
+        return {.halfWidth = 0.35f, .height = 0.95f};
+    case MobKind::Bear:
+        return {.halfWidth = 0.55f, .height = 1.55f};
+    case MobKind::SandScorpion:
+        return {.halfWidth = 0.60f, .height = 0.70f};
     }
     return {.halfWidth = 0.28f, .height = 1.75f};
 }

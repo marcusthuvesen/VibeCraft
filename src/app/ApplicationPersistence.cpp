@@ -513,6 +513,65 @@ void Application::saveAudioPrefs() const
     output << fmt::format("{:.4f}\n{:.4f}\n", musicVolume_, sfxVolume_);
 }
 
+std::filesystem::path Application::playerPrefsPath() const
+{
+    return prefsRootPath() / "player_prefs.txt";
+}
+
+void Application::loadPlayerPrefs()
+{
+    std::ifstream input(playerPrefsPath());
+    if (!input.is_open())
+    {
+        return;
+    }
+    std::string nameLine;
+    std::getline(input, nameLine);
+    trimInPlace(nameLine);
+    if (!nameLine.empty())
+    {
+        playerDisplayName_ = nameLine;
+    }
+}
+
+void Application::savePlayerPrefs() const
+{
+    std::error_code errorCode;
+    std::filesystem::create_directories(playerPrefsPath().parent_path(), errorCode);
+    std::ofstream output(playerPrefsPath(), std::ios::trunc);
+    if (!output.is_open())
+    {
+        return;
+    }
+    output << playerDisplayName_ << "\n";
+}
+
+void Application::processDisplayNameTextInput()
+{
+    if (!mainMenuDisplayNameEditing_)
+    {
+        return;
+    }
+
+    if (inputState_.backspacePressed && !playerDisplayName_.empty())
+    {
+        playerDisplayName_.pop_back();
+    }
+
+    if (!inputState_.textInputUtf8.empty())
+    {
+        constexpr std::size_t kMaxDisplayNameLength = 32;
+        for (const char character : inputState_.textInputUtf8)
+        {
+            if (playerDisplayName_.size() < kMaxDisplayNameLength
+                && static_cast<unsigned char>(character) >= 0x20)
+            {
+                playerDisplayName_ += character;
+            }
+        }
+    }
+}
+
 void Application::refreshDetectedLanAddress()
 {
     detectedLanAddress_ = platform::primaryLanIPv4String();

@@ -79,6 +79,131 @@ namespace
         .heldItemUsesSwordPose = isSwordItem(slot.equippedItem),
     };
 }
+
+[[nodiscard]] glm::vec3 torchEmitterWorldPosition(
+    const world::BlockType blockType,
+    const int worldX,
+    const int y,
+    const int worldZ)
+{
+    glm::vec3 emitter(
+        static_cast<float>(worldX) + 0.5f,
+        static_cast<float>(y) + 0.72f,
+        static_cast<float>(worldZ) + 0.5f);
+    switch (blockType)
+    {
+    case world::BlockType::TorchNorth:
+        emitter.z = static_cast<float>(worldZ) + 0.30f;
+        emitter.y = static_cast<float>(y) + 0.80f;
+        break;
+    case world::BlockType::TorchEast:
+        emitter.x = static_cast<float>(worldX) + 0.70f;
+        emitter.y = static_cast<float>(y) + 0.80f;
+        break;
+    case world::BlockType::TorchSouth:
+        emitter.z = static_cast<float>(worldZ) + 0.70f;
+        emitter.y = static_cast<float>(y) + 0.80f;
+        break;
+    case world::BlockType::TorchWest:
+        emitter.x = static_cast<float>(worldX) + 0.30f;
+        emitter.y = static_cast<float>(y) + 0.80f;
+        break;
+    case world::BlockType::Torch:
+    default:
+        break;
+    }
+    return emitter;
+}
+
+[[nodiscard]] std::vector<glm::vec3> collectVisibleTorchLightEmitters(
+    const world::World& voxelWorld,
+    const glm::vec3& cameraPosition)
+{
+    constexpr float kTorchLightRadius = 8.0f;
+    constexpr float kCollectionPadding = 4.0f;
+    constexpr float kCollectionRadius = kTorchLightRadius + kCollectionPadding;
+    constexpr float kCollectionRadiusSq = kCollectionRadius * kCollectionRadius;
+    constexpr int kTorchEmitterChunkRadius = 2;
+
+    struct CandidateEmitter
+    {
+        glm::vec3 position{0.0f};
+        float distanceSq = 0.0f;
+    };
+
+    const glm::ivec3 cameraBlock(
+        static_cast<int>(std::floor(cameraPosition.x)),
+        static_cast<int>(std::floor(cameraPosition.y)),
+        static_cast<int>(std::floor(cameraPosition.z)));
+    const world::ChunkCoord cameraChunkCoord =
+        world::worldToChunkCoord(cameraBlock.x, cameraBlock.z);
+
+    std::vector<CandidateEmitter> candidates;
+    candidates.reserve(render::FrameDebugData::kMaxTorchLightEmitters * 2);
+    for (const auto& [chunkCoord, chunk] : voxelWorld.chunks())
+    {
+        if (std::abs(chunkCoord.x - cameraChunkCoord.x) > kTorchEmitterChunkRadius
+            || std::abs(chunkCoord.z - cameraChunkCoord.z) > kTorchEmitterChunkRadius)
+        {
+            continue;
+        }
+
+        const auto& storage = chunk.blockStorage();
+        const int chunkBaseX = chunkCoord.x * world::Chunk::kSize;
+        const int chunkBaseZ = chunkCoord.z * world::Chunk::kSize;
+        for (int localZ = 0; localZ < world::Chunk::kSize; ++localZ)
+        {
+            for (int localX = 0; localX < world::Chunk::kSize; ++localX)
+            {
+                for (int y = world::kWorldMinY; y <= world::kWorldMaxY; ++y)
+                {
+                    const world::BlockType blockType = storage[static_cast<std::size_t>(
+                        (y - world::kWorldMinY) * world::Chunk::kSize * world::Chunk::kSize
+                        + localZ * world::Chunk::kSize
+                        + localX)];
+                    if (!world::isTorchBlock(blockType))
+                    {
+                        continue;
+                    }
+
+                    const glm::vec3 emitterPosition =
+                        torchEmitterWorldPosition(blockType, chunkBaseX + localX, y, chunkBaseZ + localZ);
+                    const glm::vec3 offset = emitterPosition - cameraPosition;
+                    const float distanceSq = glm::dot(offset, offset);
+                    if (distanceSq > kCollectionRadiusSq)
+                    {
+                        continue;
+                    }
+
+                    candidates.push_back(CandidateEmitter{
+                        .position = emitterPosition,
+                        .distanceSq = distanceSq,
+                    });
+                }
+            }
+        }
+    }
+
+    const std::size_t emitterCount = std::min(
+        candidates.size(),
+        static_cast<std::size_t>(render::FrameDebugData::kMaxTorchLightEmitters));
+    std::partial_sort(
+        candidates.begin(),
+        candidates.begin() + static_cast<std::ptrdiff_t>(emitterCount),
+        candidates.end(),
+        [](const CandidateEmitter& lhs, const CandidateEmitter& rhs)
+        {
+            return lhs.distanceSq < rhs.distanceSq;
+        });
+
+    std::vector<glm::vec3> emitters;
+    emitters.reserve(emitterCount);
+    for (std::size_t i = 0; i < emitterCount; ++i)
+    {
+        emitters.push_back(candidates[i].position);
+    }
+    return emitters;
+}
 }  // namespace
 
 void Application::buildFrameDebugData(
@@ -92,8 +217,27 @@ void Application::buildFrameDebugData(
     frameDebugData.chunkCount = static_cast<std::uint32_t>(world_.chunks().size());
     frameDebugData.dirtyChunkCount = static_cast<std::uint32_t>(world_.dirtyChunkCount());
     frameDebugData.totalFaces = world_.totalVisibleFaces();
-    frameDebugData.residentChunkCount = static_cast<std::uint32_t>(residentChunkMeshIds_.size());
+    frameDebugData.residentChunkCount = static_cast<std::uint32_t>(residentChunkCoords_.size());
     frameDebugData.cameraPosition = camera_.position();
+    torchEmitterRefreshCooldownSeconds_ = std::max(0.0f, torchEmitterRefreshCooldownSeconds_ - deltaTimeSeconds);
+    const world::ChunkCoord cameraChunkCoord =
+        world::worldToChunkCoord(
+            static_cast<int>(std::floor(frameDebugData.cameraPosition.x)),
+            static_cast<int>(std::floor(frameDebugData.cameraPosition.z)));
+    const glm::vec3 torchQueryDelta = frameDebugData.cameraPosition - cachedTorchEmitterQueryPosition_;
+    const float torchQueryDistanceSq = glm::dot(torchQueryDelta, torchQueryDelta);
+    if (!cachedTorchEmitterQueryInitialized_
+        || cameraChunkCoord != cachedTorchEmitterQueryChunk_
+        || torchEmitterRefreshCooldownSeconds_ <= 0.0f
+        || torchQueryDistanceSq >= 4.0f)
+    {
+        cachedTorchLightEmitters_ = collectVisibleTorchLightEmitters(world_, frameDebugData.cameraPosition);
+        cachedTorchEmitterQueryInitialized_ = true;
+        cachedTorchEmitterQueryPosition_ = frameDebugData.cameraPosition;
+        cachedTorchEmitterQueryChunk_ = cameraChunkCoord;
+        torchEmitterRefreshCooldownSeconds_ = 0.25f;
+    }
+    frameDebugData.torchLightEmitters = cachedTorchLightEmitters_;
     const MenuUiMetrics menuUiMetrics = computeMenuUiMetrics(window_, inputState_, bgfx::getStats());
     frameDebugData.uiMenuWindowWidth = menuUiMetrics.windowWidth;
     frameDebugData.uiMenuWindowHeight = menuUiMetrics.windowHeight;
@@ -440,7 +584,20 @@ void Application::buildFrameDebugData(
             frameDebugData.mainMenuSelectedWorldLabel = "No world selected";
         }
         frameDebugData.mainMenuSingleplayerPanelActive = mainMenuSingleplayerPickerOpen_;
-        if (mainMenuSoundSettingsOpen_)
+        if (mainMenuOptionsOpen_)
+        {
+            frameDebugData.mainMenuOptionsActive = true;
+            frameDebugData.mainMenuPlayerDisplayNameField = playerDisplayName_;
+            frameDebugData.mainMenuDisplayNameEditing = mainMenuDisplayNameEditing_;
+            frameDebugData.mainMenuOptionsHoveredControl = render::Renderer::hitTestMainMenuOptions(
+                menuUiMetrics.mouseX,
+                menuUiMetrics.mouseY,
+                menuUiMetrics.windowWidth,
+                menuUiMetrics.windowHeight,
+                menuUiMetrics.textWidth,
+                menuUiMetrics.textHeight);
+        }
+        else if (mainMenuSoundSettingsOpen_)
         {
             frameDebugData.mainMenuSoundSettingsActive = true;
             frameDebugData.mainMenuSoundMusicVolume = musicVolume_;
@@ -547,7 +704,9 @@ void Application::buildFrameDebugData(
                     menuUiMetrics.windowWidth,
                     menuUiMetrics.windowHeight,
                     menuUiMetrics.textWidth,
-                    menuUiMetrics.textHeight);
+                    menuUiMetrics.textHeight,
+                    renderer_.menuLogoWidthPx(),
+                    renderer_.menuLogoHeightPx());
             }
             else
             {

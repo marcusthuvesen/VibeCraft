@@ -32,6 +32,34 @@ struct ChunkMeshData
     std::uint32_t faceCount = 0;
 };
 
+inline constexpr int kChunkRenderSectionHeight = 16;
+static_assert(
+    vibecraft::world::Chunk::kHeight % kChunkRenderSectionHeight == 0,
+    "Chunk render section height must evenly divide chunk height.");
+inline constexpr int kChunkRenderSectionCount =
+    vibecraft::world::Chunk::kHeight / kChunkRenderSectionHeight;
+
+[[nodiscard]] constexpr int chunkRenderSectionIndexForY(const int y)
+{
+    return (y - vibecraft::world::kWorldMinY) / kChunkRenderSectionHeight;
+}
+
+[[nodiscard]] constexpr int chunkRenderSectionMinY(const int sectionIndex)
+{
+    return vibecraft::world::kWorldMinY + sectionIndex * kChunkRenderSectionHeight;
+}
+
+[[nodiscard]] constexpr int chunkRenderSectionMaxY(const int sectionIndex)
+{
+    return chunkRenderSectionMinY(sectionIndex) + kChunkRenderSectionHeight - 1;
+}
+
+struct ChunkSectionMeshData
+{
+    int sectionIndex = 0;
+    ChunkMeshData mesh;
+};
+
 struct ChunkMeshBuildSettings
 {
     bool prioritizeVerticalWindow = false;
@@ -43,6 +71,11 @@ struct ChunkMeshBuildSettings
 class ChunkMesher
 {
   public:
+    [[nodiscard]] std::vector<ChunkSectionMeshData> buildSectionMeshes(
+        const vibecraft::world::World& world,
+        const vibecraft::world::ChunkCoord& coord,
+        const ChunkMeshBuildSettings& settings = {}) const;
+
     [[nodiscard]] ChunkMeshData buildMesh(
         const vibecraft::world::World& world,
         const vibecraft::world::ChunkCoord& coord,

@@ -8,33 +8,42 @@ TreeBiomeSettings treeBiomeSettingsForTreeFamily(const TreeGenerationFamily fami
     {
     case TreeGenerationFamily::Jungle:
         return TreeBiomeSettings{
-            .spawnChance = 0.20f,
-            .minTrunkHeight = 6,
-            .maxTrunkHeight = 9,
-            .crownRadius = 3,
+            .spawnChance = 0.22f,
+            .minTrunkHeight = 10,
+            .maxTrunkHeight = 22,
+            .crownRadius = 4,
             .trunkBlock = BlockType::JungleLog,
             .crownBlock = BlockType::JungleLeaves,
             .canopyStyle = TreeBiomeSettings::CanopyStyle::Jungle,
+            .largeTreeChance = 0.30f,
+            .largeTreeHeightBonus = 6,
+            .largeTreeCrownRadiusBonus = 1,
         };
     case TreeGenerationFamily::SparseJungle:
         return TreeBiomeSettings{
-            .spawnChance = 0.13f,
-            .minTrunkHeight = 6,
-            .maxTrunkHeight = 8,
+            .spawnChance = 0.14f,
+            .minTrunkHeight = 8,
+            .maxTrunkHeight = 16,
             .crownRadius = 3,
             .trunkBlock = BlockType::JungleLog,
             .crownBlock = BlockType::JungleLeaves,
             .canopyStyle = TreeBiomeSettings::CanopyStyle::Jungle,
+            .largeTreeChance = 0.15f,
+            .largeTreeHeightBonus = 4,
+            .largeTreeCrownRadiusBonus = 1,
         };
     case TreeGenerationFamily::BambooJungle:
         return TreeBiomeSettings{
-            .spawnChance = 0.24f,
-            .minTrunkHeight = 7,
-            .maxTrunkHeight = 10,
-            .crownRadius = 3,
+            .spawnChance = 0.26f,
+            .minTrunkHeight = 11,
+            .maxTrunkHeight = 22,
+            .crownRadius = 4,
             .trunkBlock = BlockType::JungleLog,
             .crownBlock = BlockType::JungleLeaves,
             .canopyStyle = TreeBiomeSettings::CanopyStyle::Jungle,
+            .largeTreeChance = 0.26f,
+            .largeTreeHeightBonus = 5,
+            .largeTreeCrownRadiusBonus = 1,
         };
     case TreeGenerationFamily::SnowyTaiga:
         return TreeBiomeSettings{

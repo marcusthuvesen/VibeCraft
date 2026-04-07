@@ -180,6 +180,10 @@ bool World::applyEditCommand(const WorldEditCommand& command)
     }
     scheduleFluidNeighborhood(command.position.x, command.position.y, command.position.z);
 
+    // Schedule gravity for the placed/removed position and the block sitting above it.
+    scheduleGravityBlock(command.position.x, command.position.y, command.position.z);
+    scheduleGravityBlock(command.position.x, command.position.y + 1, command.position.z);
+
     for (const ChunkCoord& dirtyCoord : neighboringChunkCoords(coord))
     {
         markChunkDirty(dirtyCoord);
@@ -454,13 +458,17 @@ void World::replaceChunk(Chunk chunk)
 {
     const ChunkCoord coord = chunk.coord();
     const auto existingIt = chunks_.find(coord);
+    const bool hadExistingChunk = existingIt != chunks_.end();
     if (existingIt != chunks_.end() && existingIt->second.blockStorage() == chunk.blockStorage())
     {
         return;
     }
 
     chunks_[coord] = std::move(chunk);
-    clearFluidStateForChunk(coord);
+    if (hadExistingChunk)
+    {
+        clearFluidStateForChunk(coord);
+    }
     registerFluidStateForChunk(chunks_.at(coord));
 
     // A streamed chunk update can change faces on the chunk itself and along all four borders.
@@ -482,6 +490,7 @@ void World::replaceChunks(ChunkMap chunks)
     fluidTickCounter_ = 0;
     activeLeafDecayCells_.clear();
     queuedLeafDecayCells_.clear();
+    activeGravityBlocks_.clear();
 
     for (const auto& [coord, chunk] : chunks_)
     {

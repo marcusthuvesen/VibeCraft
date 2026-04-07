@@ -28,6 +28,8 @@ constexpr std::uint32_t kDeadBushChanceSeed = 0x6db7d041U;
 constexpr std::uint32_t kGrassTuftNoiseSeed = 0xe42e37b8U;
 constexpr std::uint32_t kGrassTuftScatterSeed = 0xf53f48c9U;
 constexpr std::uint32_t kJungleSpecialSeed = 0x1650a19dU;
+constexpr std::uint32_t kBambooHeightSeed = 0x2761b2aeU;
+constexpr std::uint32_t kLargeFernSeed = 0x3872c3bfU;
 constexpr std::uint32_t kSwampSpecialSeed = 0x1f63b4bfU;
 constexpr std::uint32_t kMushroomFieldSeed = 0x2c74c5d0U;
 constexpr std::uint32_t kTemperateForestPatchSeed = 0x2761b2aeU;
@@ -321,21 +323,49 @@ bool tryPopulateJungleSpecials(Chunk& chunk, const int localX, const int localZ,
         return false;
     }
 
-    float bambooChance = 0.020f;
+    float bambooChance = 0.030f;
     if (floraFamily == biomes::FloraGenerationFamily::SparseJungle)
     {
-        bambooChance = 0.008f;
+        bambooChance = 0.012f;
     }
     else if (floraFamily == biomes::FloraGenerationFamily::BambooJungle)
     {
-        bambooChance = 0.065f;
+        bambooChance = 0.110f;
     }
     bambooChance = biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, bambooChance);
     if (noise::random01(sample.worldX, sample.worldZ, kJungleSpecialSeed) < bambooChance)
     {
-        chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::Bamboo);
+        // Bamboo grows in dense multi-block stalks: 3-14 blocks for BambooJungle, 3-9 elsewhere.
+        const std::uint32_t heightHash = noise::hashCoordinates(sample.worldX, sample.worldZ, kBambooHeightSeed);
+        const int maxExtra = floraFamily == biomes::FloraGenerationFamily::BambooJungle ? 11 : 6;
+        const int bambooHeight = 3 + static_cast<int>(heightHash % static_cast<std::uint32_t>(maxExtra + 1));
+        const int bambooTop = std::min(sample.surfaceY + bambooHeight, kWorldMaxY);
+        for (int y = sample.surfaceY + 1; y <= bambooTop; ++y)
+        {
+            chunk.setBlock(localX, y, localZ, BlockType::Bamboo);
+        }
         return true;
     }
+
+    // Large fern: two-block tall decorative plant, common on the jungle floor.
+    float largeFernChance = 0.018f;
+    if (floraFamily == biomes::FloraGenerationFamily::SparseJungle)
+    {
+        largeFernChance = 0.008f;
+    }
+    else if (floraFamily == biomes::FloraGenerationFamily::BambooJungle)
+    {
+        largeFernChance = 0.024f;
+    }
+    largeFernChance = biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, largeFernChance);
+    if (noise::random01(sample.worldX, sample.worldZ, kLargeFernSeed) < largeFernChance
+        && sample.surfaceY + 2 <= kWorldMaxY)
+    {
+        chunk.setBlock(localX, sample.surfaceY + 1, localZ, BlockType::LargeFernBottom);
+        chunk.setBlock(localX, sample.surfaceY + 2, localZ, BlockType::LargeFernTop);
+        return true;
+    }
+
     if (noise::random01(sample.worldX, sample.worldZ, kJungleSpecialSeed + 19U)
         < biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, 0.006f))
     {

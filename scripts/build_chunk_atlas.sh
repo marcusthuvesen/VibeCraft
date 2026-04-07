@@ -189,6 +189,8 @@ RED_MUSHROOM_SRC="${MAT}/red_mushroom.png"
 DEAD_BUSH_SRC="$(pick_first_existing "${MAT}/dead_bush.png" "${MAT}/deadbush.png")"
 VINE_SRC="${MAT}/vine.png"
 LADDER_SRC="${MAT}/ladder.png"
+# Prefer vanilla 16×16 torch (stick + flame in one column); torch_hyassets is a taller sheet that smears when forced to 16×16.
+TORCH_SRC="$(pick_first_existing "${MAT}/torch.png" "${MAT}/torch_hyassets.png")"
 OAK_DOOR_LOWER_SRC="$(pick_first_existing "${MAT}/door_wood_lower.png" "${MAT}/oak_door_lower.png" "${MAT}/oak_door_bottom.png")"
 OAK_DOOR_UPPER_SRC="$(pick_first_existing "${MAT}/door_wood_upper.png" "${MAT}/oak_door_upper.png" "${MAT}/oak_door_top.png")"
 JUNGLE_DOOR_LOWER_SRC="$(pick_first_existing "${MAT}/door_jungle_lower.png" "${MAT}/jungle_door_lower.png" "${MAT}/jungle_door_bottom.png")"
@@ -204,8 +206,10 @@ MOSSY_COBBLE_SRC="${MAT}/mossy_cobblestone.png"
 OAK_LEAVES_SRC="${MAT}/oak_leaves.png"
 JUNGLE_LEAVES_SRC="${MAT}/jungle_leaves.png"
 SPRUCE_LEAVES_SRC="${MAT}/spruce_leaves.png"
-SHORT_GRASS_SRC="${MAT}/short_grass.png"
+SHORT_GRASS_SRC="$(pick_first_existing "${MAT}/short_grass_dense.png" "${MAT}/short_grass.png")"
 FERN_SRC="${MAT}/fern.png"
+LARGE_FERN_BOTTOM_SRC="${MAT}/large_fern_bottom.png"
+LARGE_FERN_TOP_SRC="${MAT}/large_fern_top.png"
 PODZOL_TOP_SRC="$(pick_first_existing "${MAT}/podzol_top.png" "${MAT}/dirt_podzol_top.png")"
 PODZOL_SIDE_SRC="$(pick_first_existing "${MAT}/podzol_side.png" "${MAT}/dirt_podzol_side.png")"
 COARSE_DIRT_SRC="${MAT}/coarse_dirt.png"
@@ -279,7 +283,8 @@ resize_tile "${MAT}/jungle_log_top.png" "${TMP}/t34.png"
 resize_tile "${MAT}/jungle_log.png" "${TMP}/t35.png"
 
 # Row 7: utility/decorative set.
-decorative_cutout_tile "${MAT}/torch.png" "${TMP}/t36.png"
+# Torch: Prismarine `torch_on` uses real alpha; resize only (decorative_cutout's white-fuzz would eat flame highlights).
+resize_tile "${TORCH_SRC}" "${TMP}/t36.png"
 resize_tile "${MAT}/tnt_top.png" "${TMP}/t37.png"
 resize_tile "${MAT}/tnt_bottom.png" "${TMP}/t38.png"
 resize_tile "${MAT}/tnt_side.png" "${TMP}/t39.png"
@@ -379,6 +384,16 @@ resize_tile "${COARSE_DIRT_SRC}" "${TMP}/t117.png"
 resize_tile "${MOSS_BLOCK_SRC}" "${TMP}/t118.png"
 resize_tile "${LADDER_SRC}" "${TMP}/t119.png"
 
+# Row 16: large fern (jungle floor two-block plant) plus reserved tail.
+cutout_tint_tile "${LARGE_FERN_BOTTOM_SRC}" "${TMP}/t120.png" "${JUNGLE_FOLIAGE_DARK}" "${JUNGLE_FOLIAGE_LIGHT}"
+cutout_tint_tile "${LARGE_FERN_TOP_SRC}" "${TMP}/t121.png" "${JUNGLE_FOLIAGE_DARK}" "${JUNGLE_FOLIAGE_LIGHT}"
+resize_tile "${MAT}/stone.png" "${TMP}/t122.png"
+resize_tile "${MAT}/stone.png" "${TMP}/t123.png"
+resize_tile "${MAT}/stone.png" "${TMP}/t124.png"
+resize_tile "${MAT}/stone.png" "${TMP}/t125.png"
+resize_tile "${MAT}/stone.png" "${TMP}/t126.png"
+resize_tile "${MAT}/stone.png" "${TMP}/t127.png"
+
 magick montage \
   "${TMP}/t00.png" "${TMP}/t01.png" "${TMP}/t02.png" "${TMP}/t03.png" "${TMP}/t04.png" "${TMP}/t05.png" \
   "${TMP}/t06.png" "${TMP}/t07.png" "${TMP}/t08.png" "${TMP}/t09.png" "${TMP}/t10.png" "${TMP}/t11.png" \
@@ -395,8 +410,9 @@ magick montage \
   "${TMP}/t96.png" "${TMP}/t97.png" "${TMP}/t98.png" "${TMP}/t99.png" "${TMP}/t100.png" "${TMP}/t101.png" "${TMP}/t102.png" "${TMP}/t103.png" \
   "${TMP}/t104.png" "${TMP}/t105.png" "${TMP}/t106.png" "${TMP}/t107.png" "${TMP}/t108.png" "${TMP}/t109.png" "${TMP}/t110.png" "${TMP}/t111.png" \
   "${TMP}/t112.png" "${TMP}/t113.png" "${TMP}/t114.png" "${TMP}/t115.png" "${TMP}/t116.png" "${TMP}/t117.png" "${TMP}/t118.png" "${TMP}/t119.png" \
-  -tile 8x15 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
+  "${TMP}/t120.png" "${TMP}/t121.png" "${TMP}/t122.png" "${TMP}/t123.png" "${TMP}/t124.png" "${TMP}/t125.png" "${TMP}/t126.png" "${TMP}/t127.png" \
+  -tile 8x16 -geometry 16x16+0+0 -background none "${OUT}/chunk_atlas.png"
 
 magick "${OUT}/chunk_atlas.png" -depth 8 "BGRA:${OUT}/chunk_atlas.bgra"
 rm -rf "${TMP}"
-echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*240*4)) bytes)"
+echo "Wrote ${OUT}/chunk_atlas.png and chunk_atlas.bgra (expected $((128*256*4)) bytes)"

@@ -138,6 +138,44 @@ constexpr int kMultiplayerExtraRowsBelowLogo = 6;
 }
 }  // namespace MultiplayerMenuLayout
 
+namespace SingleplayerMenuLayout
+{
+constexpr int kWide = 84;
+constexpr int kTitleAnchorRow = 5;
+constexpr int kSubtitleRow = 7;
+constexpr int kSelectedWorldRow = 9;
+constexpr int kBiomeRow = 11;
+constexpr int kFirstButtonRow = 14;
+constexpr int kButtonCount = 4;
+constexpr int kExtraRowsBelowLogo = 6;
+
+[[nodiscard]] inline int singleplayerPanelContentRows(const int buttonLineCount)
+{
+    const int clampedButtonLineCount = std::max(buttonLineCount, MainMenuLayout::kMinButtonLineCount);
+    return (kFirstButtonRow + (kButtonCount - 1) * clampedButtonLineCount + clampedButtonLineCount - 1)
+        - kTitleAnchorRow + 1;
+}
+
+[[nodiscard]] inline int singleplayerMenuRowShift(
+    const int textHeight,
+    const int buttonLineCount,
+    const int mainMenuContentTopBias)
+{
+    if (textHeight <= 0)
+    {
+        return 0;
+    }
+    const int contentRows = singleplayerPanelContentRows(buttonLineCount);
+    const int centeredBase = (textHeight - contentRows) / 2;
+    const int minFirstRow = mainMenuContentTopBias + kExtraRowsBelowLogo;
+    const int firstRow = std::clamp(
+        std::max(centeredBase + mainMenuContentTopBias + kExtraRowsBelowLogo, minFirstRow),
+        1,
+        std::max(1, textHeight - contentRows));
+    return firstRow - kTitleAnchorRow;
+}
+}  // namespace SingleplayerMenuLayout
+
 /// Pause menu dbg-text grid; must match `drawPauseMenuOverlay` and pause hit tests.
 namespace PauseMenuLayout
 {
@@ -321,6 +359,7 @@ struct CraftingOverlayLayoutPx
     float resultSlotY = 0.0f;
     float inventoryOriginX = 0.0f;
     float inventoryOriginY = 0.0f;
+    float hotbarOriginY = 0.0f;
 };
 
 [[nodiscard]] MainMenuComputedLayout computeMainMenuLayout(
@@ -358,6 +397,13 @@ struct CraftingOverlayLayoutPx
     const glm::vec3& aabbMax,
     float belowCameraWeight,
     float aboveCameraWeight);
+/// Returns true when the section AABB is entirely outside the vertical render budget around the camera.
+[[nodiscard]] bool isAabbOutsideVerticalRange(
+    const glm::vec3& aabbMin,
+    const glm::vec3& aabbMax,
+    float cameraY,
+    float belowBudget,
+    float aboveBudget);
 
 [[nodiscard]] std::filesystem::path runtimeAssetPath(const std::filesystem::path& relativePath);
 

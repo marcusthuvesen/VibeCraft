@@ -26,10 +26,19 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
         autoJumpCooldownSeconds_ = std::max(0.0f, autoJumpCooldownSeconds_ - deltaTimeSeconds);
     }
 
-    heldItemSwing_ = std::max(0.0f, heldItemSwing_ - deltaTimeSeconds * 5.2f);
-    if (inputState_.leftMousePressed)
+    // First-person held item swing: phase 0 = rest, 0..1 = one swing cycle (matches sin(phase * pi) in renderer).
+    constexpr float kHeldItemSwingSpeed = 4.6f;
+    if (inputState_.leftMousePressed || inputState_.rightMousePressed)
     {
-        heldItemSwing_ = 1.0f;
+        heldItemSwing_ = std::max(deltaTimeSeconds * kHeldItemSwingSpeed, 0.001f);
+    }
+    else if (heldItemSwing_ > 0.0f)
+    {
+        heldItemSwing_ += deltaTimeSeconds * kHeldItemSwingSpeed;
+        if (heldItemSwing_ >= 1.0f)
+        {
+            heldItemSwing_ = 0.0f;
+        }
     }
 
     if (mouseCaptured_)

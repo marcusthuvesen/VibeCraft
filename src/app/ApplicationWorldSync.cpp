@@ -1,7 +1,9 @@
 #include "vibecraft/app/Application.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <fmt/format.h>
 #include <mutex>
 #include <unordered_set>
 #include <vector>
@@ -10,6 +12,7 @@
 
 #include "vibecraft/app/ApplicationChunkStreaming.hpp"
 #include "vibecraft/app/ApplicationConfig.hpp"
+#include "vibecraft/core/Logger.hpp"
 
 namespace vibecraft::world
 {
@@ -24,24 +27,6 @@ namespace
 {
     const std::size_t hardwareThreads = std::max<std::size_t>(std::thread::hardware_concurrency(), 2);
     return std::clamp(hardwareThreads > 1 ? hardwareThreads - 1 : 1, std::size_t{2}, hardCap);
-}
-
-[[nodiscard]] glm::vec3 chunkBoundsMin(const world::ChunkCoord& coord)
-{
-    return {
-        static_cast<float>(coord.x * world::Chunk::kSize),
-        static_cast<float>(world::kWorldMinY),
-        static_cast<float>(coord.z * world::Chunk::kSize),
-    };
-}
-
-[[nodiscard]] glm::vec3 chunkBoundsMax(const world::ChunkCoord& coord)
-{
-    return {
-        static_cast<float>((coord.x + 1) * world::Chunk::kSize),
-        static_cast<float>(world::kWorldMaxY + 1),
-        static_cast<float>((coord.z + 1) * world::Chunk::kSize),
-    };
 }
 
 inline constexpr int kMeshingVerticalFocusBandHeight = 24;
@@ -96,6 +81,50 @@ inline constexpr int kMeshingVerticalFocusBandHeight = 24;
             return lhs.x < rhs.x;
         });
     return coords;
+}
+
+[[nodiscard]] bool isChunkCoordWithinRadius(
+    const world::ChunkCoord& coord,
+    const world::ChunkCoord& center,
+    const int radius)
+{
+    return std::abs(coord.x - center.x) <= radius && std::abs(coord.z - center.z) <= radius;
+}
+
+[[nodiscard]] double generationApplyTimeBudgetMs(const float smoothedFrameTimeMs)
+{
+    if (smoothedFrameTimeMs >= 32.0f)
+    {
+        return 0.8;
+    }
+    if (smoothedFrameTimeMs >= 24.0f)
+    {
+        return 1.0;
+    }
+    if (smoothedFrameTimeMs >= 18.0f)
+    {
+        return 1.5;
+    }
+    return 2.2;
+}
+
+[[nodiscard]] std::size_t generationApplyCountBudget(
+    const float smoothedFrameTimeMs,
+    const std::size_t defaultBudget)
+{
+    if (smoothedFrameTimeMs >= 32.0f)
+    {
+        return 1;
+    }
+    if (smoothedFrameTimeMs >= 24.0f)
+    {
+        return std::min<std::size_t>(defaultBudget, 2);
+    }
+    if (smoothedFrameTimeMs >= 18.0f)
+    {
+        return std::min<std::size_t>(defaultBudget, 3);
+    }
+    return std::min<std::size_t>(defaultBudget, 5);
 }
 }  // namespace
 
@@ -201,69 +230,20 @@ void Application::startChunkMeshingWorker()
 
                 world::World snapshotWorld;
                 snapshotWorld.replaceChunks(std::move(job.snapshotChunks));
-                const meshing::ChunkMeshData meshData =
-                    chunkMesher_.buildMesh(snapshotWorld, job.coord, job.buildSettings);
+                const std::vector<meshing::ChunkSectionMeshData> sectionMeshes =
+                    chunkMesher_.buildSectionMeshes(snapshotWorld, job.coord, job.buildSettings);
 
                 AsyncChunkMeshResult result{
                     .coord = job.coord,
-                    .meshId = job.meshId,
                     .dirtyRevision = job.dirtyRevision,
                     .generation = job.generation,
                     .verticalFocusBand = job.verticalFocusBand,
                     .wasDirtyWhenQueued = job.wasDirtyWhenQueued,
-                    .stats = {
-                        .faceCount = meshData.faceCount,
-                        .vertexCount = static_cast<std::uint32_t>(meshData.vertices.size()),
-                        .indexCount = static_cast<std::uint32_t>(meshData.indices.size()),
-                    },
-                    .hasRenderableMesh = !meshData.vertices.empty() && !meshData.indices.empty(),
+                    .stats = chunkMeshStatsFromSections(sectionMeshes),
+                    .hasRenderableMesh = !sectionMeshes.empty(),
                 };
-
-                if (result.hasRenderableMesh)
-                {
-                    render::SceneMeshData sceneMesh;
-                    sceneMesh.id = job.meshId;
-                    sceneMesh.indices = meshData.indices;
-                    sceneMesh.vertices.reserve(meshData.vertices.size());
-
-                    glm::vec3 tightMin{0.0f};
-                    glm::vec3 tightMax{0.0f};
-                    bool haveBounds = false;
-                    for (const meshing::DebugVertex& vertex : meshData.vertices)
-                    {
-                        const glm::vec3 p{vertex.x, vertex.y, vertex.z};
-                        sceneMesh.vertices.push_back(render::SceneMeshData::Vertex{
-                            .position = p,
-                            .normal = {vertex.nx, vertex.ny, vertex.nz},
-                            .uv = {vertex.u, vertex.v},
-                            .abgr = vertex.abgr,
-                        });
-                        if (!haveBounds)
-                        {
-                            tightMin = p;
-                            tightMax = p;
-                            haveBounds = true;
-                        }
-                        else
-                        {
-                            tightMin = glm::min(tightMin, p);
-                            tightMax = glm::max(tightMax, p);
-                        }
-                    }
-
-                    constexpr float kMeshBoundsPad = 0.02f;
-                    if (haveBounds)
-                    {
-                        sceneMesh.boundsMin = tightMin - kMeshBoundsPad;
-                        sceneMesh.boundsMax = tightMax + kMeshBoundsPad;
-                    }
-                    else
-                    {
-                        sceneMesh.boundsMin = chunkBoundsMin(job.coord);
-                        sceneMesh.boundsMax = chunkBoundsMax(job.coord);
-                    }
-                    result.sceneMesh = std::move(sceneMesh);
-                }
+                result.sceneMeshes = buildSceneMeshesForChunkSections(job.coord, sectionMeshes);
+                result.removedMeshIds = buildRemovedChunkSectionMeshIds(job.coord, sectionMeshes);
 
                 std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
                 chunkMeshingCompletedResults_.push_back(std::move(result));
@@ -300,30 +280,132 @@ void Application::resetChunkMeshingPipeline()
 
 void Application::syncWorldData()
 {
+    using PerfClock = std::chrono::steady_clock;
+    using PerfMs = std::chrono::duration<double, std::milli>;
+    struct SyncPerfAccumulator
+    {
+        PerfClock::time_point windowStart = PerfClock::now();
+        int frameCount = 0;
+        double sumTotalMs = 0.0;
+        double maxTotalMs = 0.0;
+        double sumGenerationApplyMs = 0.0;
+        double sumGenerationQueueMs = 0.0;
+        double sumDirtyGatherMs = 0.0;
+        double sumDesiredResidentBuildMs = 0.0;
+        double sumResidentPruneIdsMs = 0.0;
+        double sumQueueResidentMeshMs = 0.0;
+        double sumQueueOffResidentMeshMs = 0.0;
+        double sumDrainCompletedMeshMs = 0.0;
+        double sumApplyCompletedMeshMs = 0.0;
+        double sumPruneResidentCoordsMs = 0.0;
+        double sumApplyGpuMs = 0.0;
+        double sumApplyDirtyStatsMs = 0.0;
+        double sumQueuedNearbyGeneration = 0.0;
+        double sumQueuedPrefetchGeneration = 0.0;
+        double sumQueuedResidentMeshJobs = 0.0;
+        double sumQueuedOffResidentMeshJobs = 0.0;
+        double sumCompletedMeshResults = 0.0;
+        double sumUploadedResidentMeshes = 0.0;
+        double sumDesiredResidentCoords = 0.0;
+        double sumDirtyCoords = 0.0;
+        double sumPendingGenQueue = 0.0;
+        double sumInFlightGen = 0.0;
+        double sumCompletedGenQueue = 0.0;
+        double sumPendingMeshQueue = 0.0;
+        double sumInFlightMesh = 0.0;
+        double sumCompletedMeshQueue = 0.0;
+    };
+    static SyncPerfAccumulator perf{};
+
+    const auto syncStart = PerfClock::now();
+    double generationApplyMs = 0.0;
+    double generationQueueMs = 0.0;
+    double dirtyGatherMs = 0.0;
+    double desiredResidentBuildMs = 0.0;
+    double residentPruneIdsMs = 0.0;
+    double queueResidentMeshMs = 0.0;
+    double queueOffResidentMeshMs = 0.0;
+    double drainCompletedMeshMs = 0.0;
+    double applyCompletedMeshMs = 0.0;
+    double pruneResidentCoordsMs = 0.0;
+    double applyGpuMs = 0.0;
+    double applyDirtyStatsMs = 0.0;
+    std::size_t queuedNearbyChunks = 0;
+    std::size_t queuedPrefetchChunks = 0;
+    std::size_t queuedResidentMeshJobs = 0;
+    std::size_t queuedOffResident = 0;
+    std::size_t completedMeshResultCount = 0;
+    std::size_t uploadedMeshesThisFrame = 0;
+
     const world::ChunkCoord cameraChunk = world::worldToChunkCoord(
         static_cast<int>(std::floor(camera_.position().x)),
         static_cast<int>(std::floor(camera_.position().z)));
     const int cameraWorldY = static_cast<int>(std::floor(camera_.position().y));
     const int currentVerticalFocusBand = verticalFocusBandForY(cameraWorldY);
     const meshing::ChunkMeshBuildSettings meshBuildSettings = focusedMeshBuildSettings(cameraWorldY);
+    const int generationRetainRadius = kStreamingSettings.residentChunkRadius + 2;
     // Clients must only render chunks sent by the host; local procedural fill would desync terrain.
     if (multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
-        std::vector<AsyncChunkGenerationResult> completedGenerationResults;
+        const auto generationApplyStart = PerfClock::now();
         {
             std::lock_guard<std::mutex> lock(chunkGenerationMutex_);
-            while (!chunkGenerationCompletedResults_.empty()
-                   && completedGenerationResults.size() < kStreamingSettings.generationApplyBudgetPerFrame)
+            for (auto it = chunkGenerationPendingJobs_.begin(); it != chunkGenerationPendingJobs_.end();)
             {
-                completedGenerationResults.push_back(std::move(chunkGenerationCompletedResults_.front()));
-                chunkGenerationCompletedResults_.pop_front();
-                chunkGenerationInFlightCoords_.erase(completedGenerationResults.back().coord);
+                if (!isChunkCoordWithinRadius(it->coord, cameraChunk, generationRetainRadius))
+                {
+                    chunkGenerationInFlightCoords_.erase(it->coord);
+                    it = chunkGenerationPendingJobs_.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+            for (auto it = chunkGenerationCompletedResults_.begin(); it != chunkGenerationCompletedResults_.end();)
+            {
+                if (!isChunkCoordWithinRadius(it->coord, cameraChunk, generationRetainRadius))
+                {
+                    chunkGenerationInFlightCoords_.erase(it->coord);
+                    it = chunkGenerationCompletedResults_.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
             }
         }
-
-        for (AsyncChunkGenerationResult& result : completedGenerationResults)
+        std::size_t pendingGenerationJobs = 0;
+        std::size_t generationOutstanding = 0;
+        std::size_t completedGenerationBacklog = 0;
         {
+            std::lock_guard<std::mutex> lock(chunkGenerationMutex_);
+            pendingGenerationJobs = chunkGenerationPendingJobs_.size();
+            generationOutstanding = chunkGenerationInFlightCoords_.size();
+            completedGenerationBacklog = chunkGenerationCompletedResults_.size();
+        }
+        const std::size_t applyCountBudget =
+            generationApplyCountBudget(smoothedFrameTimeMs_, kStreamingSettings.generationApplyBudgetPerFrame);
+        const double applyTimeBudgetMs = generationApplyTimeBudgetMs(smoothedFrameTimeMs_);
+        std::size_t appliedGenerationResults = 0;
+        while (appliedGenerationResults < applyCountBudget)
+        {
+            AsyncChunkGenerationResult result;
+            {
+                std::lock_guard<std::mutex> lock(chunkGenerationMutex_);
+                if (chunkGenerationCompletedResults_.empty())
+                {
+                    break;
+                }
+                result = std::move(chunkGenerationCompletedResults_.front());
+                chunkGenerationCompletedResults_.pop_front();
+                chunkGenerationInFlightCoords_.erase(result.coord);
+            }
             if (result.generation != chunkGenerationGeneration_)
+            {
+                continue;
+            }
+            if (!isChunkCoordWithinRadius(result.coord, cameraChunk, generationRetainRadius))
             {
                 continue;
             }
@@ -332,9 +414,29 @@ void Application::syncWorldData()
                 continue;
             }
             world_.replaceChunk(std::move(result.chunk));
+            ++appliedGenerationResults;
+            if (PerfMs(PerfClock::now() - generationApplyStart).count() >= applyTimeBudgetMs)
+            {
+                break;
+            }
+        }
+        generationApplyMs = PerfMs(PerfClock::now() - generationApplyStart).count();
+
+        std::size_t maxQueuedGenerationJobs = kStreamingSettings.maxQueuedGenerationJobs;
+        if (smoothedFrameTimeMs_ >= 30.0f)
+        {
+            maxQueuedGenerationJobs = std::min<std::size_t>(maxQueuedGenerationJobs, 48);
+        }
+        else if (smoothedFrameTimeMs_ >= 20.0f)
+        {
+            maxQueuedGenerationJobs = std::min<std::size_t>(maxQueuedGenerationJobs, 72);
+        }
+        else if (smoothedFrameTimeMs_ >= 16.0f)
+        {
+            maxQueuedGenerationJobs = std::min<std::size_t>(maxQueuedGenerationJobs, 96);
         }
 
-        const auto tryQueueGenerationJob = [this](const world::ChunkCoord& coord)
+        const auto tryQueueGenerationJob = [this, maxQueuedGenerationJobs](const world::ChunkCoord& coord)
         {
             if (world_.chunks().contains(coord))
             {
@@ -342,7 +444,7 @@ void Application::syncWorldData()
             }
 
             std::lock_guard<std::mutex> lock(chunkGenerationMutex_);
-            if (chunkGenerationPendingJobs_.size() >= kStreamingSettings.maxQueuedGenerationJobs)
+            if (chunkGenerationPendingJobs_.size() >= maxQueuedGenerationJobs)
             {
                 return false;
             }
@@ -361,11 +463,40 @@ void Application::syncWorldData()
             return true;
         };
 
-        std::size_t queuedNearbyChunks = 0;
+        const std::size_t generationTotalBacklog =
+            pendingGenerationJobs + generationOutstanding + completedGenerationBacklog;
+        const bool generationBacklogHigh =
+            generationTotalBacklog >= kStreamingSettings.maxQueuedGenerationJobs / 2
+            || completedGenerationBacklog >= kStreamingSettings.generationApplyBudgetPerFrame * 3;
+        const bool generationBacklogCritical =
+            generationTotalBacklog >= (kStreamingSettings.maxQueuedGenerationJobs * 2) / 3
+            || completedGenerationBacklog >= kStreamingSettings.generationApplyBudgetPerFrame * 6;
+        const bool frameUnderPressure = smoothedFrameTimeMs_ >= 20.0f;
+        const bool frameSeverelyUnderPressure = smoothedFrameTimeMs_ >= 30.0f;
+        std::size_t nearbyGenerationBudget = kStreamingSettings.generationChunkBudgetPerFrame;
+        if (generationBacklogCritical || frameSeverelyUnderPressure)
+        {
+            nearbyGenerationBudget = std::min<std::size_t>(nearbyGenerationBudget, 2);
+        }
+        else if (generationBacklogHigh || frameUnderPressure)
+        {
+            nearbyGenerationBudget = std::max<std::size_t>(1, nearbyGenerationBudget / 3);
+        }
+        std::size_t prefetchGenerationBudget = kStreamingSettings.prefetchGenerationBudgetPerFrame;
+        if (generationTotalBacklog >= 32 || generationBacklogCritical || frameSeverelyUnderPressure)
+        {
+            prefetchGenerationBudget = 0;
+        }
+        else if (generationTotalBacklog >= 20 || generationBacklogHigh || frameUnderPressure)
+        {
+            prefetchGenerationBudget = std::min<std::size_t>(prefetchGenerationBudget, 1);
+        }
+
+        const auto generationQueueStart = PerfClock::now();
         for (const world::ChunkCoord& coord :
              prioritizedChunkCoordsAround(cameraChunk, kStreamingSettings.generationChunkRadius))
         {
-            if (queuedNearbyChunks >= kStreamingSettings.generationChunkBudgetPerFrame)
+            if (queuedNearbyChunks >= nearbyGenerationBudget)
             {
                 break;
             }
@@ -387,13 +518,12 @@ void Application::syncWorldData()
             const int prefetchWorldZ =
                 static_cast<int>(std::floor(camera_.position().z + prefetchDirection.z * prefetchDistanceWorldUnits));
             const world::ChunkCoord prefetchChunk = world::worldToChunkCoord(prefetchWorldX, prefetchWorldZ);
-            if (!(prefetchChunk == cameraChunk))
+            if (!(prefetchChunk == cameraChunk) && prefetchGenerationBudget > 0)
             {
-                std::size_t queuedPrefetchChunks = 0;
                 for (const world::ChunkCoord& coord :
                      prioritizedChunkCoordsAround(prefetchChunk, kStreamingSettings.generationChunkRadius))
                 {
-                    if (queuedPrefetchChunks >= kStreamingSettings.prefetchGenerationBudgetPerFrame)
+                    if (queuedPrefetchChunks >= prefetchGenerationBudget)
                     {
                         break;
                     }
@@ -404,17 +534,23 @@ void Application::syncWorldData()
                 }
             }
         }
+        generationQueueMs = PerfMs(PerfClock::now() - generationQueueStart).count();
     }
 
+    const auto dirtyGatherStart = PerfClock::now();
     const std::vector<world::ChunkCoord> dirtyCoords = world_.dirtyChunkCoords();
     std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> dirtyCoordSet(
         dirtyCoords.begin(),
         dirtyCoords.end());
+    dirtyGatherMs = PerfMs(PerfClock::now() - dirtyGatherStart).count();
     MeshSyncCpuData cpuData;
     cpuData.sceneMeshesToUpload.reserve(kStreamingSettings.meshUploadBudgetPerFrame);
     cpuData.removedMeshIds.reserve(residentChunkMeshIds_.size());
+    cpuData.residentCoordsToAdd.reserve(kStreamingSettings.meshUploadBudgetPerFrame);
+    cpuData.removedResidentCoords.reserve(residentChunkCoords_.size());
     cpuData.dirtyResidentMeshUpdates.reserve(kStreamingSettings.meshUploadBudgetPerFrame);
 
+    const auto desiredResidentBuildStart = PerfClock::now();
     for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
          chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius;
          ++chunkZ)
@@ -423,10 +559,17 @@ void Application::syncWorldData()
              chunkX <= cameraChunk.x + kStreamingSettings.residentChunkRadius;
              ++chunkX)
         {
-            cpuData.desiredResidentIds.insert(chunkMeshId(world::ChunkCoord{chunkX, chunkZ}));
+            const world::ChunkCoord coord{chunkX, chunkZ};
+            cpuData.desiredResidentCoords.insert(coord);
+            for (int sectionIndex = 0; sectionIndex < meshing::kChunkRenderSectionCount; ++sectionIndex)
+            {
+                cpuData.desiredResidentIds.insert(chunkSectionMeshId(coord, sectionIndex));
+            }
         }
     }
+    desiredResidentBuildMs = PerfMs(PerfClock::now() - desiredResidentBuildStart).count();
 
+    const auto residentPruneIdsStart = PerfClock::now();
     for (const std::uint64_t residentId : residentChunkMeshIds_)
     {
         if (!cpuData.desiredResidentIds.contains(residentId))
@@ -434,6 +577,7 @@ void Application::syncWorldData()
             cpuData.removedMeshIds.push_back(residentId);
         }
     }
+    residentPruneIdsMs = PerfMs(PerfClock::now() - residentPruneIdsStart).count();
 
     const auto tryQueueMeshJob =
         [this, &dirtyCoordSet, currentVerticalFocusBand, &meshBuildSettings](const world::ChunkCoord& coord, const bool wasDirty)
@@ -442,6 +586,18 @@ void Application::syncWorldData()
         {
             return false;
         }
+
+            {
+                std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
+                if (chunkMeshingPendingJobs_.size() >= kStreamingSettings.maxQueuedMeshJobs)
+                {
+                    return false;
+                }
+                if (chunkMeshingInFlightCoords_.contains(coord))
+                {
+                    return false;
+                }
+            }
 
         world::World::ChunkMap snapshotChunks;
         bool hasCenterChunk = false;
@@ -469,7 +625,6 @@ void Application::syncWorldData()
 
         AsyncChunkMeshJob job{
             .coord = coord,
-            .meshId = chunkMeshId(coord),
             .dirtyRevision = world_.dirtyRevisionForChunk(coord),
             .generation = chunkMeshingGeneration_,
             .verticalFocusBand = currentVerticalFocusBand,
@@ -493,6 +648,31 @@ void Application::syncWorldData()
         return true;
     };
 
+        std::size_t meshPendingJobs = 0;
+        std::size_t meshInFlightJobs = 0;
+        std::size_t meshCompletedResults = 0;
+        {
+            std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
+            meshPendingJobs = chunkMeshingPendingJobs_.size();
+            meshInFlightJobs = chunkMeshingInFlightCoords_.size();
+            meshCompletedResults = chunkMeshingCompletedResults_.size();
+        }
+        const std::size_t meshBacklog = meshPendingJobs + meshInFlightJobs + meshCompletedResults;
+        std::size_t residentMeshQueueBudget = static_cast<std::size_t>(-1);
+        if (meshBacklog >= (kStreamingSettings.maxQueuedMeshJobs * 3) / 4 || smoothedFrameTimeMs_ >= 28.0f)
+        {
+            residentMeshQueueBudget = 2;
+        }
+        else if (meshBacklog >= kStreamingSettings.maxQueuedMeshJobs / 2 || smoothedFrameTimeMs_ >= 20.0f)
+        {
+            residentMeshQueueBudget = 5;
+        }
+        else if (meshBacklog >= kStreamingSettings.maxQueuedMeshJobs / 3 || smoothedFrameTimeMs_ >= 16.0f)
+        {
+            residentMeshQueueBudget = 9;
+        }
+
+    const auto queueResidentMeshStart = PerfClock::now();
     for (int chunkZ = cameraChunk.z - kStreamingSettings.residentChunkRadius;
          chunkZ <= cameraChunk.z + kStreamingSettings.residentChunkRadius;
          ++chunkZ)
@@ -508,28 +688,45 @@ void Application::syncWorldData()
             }
 
             const bool isDirty = dirtyCoordSet.contains(coord);
-            const std::uint64_t meshId = chunkMeshId(coord);
-            const bool hasResidentMesh = residentChunkMeshIds_.contains(meshId);
-            const auto existingBandIt = residentChunkMeshVerticalBandById_.find(meshId);
+            const bool hasResidentMesh = residentChunkCoords_.contains(coord);
+            const auto existingBandIt = residentChunkVerticalBandByCoord_.find(coord);
             const bool meshFocusBandMatches =
-                existingBandIt != residentChunkMeshVerticalBandById_.end()
+                existingBandIt != residentChunkVerticalBandByCoord_.end()
                 && existingBandIt->second == currentVerticalFocusBand;
             if (!isDirty && hasResidentMesh && meshFocusBandMatches)
             {
                 continue;
             }
-            static_cast<void>(tryQueueMeshJob(coord, isDirty));
+                if (queuedResidentMeshJobs >= residentMeshQueueBudget)
+                {
+                    continue;
+                }
+            if (tryQueueMeshJob(coord, isDirty))
+            {
+                ++queuedResidentMeshJobs;
+            }
         }
     }
+    queueResidentMeshMs = PerfMs(PerfClock::now() - queueResidentMeshStart).count();
 
-    std::size_t queuedOffResident = 0;
+        std::size_t offResidentDirtyBudget = kStreamingSettings.offResidentDirtyRebuildBudget;
+        if (meshBacklog >= (kStreamingSettings.maxQueuedMeshJobs * 3) / 4 || smoothedFrameTimeMs_ >= 28.0f)
+        {
+            offResidentDirtyBudget = 0;
+        }
+        else if (meshBacklog >= kStreamingSettings.maxQueuedMeshJobs / 2 || smoothedFrameTimeMs_ >= 20.0f)
+        {
+            offResidentDirtyBudget = std::min<std::size_t>(offResidentDirtyBudget, 2);
+        }
+
+    const auto queueOffResidentMeshStart = PerfClock::now();
     for (const world::ChunkCoord& coord : dirtyCoords)
     {
-        if (cpuData.desiredResidentIds.contains(chunkMeshId(coord)))
+        if (cpuData.desiredResidentCoords.contains(coord))
         {
             continue;
         }
-        if (queuedOffResident >= kStreamingSettings.offResidentDirtyRebuildBudget)
+            if (queuedOffResident >= offResidentDirtyBudget)
         {
             break;
         }
@@ -538,14 +735,16 @@ void Application::syncWorldData()
             ++queuedOffResident;
         }
     }
+    queueOffResidentMeshMs = PerfMs(PerfClock::now() - queueOffResidentMeshStart).count();
 
+    const auto drainCompletedMeshStart = PerfClock::now();
     std::vector<AsyncChunkMeshResult> completedResults;
-    completedResults.reserve(kStreamingSettings.meshUploadBudgetPerFrame + kStreamingSettings.offResidentDirtyRebuildBudget);
+        completedResults.reserve(kStreamingSettings.meshUploadBudgetPerFrame + offResidentDirtyBudget);
     {
         std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
         const std::size_t resultBudget = std::max<std::size_t>(
             kStreamingSettings.meshUploadBudgetPerFrame,
-            kStreamingSettings.offResidentDirtyRebuildBudget);
+                offResidentDirtyBudget);
         while (!chunkMeshingCompletedResults_.empty() && completedResults.size() < resultBudget)
         {
             completedResults.push_back(std::move(chunkMeshingCompletedResults_.front()));
@@ -553,8 +752,10 @@ void Application::syncWorldData()
             chunkMeshingInFlightCoords_.erase(completedResults.back().coord);
         }
     }
+    drainCompletedMeshMs = PerfMs(PerfClock::now() - drainCompletedMeshStart).count();
+    completedMeshResultCount = completedResults.size();
 
-    std::size_t uploadedMeshesThisFrame = 0;
+    const auto applyCompletedMeshStart = PerfClock::now();
     for (AsyncChunkMeshResult& result : completedResults)
     {
         if (result.generation != chunkMeshingGeneration_)
@@ -574,18 +775,26 @@ void Application::syncWorldData()
             continue;
         }
 
-        const bool desiredResident = cpuData.desiredResidentIds.contains(result.meshId);
+        const bool desiredResident = cpuData.desiredResidentCoords.contains(result.coord);
         if (desiredResident && uploadedMeshesThisFrame < kStreamingSettings.meshUploadBudgetPerFrame)
         {
+            cpuData.sceneMeshesToUpload.insert(
+                cpuData.sceneMeshesToUpload.end(),
+                result.sceneMeshes.begin(),
+                result.sceneMeshes.end());
+            cpuData.removedMeshIds.insert(
+                cpuData.removedMeshIds.end(),
+                result.removedMeshIds.begin(),
+                result.removedMeshIds.end());
             if (result.hasRenderableMesh)
             {
-                cpuData.sceneMeshesToUpload.push_back(std::move(result.sceneMesh));
-                residentChunkMeshVerticalBandById_[result.meshId] = result.verticalFocusBand;
+                cpuData.residentCoordsToAdd.push_back(result.coord);
+                residentChunkVerticalBandByCoord_[result.coord] = result.verticalFocusBand;
             }
             else
             {
-                cpuData.removedMeshIds.push_back(result.meshId);
-                residentChunkMeshVerticalBandById_.erase(result.meshId);
+                cpuData.removedResidentCoords.push_back(result.coord);
+                residentChunkVerticalBandByCoord_.erase(result.coord);
             }
             ++uploadedMeshesThisFrame;
         }
@@ -598,16 +807,124 @@ void Application::syncWorldData()
             });
         }
     }
+    applyCompletedMeshMs = PerfMs(PerfClock::now() - applyCompletedMeshStart).count();
 
-    applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_);
-    for (const std::uint64_t removedId : cpuData.removedMeshIds)
+    const auto pruneResidentCoordsStart = PerfClock::now();
+    for (const world::ChunkCoord& residentCoord : residentChunkCoords_)
     {
-        residentChunkMeshVerticalBandById_.erase(removedId);
+        if (!cpuData.desiredResidentCoords.contains(residentCoord))
+        {
+            cpuData.removedResidentCoords.push_back(residentCoord);
+            residentChunkVerticalBandByCoord_.erase(residentCoord);
+        }
     }
+    pruneResidentCoordsMs = PerfMs(PerfClock::now() - pruneResidentCoordsStart).count();
 
+    const auto applyGpuStart = PerfClock::now();
+    applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_, residentChunkCoords_);
+    applyGpuMs = PerfMs(PerfClock::now() - applyGpuStart).count();
+
+    const auto applyDirtyStatsStart = PerfClock::now();
     if (!cpuData.dirtyResidentMeshUpdates.empty())
     {
         world_.applyMeshStatsAndClearDirty(cpuData.dirtyResidentMeshUpdates);
+    }
+    applyDirtyStatsMs = PerfMs(PerfClock::now() - applyDirtyStatsStart).count();
+
+    const double totalSyncMs = PerfMs(PerfClock::now() - syncStart).count();
+
+    std::size_t pendingGenQueue = 0;
+    std::size_t inFlightGen = 0;
+    std::size_t completedGenQueue = 0;
+    {
+        std::lock_guard<std::mutex> lock(chunkGenerationMutex_);
+        pendingGenQueue = chunkGenerationPendingJobs_.size();
+        inFlightGen = chunkGenerationInFlightCoords_.size();
+        completedGenQueue = chunkGenerationCompletedResults_.size();
+    }
+
+    std::size_t pendingMeshQueue = 0;
+    std::size_t inFlightMesh = 0;
+    std::size_t completedMeshQueue = 0;
+    {
+        std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
+        pendingMeshQueue = chunkMeshingPendingJobs_.size();
+        inFlightMesh = chunkMeshingInFlightCoords_.size();
+        completedMeshQueue = chunkMeshingCompletedResults_.size();
+    }
+
+    const auto now = PerfClock::now();
+    ++perf.frameCount;
+    perf.sumTotalMs += totalSyncMs;
+    perf.maxTotalMs = std::max(perf.maxTotalMs, totalSyncMs);
+    perf.sumGenerationApplyMs += generationApplyMs;
+    perf.sumGenerationQueueMs += generationQueueMs;
+    perf.sumDirtyGatherMs += dirtyGatherMs;
+    perf.sumDesiredResidentBuildMs += desiredResidentBuildMs;
+    perf.sumResidentPruneIdsMs += residentPruneIdsMs;
+    perf.sumQueueResidentMeshMs += queueResidentMeshMs;
+    perf.sumQueueOffResidentMeshMs += queueOffResidentMeshMs;
+    perf.sumDrainCompletedMeshMs += drainCompletedMeshMs;
+    perf.sumApplyCompletedMeshMs += applyCompletedMeshMs;
+    perf.sumPruneResidentCoordsMs += pruneResidentCoordsMs;
+    perf.sumApplyGpuMs += applyGpuMs;
+    perf.sumApplyDirtyStatsMs += applyDirtyStatsMs;
+    perf.sumQueuedNearbyGeneration += static_cast<double>(queuedNearbyChunks);
+    perf.sumQueuedPrefetchGeneration += static_cast<double>(queuedPrefetchChunks);
+    perf.sumQueuedResidentMeshJobs += static_cast<double>(queuedResidentMeshJobs);
+    perf.sumQueuedOffResidentMeshJobs += static_cast<double>(queuedOffResident);
+    perf.sumCompletedMeshResults += static_cast<double>(completedMeshResultCount);
+    perf.sumUploadedResidentMeshes += static_cast<double>(uploadedMeshesThisFrame);
+    perf.sumDesiredResidentCoords += static_cast<double>(cpuData.desiredResidentCoords.size());
+    perf.sumDirtyCoords += static_cast<double>(dirtyCoords.size());
+    perf.sumPendingGenQueue += static_cast<double>(pendingGenQueue);
+    perf.sumInFlightGen += static_cast<double>(inFlightGen);
+    perf.sumCompletedGenQueue += static_cast<double>(completedGenQueue);
+    perf.sumPendingMeshQueue += static_cast<double>(pendingMeshQueue);
+    perf.sumInFlightMesh += static_cast<double>(inFlightMesh);
+    perf.sumCompletedMeshQueue += static_cast<double>(completedMeshQueue);
+
+    if (std::chrono::duration<double>(now - perf.windowStart).count() >= 1.0 && perf.frameCount > 0)
+    {
+        const double frameCount = static_cast<double>(perf.frameCount);
+        core::logInfo(fmt::format(
+            "[perf-sync] total_ms={:.2f} max_ms={:.2f} genApply={:.2f} genQueue={:.2f} dirtyGather={:.2f} "
+            "desiredBuild={:.2f} pruneIds={:.2f} qResident={:.2f} qOffResident={:.2f} drainResults={:.2f} "
+            "applyResults={:.2f} pruneCoords={:.2f} gpuApply={:.2f} applyDirtyStats={:.2f}",
+            perf.sumTotalMs / frameCount,
+            perf.maxTotalMs,
+            perf.sumGenerationApplyMs / frameCount,
+            perf.sumGenerationQueueMs / frameCount,
+            perf.sumDirtyGatherMs / frameCount,
+            perf.sumDesiredResidentBuildMs / frameCount,
+            perf.sumResidentPruneIdsMs / frameCount,
+            perf.sumQueueResidentMeshMs / frameCount,
+            perf.sumQueueOffResidentMeshMs / frameCount,
+            perf.sumDrainCompletedMeshMs / frameCount,
+            perf.sumApplyCompletedMeshMs / frameCount,
+            perf.sumPruneResidentCoordsMs / frameCount,
+            perf.sumApplyGpuMs / frameCount,
+            perf.sumApplyDirtyStatsMs / frameCount));
+        core::logInfo(fmt::format(
+            "[perf-sync-counts] desiredResident={:.1f} dirty={:.1f} qGenNear={:.1f} qGenPrefetch={:.1f} "
+            "qMeshResident={:.1f} qMeshOffResident={:.1f} completedMeshResults={:.1f} uploadedResident={:.1f} "
+            "genQ/pending={:.1f}/{:.1f}/{:.1f} meshQ/pending={:.1f}/{:.1f}/{:.1f}",
+            perf.sumDesiredResidentCoords / frameCount,
+            perf.sumDirtyCoords / frameCount,
+            perf.sumQueuedNearbyGeneration / frameCount,
+            perf.sumQueuedPrefetchGeneration / frameCount,
+            perf.sumQueuedResidentMeshJobs / frameCount,
+            perf.sumQueuedOffResidentMeshJobs / frameCount,
+            perf.sumCompletedMeshResults / frameCount,
+            perf.sumUploadedResidentMeshes / frameCount,
+            perf.sumPendingGenQueue / frameCount,
+            perf.sumInFlightGen / frameCount,
+            perf.sumCompletedGenQueue / frameCount,
+            perf.sumPendingMeshQueue / frameCount,
+            perf.sumInFlightMesh / frameCount,
+            perf.sumCompletedMeshQueue / frameCount));
+        perf = {};
+        perf.windowStart = now;
     }
 }
 }  // namespace vibecraft::app

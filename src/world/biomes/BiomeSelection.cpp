@@ -117,13 +117,13 @@ SurfaceBiome selectRawSurfaceBiome(
     {
         return SurfaceBiome::MushroomField;
     }
-    if (inputs.temperature > 0.18 && inputs.humidity > 0.20)
+    if (inputs.temperature > 0.18 && inputs.humidity > 0.10)
     {
         return SurfaceBiome::BambooJungle;
     }
-    if (isWarm(inputs.temperature) && inputs.humidity > 0.05)
+    if (isWarm(inputs.temperature) && inputs.humidity > -0.15)
     {
-        return inputs.humidity > 0.14 ? SurfaceBiome::Jungle : SurfaceBiome::SparseJungle;
+        return inputs.humidity > 0.05 ? SurfaceBiome::Jungle : SurfaceBiome::SparseJungle;
     }
     if (isWarm(inputs.temperature) && inputs.humidity < -0.16 && inputs.surfaceHeight <= 82)
     {

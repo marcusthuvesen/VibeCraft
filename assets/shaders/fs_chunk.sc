@@ -10,7 +10,9 @@ uniform vec4 u_moonLightColor;
 uniform vec4 u_ambientLight;
 uniform vec4 u_chunkAnim;
 uniform vec4 u_biomeHaze;
-uniform vec4 u_biomeGrade;
+uniform vec4 u_biomeGrade; // .xyz = terrainBounceTint, .w = terrainSaturation (set from C++)
+uniform vec4 u_torchLights[8];
+uniform vec4 u_torchLightParams; // .x = active count, .y = radius, .z = strength
 uniform vec4 u_cameraPos;
 uniform vec4 u_chunkFog;
 
@@ -54,6 +56,21 @@ void main()
         + u_sunLightColor.rgb * sunTerm
         + u_moonLightColor.rgb * moonTerm
         + vec3(skyFill, skyFill, skyFill);
+    float torchRadius = max(u_torchLightParams.y, 0.001);
+    vec3 torchLighting = vec3(0.0, 0.0, 0.0);
+    for (int torchIndex = 0; torchIndex < 8; ++torchIndex)
+    {
+        if (float(torchIndex) >= u_torchLightParams.x)
+        {
+            break;
+        }
+        vec3 torchOffset = v_worldPos - u_torchLights[torchIndex].xyz;
+        float torchDistance = length(torchOffset);
+        float torchLinear = clamp(1.0 - torchDistance / torchRadius, 0.0, 1.0);
+        float torchFalloff = torchLinear * torchLinear * (3.0 - 2.0 * torchLinear);
+        torchLighting += vec3(1.00, 0.82, 0.58) * (torchFalloff * u_torchLightParams.z * u_torchLights[torchIndex].w);
+    }
+    lighting += clamp(torchLighting, vec3(0.0, 0.0, 0.0), vec3(0.95, 0.80, 0.62));
     lighting *= faceShade;
     lighting = clamp(lighting, vec3(0.0, 0.0, 0.0), vec3(1.45, 1.45, 1.45));
     vec4 atlasColor = texture2D(s_chunkAtlas, v_uv);
@@ -74,5 +91,16 @@ void main()
     float fogAmt = clamp(pow(fogBase, mix(1.35, 0.95, hazeStrength)), 0.0, 1.0);
     vec3 fogColor = u_biomeHaze.rgb;
     litColor = mix(litColor, fogColor, fogAmt);
+
+    // Underwater depth effect: fragments well below the camera are tinted deep blue.
+    // This simulates light absorption through a water column when the player looks down at
+    // submerged terrain.  The 2-block grace zone prevents the effect on surface-level blocks
+    // and leaves cave roofs unaffected.  The quadratic ramp keeps shallow water clear while
+    // making deeper water visibly dark and blue.
+    float depthBelow = clamp(u_cameraPos.y - v_worldPos.y - 2.0, 0.0, 18.0);
+    float depthFog = (depthBelow / 18.0) * (depthBelow / 18.0);
+    vec3 deepWaterColor = vec3(0.02, 0.06, 0.22);
+    litColor = mix(litColor, deepWaterColor, clamp(depthFog * 0.82, 0.0, 0.72));
+
     gl_FragColor = vec4(litColor, atlasColor.a * v_color0.a);
 }
