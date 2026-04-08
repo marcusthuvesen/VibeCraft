@@ -122,6 +122,41 @@ TEST_CASE("forest biome override produces rolling woodland relief")
     CHECK(maxSurface - minSurface >= 18);
 }
 
+TEST_CASE("warm high terrain resolves to mountain biomes instead of jungle plateaus")
+{
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+
+    bool foundWarmHighland = false;
+    for (int worldX = -24576; worldX <= 24576; worldX += 64)
+    {
+        for (int worldZ = -24576; worldZ <= 24576; worldZ += 64)
+        {
+            const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            if (surfaceY < 92)
+            {
+                continue;
+            }
+
+            const vibecraft::world::SurfaceBiome biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
+            if (biome == vibecraft::world::SurfaceBiome::Jungle
+                || biome == vibecraft::world::SurfaceBiome::SparseJungle
+                || biome == vibecraft::world::SurfaceBiome::BambooJungle)
+            {
+                CHECK(surfaceY < 92);
+            }
+
+            if (biome == vibecraft::world::SurfaceBiome::WindsweptHills
+                || biome == vibecraft::world::SurfaceBiome::StonyPeaks)
+            {
+                foundWarmHighland = true;
+            }
+        }
+    }
+
+    CHECK(foundWarmHighland);
+}
+
 TEST_CASE("forest-first biome pass discovers each woodland biome across a large sample")
 {
     vibecraft::world::TerrainGenerator terrainGenerator;

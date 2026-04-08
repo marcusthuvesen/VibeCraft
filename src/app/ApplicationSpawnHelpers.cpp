@@ -597,15 +597,41 @@ bool Application::continueSingleplayerSpawnSearch(const float colliderHeight)
     }
 
     constexpr int kSpawnProbeChunkRadius = 2;
-    constexpr std::size_t kSpawnProbeChunkBudget =
-        static_cast<std::size_t>((kSpawnProbeChunkRadius * 2 + 1) * (kSpawnProbeChunkRadius * 2 + 1));
-    const auto ensureProbeGenerated = [&](const int worldX, const int worldZ)
+    const std::size_t spawnProbeGenerationBudgetThisFrame = [this]()
     {
+        if (smoothedFrameTimeMs_ >= 28.0f)
+        {
+            return static_cast<std::size_t>(1);
+        }
+        if (smoothedFrameTimeMs_ >= 20.0f)
+        {
+            return static_cast<std::size_t>(2);
+        }
+        if (smoothedFrameTimeMs_ >= 16.0f)
+        {
+            return static_cast<std::size_t>(3);
+        }
+        return static_cast<std::size_t>(5);
+    }();
+    std::size_t generatedProbeChunksThisFrame = 0;
+    const auto tryGenerateProbeChunks = [&](const int worldX, const int worldZ)
+    {
+        if (generatedProbeChunksThisFrame >= spawnProbeGenerationBudgetThisFrame)
+        {
+            return false;
+        }
+        const std::size_t beforeChunkCount = world_.chunks().size();
         world_.generateMissingChunksAround(
             terrainGenerator_,
             world::worldToChunkCoord(worldX, worldZ),
             kSpawnProbeChunkRadius,
-            kSpawnProbeChunkBudget);
+            spawnProbeGenerationBudgetThisFrame - generatedProbeChunksThisFrame);
+        const std::size_t afterChunkCount = world_.chunks().size();
+        if (afterChunkCount > beforeChunkCount)
+        {
+            generatedProbeChunksThisFrame += (afterChunkCount - beforeChunkCount);
+        }
+        return true;
     };
 
     if (!singleplayerLoadState_.spawnSearchActive)
@@ -619,7 +645,7 @@ bool Application::continueSingleplayerSpawnSearch(const float colliderHeight)
         singleplayerLoadState_.bestSpawnPenalty = std::numeric_limits<int>::max();
     }
 
-    constexpr std::size_t kSpawnCandidatesPerFrame = 12;
+    constexpr std::size_t kSpawnCandidatesPerFrame = 4;
     std::size_t processedCandidates = 0;
     while (singleplayerLoadState_.spawnSearchIndex < singleplayerLoadState_.spawnSearchOffsets.size()
            && processedCandidates < kSpawnCandidatesPerFrame)
@@ -640,7 +666,19 @@ bool Application::continueSingleplayerSpawnSearch(const float colliderHeight)
             continue;
         }
 
-        ensureProbeGenerated(sampleX, sampleZ);
+        const world::ChunkCoord sampleChunk = world::worldToChunkCoord(sampleX, sampleZ);
+        if (!world_.chunks().contains(sampleChunk))
+        {
+            if (!tryGenerateProbeChunks(sampleX, sampleZ))
+            {
+                // Defer remaining spawn probes to future frames to avoid long bootstrap stalls.
+                break;
+            }
+            if (!world_.chunks().contains(sampleChunk))
+            {
+                continue;
+            }
+        }
         const glm::vec3 biomeProbe{
             static_cast<float>(sampleX),
             singleplayerLoadState_.spawnProbePosition.y,

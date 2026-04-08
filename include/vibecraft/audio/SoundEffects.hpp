@@ -35,8 +35,6 @@ class SoundEffects
     void playPlayerAttack();
     /// Player hurt cue for fall/lava/drowning/combat damage.
     void playPlayerHurt();
-    /// Jump takeoff cue from player movement set.
-    void playPlayerJump();
     /// Landing cue (uses stronger sample selection for hard landings).
     void playPlayerLand(bool hardLanding);
     /// One-shot death cue before respawn.

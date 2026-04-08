@@ -191,43 +191,33 @@ void appendTorchGeometry(
 
     if (facing == TorchFacing::Standing)
     {
-        // Cross-sprite geometry — two flat quads at 90° to each other (Minecraft-style).
-        // Vanilla torch model is ~2×10 pixels in a 16×16 cell (thin stick + flame), not full-block wide.
-        const float wx = static_cast<float>(worldX);
-        const float wy = static_cast<float>(y);
-        const float wz = static_cast<float>(worldZ);
-        constexpr float kSpan = 1.0f / 16.0f;
-        constexpr float kHeight = 10.0f / 16.0f;
-        // UV: full tile, V=0 at top (flame), V=1 at bottom (base of stick).
-        constexpr std::array<std::array<float, 2>, 4> kTorchUv{{
-            {0.0f, 1.0f},
-            {0.0f, 0.0f},
-            {1.0f, 0.0f},
-            {1.0f, 1.0f},
-        }};
-        // Two directions give a perfect + cross when viewed from above.
-        constexpr std::array<std::pair<float, float>, 2> kDirs{{{1.0f, 0.0f}, {0.0f, 1.0f}}};
-        for (const auto [dx, dz] : kDirs)
-        {
-            const std::array<std::array<float, 3>, 4> corners{{
-                {{wx + 0.5f - dx * kSpan, wy,           wz + 0.5f - dz * kSpan}},
-                {{wx + 0.5f - dx * kSpan, wy + kHeight, wz + 0.5f - dz * kSpan}},
-                {{wx + 0.5f + dx * kSpan, wy + kHeight, wz + 0.5f + dz * kSpan}},
-                {{wx + 0.5f + dx * kSpan, wy,           wz + 0.5f + dz * kSpan}},
-            }};
-            // Slight upward bias on the normal for better sun shading (same trick as plant quads).
-            const float rawNx = dz;
-            const float rawNy = 0.18f;
-            const float rawNz = -dx;
-            const float invLen = 1.0f / std::sqrt(rawNx * rawNx + rawNy * rawNy + rawNz * rawNz);
-            appendTorchQuad(
-                meshData,
-                corners,
-                kTorchUv,
-                {rawNx * invLen, rawNy * invLen, rawNz * invLen},
-                tileIndex,
-                flameAbgr);
-        }
+        // Standing torch: small upright stem with a compact flame cap.
+        appendTorchBox(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.5f - kStemHalfWidth,
+            0.5f + kStemHalfWidth,
+            0.0f,
+            0.62f,
+            0.5f - kStemHalfWidth,
+            0.5f + kStemHalfWidth,
+            tileIndex,
+            baseAbgr);
+        appendTorchBox(
+            meshData,
+            worldX,
+            y,
+            worldZ,
+            0.5f - kFlameHalfWidth,
+            0.5f + kFlameHalfWidth,
+            0.62f,
+            0.80f,
+            0.5f - kFlameHalfWidth,
+            0.5f + kFlameHalfWidth,
+            tileIndex,
+            flameAbgr);
         return;
     }
 

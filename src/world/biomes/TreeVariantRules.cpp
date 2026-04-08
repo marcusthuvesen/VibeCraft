@@ -87,6 +87,12 @@ constexpr std::uint32_t kTreeForestDensitySeed = 0x83c2b5d4U;
     case WoodlandVariant::RockyRise:
         multiplier *= 0.72f;
         break;
+    case WoodlandVariant::WoodedHills:
+        multiplier *= 0.82f;
+        break;
+    case WoodlandVariant::WoodedMountains:
+        multiplier *= 0.52f;
+        break;
     default:
         break;
     }
@@ -277,6 +283,17 @@ TreeBiomeSettings treeVariantSettings(
         break;
     }
 
+    if (variation.primaryVariant == WoodlandVariant::WoodedHills)
+    {
+        settings.largeTreeChance *= 0.72f;
+    }
+    else if (variation.primaryVariant == WoodlandVariant::WoodedMountains)
+    {
+        settings.largeTreeChance *= 0.40f;
+        settings.maxTrunkHeight = std::max(settings.minTrunkHeight, settings.maxTrunkHeight - 1);
+        settings.crownRadius = std::max(2, settings.crownRadius - 1);
+    }
+
     return settings;
 }
 
@@ -354,6 +371,12 @@ float secondaryTreeChance(const SurfaceBiome biome, const BiomeVariationSample& 
         break;
     case WoodlandVariant::RockyRise:
         multiplier *= 0.58f;
+        break;
+    case WoodlandVariant::WoodedHills:
+        multiplier *= 0.78f;
+        break;
+    case WoodlandVariant::WoodedMountains:
+        multiplier *= 0.42f;
         break;
     default:
         break;

@@ -14,6 +14,8 @@ enum class WoodlandVariant : std::uint8_t
     MossyHollow,
     DryClearing,
     BirchPocket,
+    WoodedHills,
+    WoodedMountains,
     RockyRise,
 };
 
@@ -24,6 +26,8 @@ struct BiomeVariationSample
     double dryness = 0.5;
     double roughness = 0.5;
     double canopyDensity = 0.5;
+    double hilliness = 0.5;
+    double mountainness = 0.5;
 };
 
 [[nodiscard]] bool supportsWoodlandVariation(SurfaceBiome biome);

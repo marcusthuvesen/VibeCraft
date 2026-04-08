@@ -564,6 +564,13 @@ class Renderer
     std::uint16_t wolfTextureHandle_ = UINT16_MAX;
     std::uint16_t bearTextureHandle_ = UINT16_MAX;
     std::uint16_t scorpionTextureHandle_ = UINT16_MAX;
+    /// Debug-text mode:
+    /// - force on: always enable BGFX_DEBUG_TEXT
+    /// - force off: never enable BGFX_DEBUG_TEXT
+    /// - auto (both false): enable only for menu/chat overlays that rely on dbg text
+    bool dbgTextForceOn_ = false;
+    bool dbgTextForceOff_ = false;
+    bool dbgTextCurrentlyEnabled_ = false;
     TextureUvRect zombieTextureUv_{};
     TextureUvRect playerMobTextureUv_{};
     TextureUvRect skeletonTextureUv_{};

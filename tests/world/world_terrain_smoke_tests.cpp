@@ -27,6 +27,16 @@ TEST_CASE("lava and water are fluids for collision and face culling")
     CHECK_FALSE(vibecraft::world::occludesFaces(BlockType::Lava));
 }
 
+TEST_CASE("leaf blocks are solid enough to stand on")
+{
+    using vibecraft::world::BlockType;
+    CHECK(vibecraft::world::isSolid(BlockType::OakLeaves));
+    CHECK(vibecraft::world::isSolid(BlockType::JungleLeaves));
+    CHECK(vibecraft::world::isSolid(BlockType::SpruceLeaves));
+    CHECK(vibecraft::world::isSolid(BlockType::BirchLeaves));
+    CHECK(vibecraft::world::isSolid(BlockType::DarkOakLeaves));
+}
+
 TEST_CASE("single block creates six exposed faces")
 {
     vibecraft::world::World world;
@@ -145,6 +155,7 @@ TEST_CASE("terrain generator places cave water and deep lava like Minecraft")
 TEST_CASE("world fluids fall spread and lava cools against water")
 {
     using vibecraft::world::BlockType;
+    using vibecraft::world::FluidRenderState;
     using vibecraft::world::World;
     using vibecraft::world::WorldEditAction;
     using vibecraft::world::WorldEditCommand;
@@ -155,6 +166,13 @@ TEST_CASE("world fluids fall spread and lava cools against water")
     CHECK(world.applyEditCommand({.action = WorldEditAction::Place, .position = {0, 10, 0}, .blockType = BlockType::Water}));
     world.tickFluids(64);
     CHECK(world.blockAt(1, 10, 0) == BlockType::Water);
+    const FluidRenderState sourceState = world.fluidRenderStateAt(0, 10, 0);
+    const FluidRenderState flowingState = world.fluidRenderStateAt(1, 10, 0);
+    CHECK(sourceState.type == BlockType::Water);
+    CHECK(sourceState.isSource);
+    CHECK(flowingState.type == BlockType::Water);
+    CHECK_FALSE(flowingState.isSource);
+    CHECK(flowingState.horizontalDistance == 1);
 
     World waterfallWorld;
     CHECK(waterfallWorld.applyEditCommand(
@@ -172,6 +190,66 @@ TEST_CASE("world fluids fall spread and lava cools against water")
     const bool isExpectedCooledBlock =
         cooledBlock == BlockType::Obsidian || cooledBlock == BlockType::Cobblestone;
     CHECK(isExpectedCooledBlock);
+}
+
+TEST_CASE("breaking bamboo removes the stacked stalk above it")
+{
+    using vibecraft::world::BlockType;
+    using vibecraft::world::World;
+    using vibecraft::world::WorldEditAction;
+    using vibecraft::world::WorldEditCommand;
+
+    World world;
+    for (int y = 10; y <= 13; ++y)
+    {
+        REQUIRE(world.applyEditCommand(
+            {.action = WorldEditAction::Place, .position = {0, y, 0}, .blockType = BlockType::Bamboo}));
+    }
+
+    REQUIRE(world.applyEditCommand({.action = WorldEditAction::Remove, .position = {0, 10, 0}, .blockType = BlockType::Air}));
+    CHECK(world.blockAt(0, 10, 0) == BlockType::Air);
+    CHECK(world.blockAt(0, 11, 0) == BlockType::Air);
+    CHECK(world.blockAt(0, 12, 0) == BlockType::Air);
+    CHECK(world.blockAt(0, 13, 0) == BlockType::Air);
+}
+
+TEST_CASE("chunk mesher lowers flowing water surface below full source height")
+{
+    using vibecraft::world::BlockType;
+    using vibecraft::world::World;
+    using vibecraft::world::WorldEditAction;
+    using vibecraft::world::WorldEditCommand;
+
+    World world;
+    CHECK(world.applyEditCommand({.action = WorldEditAction::Place, .position = {0, 9, 0}, .blockType = BlockType::Stone}));
+    CHECK(world.applyEditCommand({.action = WorldEditAction::Place, .position = {1, 9, 0}, .blockType = BlockType::Stone}));
+    CHECK(world.applyEditCommand({.action = WorldEditAction::Place, .position = {0, 10, 0}, .blockType = BlockType::Water}));
+    world.tickFluids(64);
+
+    vibecraft::meshing::ChunkMesher mesher;
+    const vibecraft::meshing::ChunkMeshData meshData = mesher.buildMesh(world, vibecraft::world::ChunkCoord{0, 0});
+
+    bool sawSourceTopAtFullHeight = false;
+    bool sawFlowTopBelowFullHeight = false;
+    for (const vibecraft::meshing::DebugVertex& vertex : meshData.vertices)
+    {
+        if (vertex.y <= 10.0f)
+        {
+            continue;
+        }
+
+        if (vertex.x >= 0.0f && vertex.x <= 1.0f && vertex.z >= 0.0f && vertex.z <= 1.0f)
+        {
+            sawSourceTopAtFullHeight = sawSourceTopAtFullHeight || vertex.y == doctest::Approx(11.0f);
+        }
+        if (vertex.x >= 1.0f && vertex.x <= 2.0f && vertex.z >= 0.0f && vertex.z <= 1.0f)
+        {
+            sawFlowTopBelowFullHeight = sawFlowTopBelowFullHeight || (vertex.y < 11.0f && vertex.y > 10.0f);
+        }
+    }
+
+    CHECK(sawSourceTopAtFullHeight);
+    CHECK(sawFlowTopBelowFullHeight);
 }
 
 TEST_CASE("tree crown leaves decay after the rooted trunk base is removed")
@@ -409,6 +487,46 @@ TEST_CASE("terrain generator varies surface height and produces water")
     // Minecraft-like plains around spawn should still roll gently without the exaggerated older terrain swings.
     CHECK(maxSurface - minSurface >= 5);
     CHECK(foundWater);
+}
+
+TEST_CASE("surface water stays in locally gentle terrain")
+{
+    using vibecraft::world::BlockType;
+
+    vibecraft::world::TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+
+    int inspectedWaterColumns = 0;
+    for (int worldX = -512; worldX <= 512; worldX += 8)
+    {
+        for (int worldZ = -512; worldZ <= 512; worldZ += 8)
+        {
+            const int surface = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            if (surface < 62 || surface > 64)
+            {
+                continue;
+            }
+            if (terrainGenerator.blockTypeAt(worldX, surface + 1, worldZ) != BlockType::Water)
+            {
+                continue;
+            }
+
+            const int east = terrainGenerator.surfaceHeightAt(worldX + 1, worldZ);
+            const int west = terrainGenerator.surfaceHeightAt(worldX - 1, worldZ);
+            const int north = terrainGenerator.surfaceHeightAt(worldX, worldZ - 1);
+            const int south = terrainGenerator.surfaceHeightAt(worldX, worldZ + 1);
+            const int maxNeighborDelta = std::max({
+                std::abs(surface - east),
+                std::abs(surface - west),
+                std::abs(surface - north),
+                std::abs(surface - south),
+            });
+            CHECK(maxNeighborDelta <= 5);
+            ++inspectedWaterColumns;
+        }
+    }
+
+    CHECK(inspectedWaterColumns > 0);
 }
 
 TEST_CASE("terrain generator produces snowy, jungle, and forested surface materials")

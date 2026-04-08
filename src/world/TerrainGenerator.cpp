@@ -17,7 +17,6 @@
 #include "vibecraft/world/biomes/SurfaceVariantRules.hpp"
 #include "vibecraft/world/underground/CaveRules.hpp"
 #include "vibecraft/world/underground/OreVeinRules.hpp"
-#include "vibecraft/world/WoodlandRavine.hpp"
 
 namespace vibecraft::world
 {
@@ -245,16 +244,26 @@ struct ColumnContext
     const double uplands =
         noise::fbmNoise2d(worldXd + 91.0, worldZd - 137.0, 180.0, 3, mixedSeed(0x31f4bc9dU, worldSeed)) * 2.0 - 1.0;
     const double ridges = noise::ridgeNoise2d(worldXd, worldZd, 90.0, mixedSeed(0x4422aa11U, worldSeed));
+    const auto buildHeightForBiome = [&](const SurfaceBiome biome) {
+        const biomes::BiomeVariationSample variation = biomes::sampleBiomeVariation(biome, worldX, worldZ, worldSeed);
+        return baseTerrainHeightAt(worldX, worldZ, worldSeed)
+            + biomes::biomeTerrainContribution(biome, worldX, worldZ, continents, uplands, ridges, worldSeed)
+            + biomes::localSurfaceHeightDelta(biome, variation, worldX, worldZ, worldSeed);
+    };
+
     const int provisionalSurfaceHeight = std::clamp(
         static_cast<int>(std::round(baseTerrainHeightAt(worldX, worldZ, worldSeed))),
         36,
         144);
-    const SurfaceBiome targetBiome = columnBiomeAt(worldX, worldZ, provisionalSurfaceHeight, worldSeed, biomeOverride);
-    const biomes::BiomeVariationSample variation = biomes::sampleBiomeVariation(targetBiome, worldX, worldZ, worldSeed);
-    const double terrainHeight = baseTerrainHeightAt(worldX, worldZ, worldSeed)
-        + biomes::biomeTerrainContribution(targetBiome, worldX, worldZ, continents, uplands, ridges, worldSeed)
-        + biomes::localSurfaceHeightDelta(targetBiome, variation, worldX, worldZ, worldSeed)
-        + woodlandSurfaceHeightDelta(targetBiome, worldX, worldZ, worldSeed);
+    const SurfaceBiome provisionalBiome =
+        columnBiomeAt(worldX, worldZ, provisionalSurfaceHeight, worldSeed, biomeOverride);
+    const int preliminarySurfaceHeight = std::clamp(
+        static_cast<int>(std::round(buildHeightForBiome(provisionalBiome))),
+        36,
+        144);
+    const SurfaceBiome resolvedBiome =
+        columnBiomeAt(worldX, worldZ, preliminarySurfaceHeight, worldSeed, biomeOverride);
+    const double terrainHeight = buildHeightForBiome(resolvedBiome);
     return std::clamp(static_cast<int>(std::round(terrainHeight)), 36, 144);
 }
 
@@ -374,10 +383,15 @@ struct ColumnContext
     const int worldX,
     const int worldZ,
     const int surfaceHeight,
+    const int maxNeighborSurfaceDelta,
     const std::uint32_t worldSeed,
     const SurfaceBiome biome)
 {
     if (surfaceHeight < kSeaLevel || surfaceHeight > kSeaLevel + kLowlandPondMaxHeightAboveSea)
+    {
+        return false;
+    }
+    if (maxNeighborSurfaceDelta > 2)
     {
         return false;
     }
@@ -410,7 +424,8 @@ struct ColumnContext
     const int maxNeighborSurfaceDelta =
         maxNeighborSurfaceDeltaAt(worldX, worldZ, surfaceHeight, worldSeed, biomeOverride);
     const double moisturePocket = moisturePocketNoiseAt(worldX, worldZ, worldSeed);
-    const bool floodLowland = shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight, worldSeed, biome);
+    const bool floodLowland =
+        shouldFloodLowlandColumn(worldX, worldZ, surfaceHeight, maxNeighborSurfaceDelta, worldSeed, biome);
     const bool lushPondPocket = !biomeOverride.has_value()
         && (biomes::isJungleSurfaceBiome(biome) || biomes::isTemperateGrassSurfaceBiome(biome) || biomes::isSnowySurfaceBiome(biome))
         && surfaceHeight >= kSeaLevel - 1
@@ -569,16 +584,6 @@ struct ColumnContext
     if (y > columnContext.surfaceHeight)
     {
         return y <= columnContext.columnWaterLevel ? BlockType::Water : BlockType::Air;
-    }
-    if (underground::shouldCarveWoodlandSurfaceRavine(
-            worldX,
-            y,
-            worldZ,
-            columnContext.surfaceHeight,
-            columnContext.biome,
-            worldSeed))
-    {
-        return underground::caveInteriorBlockType(worldX, y, worldZ, columnContext.surfaceHeight);
     }
     if (y == columnContext.surfaceHeight)
     {

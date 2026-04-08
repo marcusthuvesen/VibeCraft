@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <queue>
 #include <unordered_set>
 #include <vector>
@@ -20,6 +21,26 @@ namespace vibecraft::render
 {
 namespace
 {
+[[nodiscard]] bool bgfxDebugTextEnabled()
+{
+    const char* const value = std::getenv("VIBECRAFT_BGFX_DEBUG_TEXT");
+    if (value == nullptr)
+    {
+        return false;
+    }
+    return value[0] == '1' || value[0] == 't' || value[0] == 'T' || value[0] == 'y' || value[0] == 'Y';
+}
+
+[[nodiscard]] bool bgfxDebugTextDisabledByEnv()
+{
+    const char* const value = std::getenv("VIBECRAFT_BGFX_DEBUG_TEXT");
+    if (value == nullptr)
+    {
+        return false;
+    }
+    return value[0] == '0' || value[0] == 'f' || value[0] == 'F' || value[0] == 'n' || value[0] == 'N';
+}
+
 [[nodiscard]] TextureUvRect computePrimaryOpaqueUvRect(const std::filesystem::path& texturePath)
 {
     int width = 0;
@@ -167,7 +188,10 @@ bool Renderer::initialize(void* const nativeWindowHandle, const std::uint32_t wi
     }
 
     initialized_ = true;
-    bgfx::setDebug(BGFX_DEBUG_TEXT);
+    dbgTextForceOn_ = bgfxDebugTextEnabled();
+    dbgTextForceOff_ = bgfxDebugTextDisabledByEnv();
+    dbgTextCurrentlyEnabled_ = dbgTextForceOn_ && !dbgTextForceOff_;
+    bgfx::setDebug(dbgTextCurrentlyEnabled_ ? BGFX_DEBUG_TEXT : 0U);
     bgfx::setViewClear(detail::kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x263238ff, 1.0f, 0);
     bgfx::setViewClear(detail::kUiView, BGFX_CLEAR_NONE, 0, 1.0f, 0);
     // UI overlays rely on painter's-order submission so slot fills do not cover item icons.

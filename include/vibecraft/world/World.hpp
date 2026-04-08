@@ -43,6 +43,13 @@ struct ChunkMeshUpdate
     ChunkMeshStats stats{};
 };
 
+struct FluidRenderState
+{
+    BlockType type = BlockType::Air;
+    bool isSource = false;
+    std::uint8_t horizontalDistance = 0;
+};
+
 class World
 {
   public:
@@ -61,6 +68,7 @@ class World
     bool load(const std::filesystem::path& inputPath);
 
     [[nodiscard]] BlockType blockAt(int worldX, int y, int worldZ) const;
+    [[nodiscard]] FluidRenderState fluidRenderStateAt(int worldX, int y, int worldZ) const;
     [[nodiscard]] std::optional<RaycastHit> raycast(
         const glm::vec3& origin,
         const glm::vec3& direction,
@@ -84,6 +92,10 @@ class World
     void applyMeshStatsAndClearDirty(std::span<const ChunkMeshUpdate> updates);
     void replaceChunk(Chunk chunk);
     void replaceChunks(ChunkMap chunks);
+    std::size_t unloadChunksOutsideRadius(
+        const ChunkCoord& center,
+        int keepChunkRadius,
+        std::size_t maxChunksToUnload = static_cast<std::size_t>(-1));
 
   private:
     struct FluidCell

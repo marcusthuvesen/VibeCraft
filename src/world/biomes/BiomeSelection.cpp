@@ -117,6 +117,10 @@ SurfaceBiome selectRawSurfaceBiome(
     {
         return SurfaceBiome::MushroomField;
     }
+    if (isWarm(inputs.temperature) && inputs.humidity > -0.15 && inputs.surfaceHeight >= 92)
+    {
+        return inputs.surfaceHeight >= 106 ? SurfaceBiome::StonyPeaks : SurfaceBiome::WindsweptHills;
+    }
     if (inputs.temperature > 0.18 && inputs.humidity > 0.10)
     {
         return SurfaceBiome::BambooJungle;

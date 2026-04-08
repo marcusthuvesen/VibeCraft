@@ -607,12 +607,8 @@ struct BlockCollisionBox
 
 [[nodiscard]] constexpr bool isSolid(const BlockType blockType)
 {
-    return blockType != BlockType::Air && !isFluid(blockType) && blockType != BlockType::OakLeaves
-        && blockType != BlockType::JungleLeaves
-        && blockType != BlockType::SpruceLeaves
-        && blockType != BlockType::BirchLeaves
-        && blockType != BlockType::DarkOakLeaves
-        && !isTorchBlock(blockType) && blockType != BlockType::Dandelion
+    return blockType != BlockType::Air && !isFluid(blockType) && !isTorchBlock(blockType)
+        && blockType != BlockType::Dandelion
         && blockType != BlockType::Poppy && blockType != BlockType::BlueOrchid
         && blockType != BlockType::Allium && blockType != BlockType::OxeyeDaisy
         && blockType != BlockType::BrownMushroom && blockType != BlockType::RedMushroom

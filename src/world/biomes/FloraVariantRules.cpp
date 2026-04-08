@@ -52,6 +52,18 @@ GrassTuftTuning applyGrassTuftVariant(
         tuning.secondaryTuft = BlockType::SparseTuft;
         tuning.primaryFraction = 1.0;
         break;
+    case WoodlandVariant::WoodedHills:
+        tuning.baseChance *= 0.56;
+        tuning.primaryTuft = BlockType::SparseTuft;
+        tuning.secondaryTuft = BlockType::GrassTuft;
+        tuning.primaryFraction = 0.68;
+        break;
+    case WoodlandVariant::WoodedMountains:
+        tuning.baseChance *= 0.24;
+        tuning.primaryTuft = BlockType::SparseTuft;
+        tuning.secondaryTuft = BlockType::SparseTuft;
+        tuning.primaryFraction = 1.0;
+        break;
     case WoodlandVariant::BirchPocket:
         tuning.baseChance *= 0.88;
         tuning.secondaryTuft = BlockType::FlowerTuft;
@@ -119,6 +131,18 @@ FloraPatchTuning applyFloraPatchVariant(
         tuning.flowerSpotChance *= 0.55;
         tuning.mushroomPatchMin = std::clamp(tuning.mushroomPatchMin + 0.06, 0.0, 1.0);
         tuning.mushroomSpotChance *= 0.62;
+        break;
+    case WoodlandVariant::WoodedHills:
+        tuning.flowerPatchMin = std::clamp(tuning.flowerPatchMin + 0.04, 0.0, 1.0);
+        tuning.flowerSpotChance *= 0.72;
+        tuning.mushroomPatchMin = std::clamp(tuning.mushroomPatchMin + 0.05, 0.0, 1.0);
+        tuning.mushroomSpotChance *= 0.76;
+        break;
+    case WoodlandVariant::WoodedMountains:
+        tuning.flowerPatchMin = std::clamp(tuning.flowerPatchMin + 0.10, 0.0, 1.0);
+        tuning.flowerSpotChance *= 0.34;
+        tuning.mushroomPatchMin = std::clamp(tuning.mushroomPatchMin + 0.10, 0.0, 1.0);
+        tuning.mushroomSpotChance *= 0.30;
         break;
     default:
         break;
@@ -197,6 +221,22 @@ TemperateForestDecorProfile applyTemperateForestDecorVariant(
         profile.fernChanceSparse *= 0.40;
         profile.woodlandGroundPatchEnabled = false;
         profile.mossyCobbleGroundRollMax *= 1.45;
+        break;
+    case WoodlandVariant::WoodedHills:
+        profile.patchEnterThreshold = std::min(0.78, profile.patchEnterThreshold + 0.10);
+        profile.denseForestThreshold = std::min(0.88, profile.denseForestThreshold + 0.06);
+        profile.fernChanceDense *= 0.66;
+        profile.fernChanceSparse *= 0.62;
+        profile.woodlandGroundPatchRollMax *= 0.82;
+        profile.mossyCobbleGroundRollMax *= 1.20;
+        break;
+    case WoodlandVariant::WoodedMountains:
+        profile.patchEnterThreshold = std::min(0.86, profile.patchEnterThreshold + 0.18);
+        profile.denseForestThreshold = std::min(0.92, profile.denseForestThreshold + 0.14);
+        profile.fernChanceDense *= 0.34;
+        profile.fernChanceSparse *= 0.30;
+        profile.woodlandGroundPatchEnabled = false;
+        profile.mossyCobbleGroundRollMax *= 1.65;
         break;
     default:
         break;

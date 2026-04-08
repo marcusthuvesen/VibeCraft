@@ -292,7 +292,6 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     {
         verticalVelocity_ = kPlayerMovementSettings.jumpVelocity;
         isGrounded_ = false;
-        soundEffects_.playPlayerJump();
     }
     else if (
         !creativeFlightActive_
@@ -302,7 +301,6 @@ bool Application::processPlayingMovementInput(const float deltaTimeSeconds, cons
     {
         verticalVelocity_ = kPlayerMovementSettings.jumpVelocity;
         isGrounded_ = false;
-        soundEffects_.playPlayerJump();
         autoJumpCooldownSeconds_ = 0.32f;
     }
     jumpWasHeld_ = jumpHeld;

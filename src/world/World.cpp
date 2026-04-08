@@ -1,6 +1,7 @@
 #include "vibecraft/world/World.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 
@@ -161,6 +162,16 @@ bool World::applyEditCommand(const WorldEditCommand& command)
     const BlockType targetType =
         command.action == WorldEditAction::Place ? command.blockType : BlockType::Air;
 
+    const auto clearRemovedBlockSideEffects = [this](const int worldX, const int y, const int worldZ)
+    {
+        const FluidCell cell{worldX, y, worldZ};
+        fluidSources_.erase(cell);
+        flowingFluids_.erase(cell);
+        scheduleFluidNeighborhood(worldX, y, worldZ);
+        scheduleGravityBlock(worldX, y, worldZ);
+        scheduleGravityBlock(worldX, y + 1, worldZ);
+    };
+
     if (!chunk.setBlock(localX, command.position.y, localZ, targetType))
     {
         return false;
@@ -171,18 +182,29 @@ bool World::applyEditCommand(const WorldEditCommand& command)
         scheduleLeafDecayNeighborhood(command.position.x, command.position.y, command.position.z, existingType);
     }
 
+    clearRemovedBlockSideEffects(command.position.x, command.position.y, command.position.z);
+
+    if (command.action == WorldEditAction::Remove && existingType == BlockType::Bamboo)
+    {
+        for (int bambooY = command.position.y + 1; bambooY <= kWorldMaxY; ++bambooY)
+        {
+            if (blockAt(command.position.x, bambooY, command.position.z) != BlockType::Bamboo)
+            {
+                break;
+            }
+            if (!setBlockUnchecked(command.position.x, bambooY, command.position.z, BlockType::Air))
+            {
+                break;
+            }
+            clearRemovedBlockSideEffects(command.position.x, bambooY, command.position.z);
+        }
+    }
+
     const FluidCell cell{command.position.x, command.position.y, command.position.z};
-    fluidSources_.erase(cell);
-    flowingFluids_.erase(cell);
     if (isFluid(targetType))
     {
         fluidSources_[cell] = targetType;
     }
-    scheduleFluidNeighborhood(command.position.x, command.position.y, command.position.z);
-
-    // Schedule gravity for the placed/removed position and the block sitting above it.
-    scheduleGravityBlock(command.position.x, command.position.y, command.position.z);
-    scheduleGravityBlock(command.position.x, command.position.y + 1, command.position.z);
 
     for (const ChunkCoord& dirtyCoord : neighboringChunkCoords(coord))
     {
@@ -223,6 +245,42 @@ BlockType World::blockAt(const int worldX, const int y, const int worldZ) const
     }
 
     return chunkIt->second.blockAt(worldToLocalCoord(worldX), y, worldToLocalCoord(worldZ));
+}
+
+FluidRenderState World::fluidRenderStateAt(const int worldX, const int y, const int worldZ) const
+{
+    const BlockType blockType = blockAt(worldX, y, worldZ);
+    if (!isFluid(blockType))
+    {
+        return {};
+    }
+
+    const FluidCell cell{worldX, y, worldZ};
+    if (const auto sourceIt = fluidSources_.find(cell);
+        sourceIt != fluidSources_.end() && sourceIt->second == blockType)
+    {
+        return FluidRenderState{
+            .type = blockType,
+            .isSource = true,
+            .horizontalDistance = 0,
+        };
+    }
+
+    if (const auto flowIt = flowingFluids_.find(cell);
+        flowIt != flowingFluids_.end() && flowIt->second.type == blockType)
+    {
+        return FluidRenderState{
+            .type = blockType,
+            .isSource = false,
+            .horizontalDistance = flowIt->second.horizontalDistance,
+        };
+    }
+
+    return FluidRenderState{
+        .type = blockType,
+        .isSource = true,
+        .horizontalDistance = 0,
+    };
 }
 
 std::optional<RaycastHit> World::raycast(
@@ -497,6 +555,116 @@ void World::replaceChunks(ChunkMap chunks)
         registerFluidStateForChunk(chunk);
         markChunkDirty(coord);
     }
+}
+
+std::size_t World::unloadChunksOutsideRadius(
+    const ChunkCoord& center,
+    const int keepChunkRadius,
+    const std::size_t maxChunksToUnload)
+{
+    if (keepChunkRadius < 0 || maxChunksToUnload == 0 || chunks_.empty())
+    {
+        return 0;
+    }
+
+    std::vector<ChunkCoord> unloadCoords;
+    unloadCoords.reserve(std::min(maxChunksToUnload, chunks_.size()));
+    for (const auto& [coord, chunk] : chunks_)
+    {
+        static_cast<void>(chunk);
+        if (std::abs(coord.x - center.x) <= keepChunkRadius
+            && std::abs(coord.z - center.z) <= keepChunkRadius)
+        {
+            continue;
+        }
+        unloadCoords.push_back(coord);
+        if (unloadCoords.size() >= maxChunksToUnload)
+        {
+            break;
+        }
+    }
+
+    if (unloadCoords.empty())
+    {
+        return 0;
+    }
+
+    std::unordered_set<ChunkCoord, ChunkCoordHash> unloadCoordSet(unloadCoords.begin(), unloadCoords.end());
+    for (const ChunkCoord& coord : unloadCoords)
+    {
+        chunks_.erase(coord);
+        meshStats_.erase(coord);
+        dirtyChunks_.erase(coord);
+        dirtyRevisionByChunk_.erase(coord);
+    }
+
+    const auto isUnloadedChunkWorldPos = [&unloadCoordSet](const int worldX, const int worldZ)
+    {
+        return unloadCoordSet.contains(worldToChunkCoord(worldX, worldZ));
+    };
+
+    for (auto it = fluidSources_.begin(); it != fluidSources_.end();)
+    {
+        if (isUnloadedChunkWorldPos(it->first.x, it->first.z))
+        {
+            it = fluidSources_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    for (auto it = flowingFluids_.begin(); it != flowingFluids_.end();)
+    {
+        if (isUnloadedChunkWorldPos(it->first.x, it->first.z))
+        {
+            it = flowingFluids_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    for (auto it = activeFluidCells_.begin(); it != activeFluidCells_.end();)
+    {
+        if (isUnloadedChunkWorldPos(it->x, it->z))
+        {
+            it = activeFluidCells_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    std::deque<OrganicDecayCell> keptLeafCells;
+    for (const OrganicDecayCell& cell : activeLeafDecayCells_)
+    {
+        if (!isUnloadedChunkWorldPos(cell.x, cell.z))
+        {
+            keptLeafCells.push_back(cell);
+        }
+    }
+    activeLeafDecayCells_ = std::move(keptLeafCells);
+    queuedLeafDecayCells_.clear();
+    for (const OrganicDecayCell& cell : activeLeafDecayCells_)
+    {
+        queuedLeafDecayCells_.insert(cell);
+    }
+
+    for (auto it = activeGravityBlocks_.begin(); it != activeGravityBlocks_.end();)
+    {
+        if (isUnloadedChunkWorldPos(it->x, it->z))
+        {
+            it = activeGravityBlocks_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    return unloadCoords.size();
 }
 
 Chunk& World::ensureChunk(const ChunkCoord& coord)

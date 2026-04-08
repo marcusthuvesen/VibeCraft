@@ -323,14 +323,14 @@ bool tryPopulateJungleSpecials(Chunk& chunk, const int localX, const int localZ,
         return false;
     }
 
-    float bambooChance = 0.030f;
+    float bambooChance = 0.018f;
     if (floraFamily == biomes::FloraGenerationFamily::SparseJungle)
     {
-        bambooChance = 0.012f;
+        bambooChance = 0.005f;
     }
     else if (floraFamily == biomes::FloraGenerationFamily::BambooJungle)
     {
-        bambooChance = 0.110f;
+        bambooChance = 0.065f;
     }
     bambooChance = biomes::softenSpecialFloraChanceForBiomeEdge(sample.biome, sample.transition, bambooChance);
     if (noise::random01(sample.worldX, sample.worldZ, kJungleSpecialSeed) < bambooChance)

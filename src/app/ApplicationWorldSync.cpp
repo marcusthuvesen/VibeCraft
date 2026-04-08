@@ -344,6 +344,8 @@ void Application::syncWorldData()
     const int currentVerticalFocusBand = verticalFocusBandForY(cameraWorldY);
     const meshing::ChunkMeshBuildSettings meshBuildSettings = focusedMeshBuildSettings(cameraWorldY);
     const int generationRetainRadius = kStreamingSettings.residentChunkRadius + 2;
+    const int meshRetainRadius = kStreamingSettings.generationChunkRadius + 3;
+    const int worldRetainRadius = kStreamingSettings.generationChunkRadius + 3;
     // Clients must only render chunks sent by the host; local procedural fill would desync terrain.
     if (multiplayerMode_ != MultiplayerRuntimeMode::Client)
     {
@@ -535,6 +537,63 @@ void Application::syncWorldData()
             }
         }
         generationQueueMs = PerfMs(PerfClock::now() - generationQueueStart).count();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(chunkMeshingMutex_);
+        for (auto it = chunkMeshingPendingJobs_.begin(); it != chunkMeshingPendingJobs_.end();)
+        {
+            if (!isChunkCoordWithinRadius(it->coord, cameraChunk, meshRetainRadius))
+            {
+                chunkMeshingInFlightCoords_.erase(it->coord);
+                it = chunkMeshingPendingJobs_.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        for (auto it = chunkMeshingCompletedResults_.begin(); it != chunkMeshingCompletedResults_.end();)
+        {
+            if (!isChunkCoordWithinRadius(it->coord, cameraChunk, meshRetainRadius))
+            {
+                chunkMeshingInFlightCoords_.erase(it->coord);
+                it = chunkMeshingCompletedResults_.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    if (multiplayerMode_ == MultiplayerRuntimeMode::SinglePlayer)
+    {
+        std::size_t unloadBudget = 12;
+        if (smoothedFrameTimeMs_ >= 28.0f)
+        {
+            unloadBudget = 4;
+        }
+        else if (smoothedFrameTimeMs_ >= 20.0f)
+        {
+            unloadBudget = 6;
+        }
+        const std::size_t unloadedChunks =
+            world_.unloadChunksOutsideRadius(cameraChunk, worldRetainRadius, unloadBudget);
+        if (unloadedChunks > 0)
+        {
+            for (auto it = residentChunkVerticalBandByCoord_.begin(); it != residentChunkVerticalBandByCoord_.end();)
+            {
+                if (!world_.chunks().contains(it->first))
+                {
+                    it = residentChunkVerticalBandByCoord_.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+        }
     }
 
     const auto dirtyGatherStart = PerfClock::now();

@@ -356,6 +356,16 @@ void Renderer::renderFrame(const FrameDebugData& frameDebugData, const CameraFra
         return;
     }
 
+    const bool shouldEnableDbgText = dbgTextForceOn_
+        || (!dbgTextForceOff_
+            && (frameDebugData.mainMenuActive || frameDebugData.pauseMenuActive
+                || frameDebugData.craftingMenuActive || frameDebugData.chatOpen));
+    if (shouldEnableDbgText != dbgTextCurrentlyEnabled_)
+    {
+        bgfx::setDebug(shouldEnableDbgText ? BGFX_DEBUG_TEXT : 0U);
+        dbgTextCurrentlyEnabled_ = shouldEnableDbgText;
+    }
+
     if (frameDebugData.mainMenuActive)
     {
         bgfx::setViewClear(detail::kMainView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, detail::kMainMenuClearColor, 1.0f, 0);

@@ -67,6 +67,8 @@ TEST_CASE("woodland biome variation is deterministic and diverse")
     CHECK(a.dryness == doctest::Approx(b.dryness));
     CHECK(a.roughness == doctest::Approx(b.roughness));
     CHECK(a.canopyDensity == doctest::Approx(b.canopyDensity));
+    CHECK(a.hilliness == doctest::Approx(b.hilliness));
+    CHECK(a.mountainness == doctest::Approx(b.mountainness));
 
     std::set<WoodlandVariant> variants;
     for (int worldX = -1536; worldX <= 1536; worldX += 64)
@@ -81,7 +83,39 @@ TEST_CASE("woodland biome variation is deterministic and diverse")
     CHECK(variants.count(WoodlandVariant::DryClearing) == 1);
     CHECK(variants.count(WoodlandVariant::MossyHollow) == 1);
     CHECK(variants.count(WoodlandVariant::FernGrove) == 1);
-    CHECK(variants.size() >= 4);
+    CHECK(variants.count(WoodlandVariant::WoodedHills) == 1);
+    CHECK(variants.count(WoodlandVariant::WoodedMountains) == 1);
+    CHECK(variants.size() >= 6);
+}
+
+TEST_CASE("woodland biome variation lifts hills and mountains instead of carving ravines")
+{
+    using vibecraft::world::SurfaceBiome;
+    using vibecraft::world::biomes::BiomeVariationSample;
+    using vibecraft::world::biomes::WoodlandVariant;
+    using vibecraft::world::biomes::localSurfaceHeightDelta;
+    using vibecraft::world::biomes::sampleBiomeVariation;
+
+    const std::uint32_t worldSeed = 0x42f0a17u;
+    bool foundHills = false;
+    bool foundMountains = false;
+    double maxLift = 0.0;
+
+    for (int worldX = -2048; worldX <= 2048; worldX += 32)
+    {
+        for (int worldZ = -2048; worldZ <= 2048; worldZ += 32)
+        {
+            const BiomeVariationSample variation = sampleBiomeVariation(SurfaceBiome::Forest, worldX, worldZ, worldSeed);
+            const double heightDelta = localSurfaceHeightDelta(SurfaceBiome::Forest, variation, worldX, worldZ, worldSeed);
+            maxLift = std::max(maxLift, heightDelta);
+            foundHills = foundHills || variation.primaryVariant == WoodlandVariant::WoodedHills;
+            foundMountains = foundMountains || variation.primaryVariant == WoodlandVariant::WoodedMountains;
+        }
+    }
+
+    CHECK(foundHills);
+    CHECK(foundMountains);
+    CHECK(maxLift >= 3.0);
 }
 
 TEST_CASE("biome transition sampling is deterministic and detects borders")
@@ -244,6 +278,65 @@ TEST_CASE("starter forest keeps stone patches rare on normal terrain")
     REQUIRE(sampledForestColumns > 1000);
     const float stoneRatio = static_cast<float>(stoneSurfaceColumns) / static_cast<float>(sampledForestColumns);
     CHECK(stoneRatio < 0.06f);
+}
+
+TEST_CASE("forest terrain no longer opens shallow surface ravines")
+{
+    using vibecraft::world::BlockType;
+    using vibecraft::world::SurfaceBiome;
+    using vibecraft::world::TerrainGenerator;
+
+    TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+
+    for (int worldX = -1024; worldX <= 1024; worldX += 8)
+    {
+        for (int worldZ = -1024; worldZ <= 1024; worldZ += 8)
+        {
+            const SurfaceBiome biome = terrainGenerator.surfaceBiomeAt(worldX, worldZ);
+            if (biome != SurfaceBiome::Forest
+                && biome != SurfaceBiome::FlowerForest
+                && biome != SurfaceBiome::BirchForest
+                && biome != SurfaceBiome::OldGrowthBirchForest
+                && biome != SurfaceBiome::DarkForest
+                && biome != SurfaceBiome::Taiga
+                && biome != SurfaceBiome::OldGrowthSpruceTaiga
+                && biome != SurfaceBiome::OldGrowthPineTaiga
+                && biome != SurfaceBiome::SnowyTaiga)
+            {
+                continue;
+            }
+
+            const int surfaceY = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            for (int depth = 1; depth <= 5; ++depth)
+            {
+                const BlockType blockType = terrainGenerator.blockTypeAt(worldX, surfaceY - depth, worldZ);
+                CHECK(blockType != BlockType::Air);
+            }
+        }
+    }
+}
+
+TEST_CASE("forest override avoids sheer local plateau steps")
+{
+    using vibecraft::world::TerrainGenerator;
+
+    TerrainGenerator terrainGenerator;
+    terrainGenerator.setWorldSeed(0x42f0a17u);
+    terrainGenerator.setBiomeOverride(vibecraft::world::SurfaceBiome::Forest);
+
+    int maxNeighborDelta = 0;
+    for (int worldX = -384; worldX <= 384; worldX += 8)
+    {
+        for (int worldZ = -384; worldZ <= 384; worldZ += 8)
+        {
+            const int center = terrainGenerator.surfaceHeightAt(worldX, worldZ);
+            maxNeighborDelta = std::max(maxNeighborDelta, std::abs(center - terrainGenerator.surfaceHeightAt(worldX + 1, worldZ)));
+            maxNeighborDelta = std::max(maxNeighborDelta, std::abs(center - terrainGenerator.surfaceHeightAt(worldX, worldZ + 1)));
+        }
+    }
+
+    CHECK(maxNeighborDelta <= 7);
 }
 
 TEST_CASE("dark forest generation can produce wide trunk trees")

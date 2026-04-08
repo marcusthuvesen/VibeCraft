@@ -81,6 +81,25 @@ namespace
     return (seed % 10u) == 0u;
 }
 
+[[nodiscard]] int bambooBlocksRemovedByBreak(const world::World& worldState, const glm::ivec3& blockPosition)
+{
+    if (worldState.blockAt(blockPosition.x, blockPosition.y, blockPosition.z) != world::BlockType::Bamboo)
+    {
+        return 0;
+    }
+
+    int removedCount = 1;
+    for (int y = blockPosition.y + 1; y <= world::kWorldMaxY; ++y)
+    {
+        if (worldState.blockAt(blockPosition.x, y, blockPosition.z) != world::BlockType::Bamboo)
+        {
+            break;
+        }
+        ++removedCount;
+    }
+    return removedCount;
+}
+
 [[nodiscard]] world::BlockType furnaceBlockFacingPlayer(const glm::vec3& cameraForward)
 {
     if (std::abs(cameraForward.x) >= std::abs(cameraForward.z))
@@ -369,6 +388,10 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
 
         if (activeMiningState_.elapsedSeconds >= activeMiningState_.requiredSeconds)
         {
+            const int removedBambooCount =
+                raycastHit->blockType == world::BlockType::Bamboo
+                ? bambooBlocksRemovedByBreak(world_, raycastHit->solidBlock)
+                : 0;
             std::vector<world::WorldEditCommand> commands;
             commands.push_back(world::WorldEditCommand{
                 .action = world::WorldEditAction::Remove,
@@ -477,7 +500,14 @@ void Application::processPlayingActionInput(const float deltaTimeSeconds)
                         : raycastHit->solidBlock;
                     const world::BlockType brokenBlockType =
                         world::normalizePlaceVariantBlockType(raycastHit->blockType);
-                    if (!world::isLeafBlock(brokenBlockType))
+                    if (brokenBlockType == world::BlockType::Bamboo && removedBambooCount > 0)
+                    {
+                        for (int i = 0; i < removedBambooCount; ++i)
+                        {
+                            spawnDroppedItem(world::BlockType::Bamboo, dropPosition + glm::ivec3(0, i, 0));
+                        }
+                    }
+                    else if (!world::isLeafBlock(brokenBlockType))
                     {
                         spawnDroppedItem(brokenBlockType, dropPosition);
                     }

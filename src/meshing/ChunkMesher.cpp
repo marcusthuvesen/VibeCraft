@@ -7,6 +7,7 @@
 #include <limits>
 #include <vector>
 
+#include "ChunkMesherFluidGeometry.hpp"
 #include "ChunkMesherTorchGeometry.hpp"
 #include "ChunkMesherTorchLighting.hpp"
 #include "vibecraft/ChunkAtlasLayout.hpp"
@@ -939,6 +940,20 @@ std::vector<ChunkSectionMeshData> ChunkMesher::buildSectionMeshes(
                     continue;
                 }
 
+                if (vibecraft::world::isFluid(blockType))
+                {
+                    appendFluidGeometry(
+                        meshData,
+                        world,
+                        blockType,
+                        worldX,
+                        y,
+                        worldZ,
+                        vibecraft::world::blockMetadata(blockType),
+                        torchEmitters);
+                    continue;
+                }
+
                 if (vibecraft::world::isStairBlock(blockType))
                 {
                     const auto metadata = vibecraft::world::blockMetadata(blockType);
@@ -998,7 +1013,7 @@ std::vector<ChunkSectionMeshData> ChunkMesher::buildSectionMeshes(
                     float halfWidth = 0.5f - baseInset;
                     if (!bamboo && denseFlora)
                     {
-                        halfWidth = tuftTriCross ? (0.18f + randomA * 0.05f) : (0.24f + randomA * 0.08f);
+                        halfWidth = tuftTriCross ? (0.22f + randomA * 0.05f) : (0.24f + randomA * 0.08f);
                     }
                     halfWidth = std::clamp(halfWidth, 0.10f, 0.49f);
 
@@ -1014,7 +1029,7 @@ std::vector<ChunkSectionMeshData> ChunkMesher::buildSectionMeshes(
                             || blockType == BlockType::FrostTuft || blockType == BlockType::SparseTuft
                             || blockType == BlockType::CloverTuft || blockType == BlockType::SproutTuft)
                         {
-                            heightScale = 0.68f + randomB * 0.10f;
+                            heightScale = 0.56f + randomB * 0.08f;
                         }
                         else if (denseFlora)
                         {

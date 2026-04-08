@@ -275,6 +275,7 @@ set(VIBECRAFT_SOURCES
     src/multiplayer/UdpTransport.cpp
     src/multiplayer/WorldSync.cpp
     src/meshing/ChunkMesher.cpp
+    src/meshing/ChunkMesherFluidGeometry.cpp
     src/meshing/ChunkMesherTorchGeometry.cpp
     src/meshing/ChunkMesherTorchLighting.cpp
     src/platform/LocalNetworkAddress.cpp
@@ -298,7 +299,6 @@ set(VIBECRAFT_SOURCES
     src/render/RendererWorldSprites.cpp
     src/world/Chunk.cpp
     src/world/TerrainGenerator.cpp
-    src/world/WoodlandRavine.cpp
     src/world/biomes/BiomeProfile.cpp
     src/world/biomes/BiomeBlending.cpp
     src/world/biomes/BiomeSelection.cpp
@@ -427,11 +427,11 @@ add_executable(vibecraft_tests
     src/multiplayer/UdpTransport.cpp
     src/multiplayer/WorldSync.cpp
     src/meshing/ChunkMesher.cpp
+    src/meshing/ChunkMesherFluidGeometry.cpp
     src/meshing/ChunkMesherTorchGeometry.cpp
     src/meshing/ChunkMesherTorchLighting.cpp
     src/world/Chunk.cpp
     src/world/TerrainGenerator.cpp
-    src/world/WoodlandRavine.cpp
     src/world/biomes/BiomeProfile.cpp
     src/world/biomes/BiomeBlending.cpp
     src/world/biomes/BiomeSelection.cpp

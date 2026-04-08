@@ -575,11 +575,6 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
         {numberedClipRange("damage/hit", 1, 3), numberedClipRange("entity/player/hurt/fire_hurt", 1, 3)});
 }
 
-[[nodiscard]] std::vector<std::string> playerJumpOptions()
-{
-    return {"random/breath.ogg"};
-}
-
 [[nodiscard]] std::vector<std::string> playerLandOptions(const bool hardLanding)
 {
     if (hardLanding)
@@ -807,7 +802,6 @@ constexpr int kSfxImmediateQueueMaxMs = 85;
 
     append(playerAttackOptions());
     append(playerHurtOptions());
-    append(playerJumpOptions());
     append(playerLandOptions(false));
     append(playerLandOptions(true));
     append(playerDeathOptions());
@@ -982,21 +976,6 @@ void SoundEffects::playPlayerHurt()
         return;
     }
     queueProceduralSweep(280.0f, 130.0f, 0.095f, 0.33f, 0.26f);
-}
-
-void SoundEffects::playPlayerJump()
-{
-    if (stream_ == nullptr)
-    {
-        return;
-    }
-    const std::vector<std::string> options = playerJumpOptions();
-    if (!options.empty())
-    {
-        playRandomClipWithGain(options, 0.30f);
-        return;
-    }
-    queueProceduralSweep(420.0f, 560.0f, 0.045f, 0.14f, 0.12f);
 }
 
 void SoundEffects::playPlayerLand(const bool hardLanding)

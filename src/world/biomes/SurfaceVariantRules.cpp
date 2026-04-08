@@ -23,6 +23,15 @@ namespace
 {
     return blockType == BlockType::Grass || blockType == BlockType::SnowGrass;
 }
+
+[[nodiscard]] double positiveBand(const double value, const double threshold, const double width)
+{
+    if (value <= threshold)
+    {
+        return 0.0;
+    }
+    return std::clamp((value - threshold) / width, 0.0, 1.0);
+}
 }  // namespace
 
 double localSurfaceHeightDelta(
@@ -51,23 +60,48 @@ double localSurfaceHeightDelta(
         noise::fbmNoise2d(wx - 49.0, wz + 27.0, 96.0, 2, mixedSeed(0x2b3c4d5eU, worldSeed)) * 0.5 + 0.5,
         0.0,
         1.0);
+    const double hillNoise = std::clamp(
+        noise::fbmNoise2d(wx + 137.0, wz - 121.0, 188.0, 3, mixedSeed(0x4d5e6f70U, worldSeed)) * 0.5 + 0.5,
+        0.0,
+        1.0);
+    const double mountainNoise = std::clamp(
+        noise::ridgeNoise2d(wx - 87.0, wz + 119.0, 118.0, mixedSeed(0x5e6f7081U, worldSeed)),
+        0.0,
+        1.0);
 
-    double heightDelta = std::max(0.0, knollNoise - 0.42) * (variation.roughness * 2.6 + 0.30);
-    heightDelta += std::max(0.0, shoulderNoise - 0.58) * (variation.roughness * 1.35 + variation.canopyDensity * 0.40 + 0.10);
-    heightDelta -= std::max(0.0, 0.60 - hollowNoise) * (variation.lushness * 1.8 + 0.20);
+    const double knollLift = positiveBand(knollNoise, 0.42, 0.42);
+    const double shoulderLift = positiveBand(shoulderNoise, 0.58, 0.28);
+    const double hillLift = positiveBand(hillNoise, 0.54, 0.30);
+    const double mountainLift = positiveBand(mountainNoise, 0.46, 0.32);
+    const double hillMask = std::clamp(variation.hilliness * 1.12 - variation.canopyDensity * 0.12, 0.0, 1.0);
+    const double mountainMask = std::clamp(variation.mountainness * 1.10 + variation.roughness * 0.20, 0.0, 1.0);
+
+    double heightDelta = knollLift * knollLift * (variation.roughness * 1.35 + 0.16);
+    heightDelta += shoulderLift * shoulderLift * (variation.roughness * 0.72 + variation.canopyDensity * 0.18 + 0.06);
+    heightDelta += hillLift * hillLift * hillMask * 1.65;
+    heightDelta += mountainLift * mountainLift * mountainMask * 2.05;
+    heightDelta -= std::max(0.0, 0.58 - hollowNoise) * (variation.lushness * 0.95 + 0.12);
     heightDelta -= std::max(0.0, variation.dryness - 0.62) * std::max(0.0, 0.56 - variation.canopyDensity) * 1.8;
 
-    if (variation.primaryVariant == WoodlandVariant::RockyRise)
+    if (variation.primaryVariant == WoodlandVariant::WoodedMountains)
     {
-        heightDelta += 1.15;
+        heightDelta += mountainLift * mountainMask * 0.95 + shoulderLift * mountainMask * 0.38;
+    }
+    else if (variation.primaryVariant == WoodlandVariant::WoodedHills)
+    {
+        heightDelta += hillLift * hillMask * 0.70 + mountainLift * hillMask * 0.16;
+    }
+    else if (variation.primaryVariant == WoodlandVariant::RockyRise)
+    {
+        heightDelta += knollLift * 0.42;
     }
     else if (variation.primaryVariant == WoodlandVariant::DryClearing
              || variation.primaryVariant == WoodlandVariant::MossyHollow)
     {
-        heightDelta -= 0.75;
+        heightDelta -= 0.45;
     }
 
-    return std::clamp(heightDelta, -3.0, 3.0);
+    return std::clamp(heightDelta, -2.0, 3.0);
 }
 
 SurfaceVariantDecision evaluateSurfaceVariantRules(
@@ -95,6 +129,28 @@ SurfaceVariantDecision evaluateSurfaceVariantRules(
 
     const bool elevatedRockyArea = surfaceHeight >= 92;
     const bool steepRockyArea = maxNeighborSurfaceDelta >= 8;
+    const bool hillSlopeArea = surfaceHeight >= 84 || maxNeighborSurfaceDelta >= 7;
+    const bool mountainSlopeArea = surfaceHeight >= 92 || maxNeighborSurfaceDelta >= 9;
+    if (variation.primaryVariant == WoodlandVariant::WoodedMountains
+        && variation.mountainness > 0.74
+        && mountainSlopeArea)
+    {
+        decision.surfaceBlock = BlockType::Stone;
+        decision.subsurfaceBlock = BlockType::Stone;
+        decision.topsoilDepthDelta = -2;
+        return decision;
+    }
+
+    if (variation.primaryVariant == WoodlandVariant::WoodedHills
+        && variation.hilliness > 0.68
+        && hillSlopeArea)
+    {
+        decision.surfaceBlock = BlockType::Stone;
+        decision.subsurfaceBlock = BlockType::Stone;
+        decision.topsoilDepthDelta = -1;
+        return decision;
+    }
+
     if (variation.primaryVariant == WoodlandVariant::RockyRise
         && variation.roughness > 0.84
         && (elevatedRockyArea || steepRockyArea))

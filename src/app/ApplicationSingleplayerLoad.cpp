@@ -19,6 +19,43 @@
 
 namespace vibecraft::app
 {
+namespace
+{
+[[nodiscard]] std::size_t singleplayerLoadGenerationBudget(const float smoothedFrameTimeMs)
+{
+    if (smoothedFrameTimeMs >= 28.0f)
+    {
+        return 1;
+    }
+    if (smoothedFrameTimeMs >= 20.0f)
+    {
+        return 2;
+    }
+    if (smoothedFrameTimeMs >= 16.0f)
+    {
+        return 3;
+    }
+    return 4;
+}
+
+[[nodiscard]] std::size_t singleplayerLoadMeshBuildBudget(const float smoothedFrameTimeMs)
+{
+    if (smoothedFrameTimeMs >= 28.0f)
+    {
+        return 1;
+    }
+    if (smoothedFrameTimeMs >= 20.0f)
+    {
+        return 2;
+    }
+    if (smoothedFrameTimeMs >= 16.0f)
+    {
+        return 3;
+    }
+    return 5;
+}
+}  // namespace
+
 void Application::beginSingleplayerLoad()
 {
     if (gameScreen_ != GameScreen::MainMenu || singleplayerLoadState_.active)
@@ -411,7 +448,7 @@ void Application::updateSingleplayerLoad()
             terrainGenerator_,
             originChunk,
             kStreamingSettings.bootstrapChunkRadius,
-            std::max<std::size_t>(6, kStreamingSettings.generationChunkBudgetPerFrame));
+            singleplayerLoadGenerationBudget(smoothedFrameTimeMs_));
 
         const std::size_t generatedCount = std::min(world_.chunks().size(), bootstrapTarget);
         singleplayerLoadState_.progress =
@@ -452,7 +489,7 @@ void Application::updateSingleplayerLoad()
         terrainGenerator_,
         cameraChunk,
         kStreamingSettings.residentChunkRadius,
-        std::max<std::size_t>(12, kStreamingSettings.generationChunkBudgetPerFrame * 2));
+        singleplayerLoadGenerationBudget(smoothedFrameTimeMs_));
 
     const std::vector<world::ChunkCoord> dirtyCoords = world_.dirtyChunkCoords();
     std::unordered_set<world::ChunkCoord, world::ChunkCoordHash> dirtyCoordSet(
@@ -467,7 +504,7 @@ void Application::updateSingleplayerLoad()
         cameraChunk,
         static_cast<int>(std::floor(camera_.position().y)),
         kStreamingSettings.residentChunkRadius,
-        std::max<std::size_t>(12, kStreamingSettings.meshBuildBudgetPerFrame * 3));
+        singleplayerLoadMeshBuildBudget(smoothedFrameTimeMs_));
     applyMeshSyncGpuData(renderer_, cpuData, residentChunkMeshIds_, residentChunkCoords_);
     if (!cpuData.dirtyResidentMeshUpdates.empty())
     {

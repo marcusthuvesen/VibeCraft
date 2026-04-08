@@ -81,16 +81,26 @@ BiomeVariationSample sampleBiomeVariation(
     const double canopyBase = normalizedFbm(wx - 29.0, wz - 91.0, 176.0, 3, mixedSeed(0x4b7ed053U, worldSeed));
     const double hollowBase = normalizedFbm(wx + 133.0, wz + 17.0, 146.0, 2, mixedSeed(0x5c8fe164U, worldSeed));
     const double pocketBase = normalizedFbm(wx - 151.0, wz + 87.0, 158.0, 2, mixedSeed(0x6da0f275U, worldSeed));
+    const double hillBase = normalizedFbm(wx + 211.0, wz - 163.0, 320.0, 3, mixedSeed(0x7eb10386U, worldSeed));
+    const double mountainBase = std::clamp(
+        noise::ridgeNoise2d(wx - 173.0, wz + 149.0, 196.0, mixedSeed(0x8fc21497U, worldSeed)),
+        0.0,
+        1.0);
+    const double shoulderBase = normalizedFbm(wx + 59.0, wz + 201.0, 164.0, 2, mixedSeed(0xa0d325a8U, worldSeed));
 
     double lushness = std::clamp(lushBase * 0.72 + (1.0 - dryBase) * 0.28, 0.0, 1.0);
     double dryness = std::clamp(dryBase * 0.78 + (1.0 - lushBase) * 0.22, 0.0, 1.0);
     double roughness = std::clamp(roughBase * 0.76 + pocketBase * 0.24, 0.0, 1.0);
     double canopyDensity = std::clamp(canopyBase * 0.72 + lushness * 0.18 - dryness * 0.12, 0.0, 1.0);
+    double hilliness = std::clamp(hillBase * 0.56 + roughness * 0.24 + shoulderBase * 0.20, 0.0, 1.0);
+    double mountainness =
+        std::clamp(mountainBase * 0.68 + hillBase * 0.18 + roughness * 0.18 - dryness * 0.08, 0.0, 1.0);
 
     if (biome == SurfaceBiome::DarkForest)
     {
         canopyDensity = std::clamp(canopyDensity + 0.18, 0.0, 1.0);
         lushness = std::clamp(lushness + 0.08, 0.0, 1.0);
+        hilliness = std::clamp(hilliness + 0.03, 0.0, 1.0);
     }
     else if (biome == SurfaceBiome::FlowerForest)
     {
@@ -109,13 +119,23 @@ BiomeVariationSample sampleBiomeVariation(
     {
         canopyDensity = std::clamp(canopyDensity + 0.08, 0.0, 1.0);
         roughness = std::clamp(roughness + 0.04, 0.0, 1.0);
+        hilliness = std::clamp(hilliness + 0.08, 0.0, 1.0);
+        mountainness = std::clamp(mountainness + 0.06, 0.0, 1.0);
     }
 
     WoodlandVariant primaryVariant = WoodlandVariant::None;
     if (supportsWoodlandVariation(biome))
     {
-        // Keep rocky pockets uncommon so forest floors stay mostly grassy.
-        if (roughness > 0.82 && canopyDensity < 0.54 && dryness > 0.52)
+        if (mountainness > 0.80 && roughness > 0.58 && canopyDensity < 0.72)
+        {
+            primaryVariant = WoodlandVariant::WoodedMountains;
+        }
+        else if (hilliness > 0.72 && roughness > 0.48 && canopyDensity < 0.82)
+        {
+            primaryVariant = WoodlandVariant::WoodedHills;
+        }
+        // Keep rocky pockets uncommon so forest floors stay mostly grassy outside the new hill bands.
+        else if (roughness > 0.82 && canopyDensity < 0.54 && dryness > 0.52)
         {
             primaryVariant = WoodlandVariant::RockyRise;
         }
@@ -147,6 +167,8 @@ BiomeVariationSample sampleBiomeVariation(
         .dryness = dryness,
         .roughness = roughness,
         .canopyDensity = canopyDensity,
+        .hilliness = hilliness,
+        .mountainness = mountainness,
     };
 }
 }  // namespace vibecraft::world::biomes
